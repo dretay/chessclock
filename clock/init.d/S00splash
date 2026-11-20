@@ -1,0 +1,52 @@
+#!/bin/sh
+#
+# Show the boot splash as early as possible. The image ships compressed, in
+# the screen's own pixel format, named for the screen it suits (see
+# splash_name() in fbclock.py), one per orientation.
+#
+
+CONF=/etc/fbclock.conf
+
+setting() {
+	sed -n "s/^$1=//p" "$CONF" 2>/dev/null | tail -n 1
+}
+
+case "$1" in
+	start)
+		# no blinking text cursor over the image
+		echo 0 > /sys/class/graphics/fbcon/cursor_blink 2>/dev/null
+		printf '\033[?25l' > /dev/tty1 2>/dev/null
+
+		# start at the dimmer of the two saved brightness levels (the clock
+		# sets the right one once it knows whether it's day or night)
+		BL=$(ls -d /sys/class/backlight/* 2>/dev/null | head -n 1)
+		if [ -n "$BL" ]; then
+			DAY=$(setting DAY_BRIGHTNESS); NIGHT=$(setting NIGHT_BRIGHTNESS)
+			P=${NIGHT:-100}
+			[ -n "$DAY" ] && [ "$DAY" -lt "$P" ] && P=$DAY
+			MAX=$(cat "$BL/max_brightness")
+			LEVEL=$((MAX * P * P / 10000))
+			[ "$LEVEL" -lt 1 ] && LEVEL=1
+			echo "$LEVEL" > "$BL/brightness"
+		fi
+
+		FB=/sys/class/graphics/fb0
+		if [ -e /dev/fb0 ] && [ -d "$FB" ]; then
+			SIZE=$(cat "$FB/virtual_size")
+			W=${SIZE%,*}; H=${SIZE#*,}
+			BPP=$(cat "$FB/bits_per_pixel"); STRIDE=$(cat "$FB/stride")
+			ROT=$(setting ROTATE)
+			IMG=/usr/share/fbclock/splash-${W}x${H}x${BPP}-${ROT:-0}.raw.gz
+			# the image is whole rows back to back, so the screen's rows must be too
+			if [ -f "$IMG" ] && [ "$STRIDE" -eq $((W * BPP / 8)) ]; then
+				zcat "$IMG" > /dev/fb0
+			fi
+		fi
+		;;
+	stop|restart|reload)
+		;;
+	*)
+		echo "Usage: $0 {start}"
+		exit 1
+		;;
+esac

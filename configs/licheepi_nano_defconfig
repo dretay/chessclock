@@ -1,5 +1,6 @@
 #
-# Main Buildroot config file for LicheePi Nano
+# Main Buildroot config file for LicheePi Nano, with the mainline Linux 6.18
+# LTS kernel (the board's display support patched in).
 #
 
 #
@@ -56,40 +57,42 @@ BR2_TARGET_GENERIC_GETTY_BAUDRATE_115200=y
 BR2_ROOTFS_OVERLAY="$(BR2_EXTERNAL_LICHEEPI_NANO_PATH)/board/licheepi_nano/rootfs-overlay"
 
 #
-# Linux kernel customized for the board
-# (using tarball download as it is much faster than Git)
+# Linux kernel: mainline 6.18 LTS
 #
 BR2_LINUX_KERNEL=y
 BR2_LINUX_KERNEL_CUSTOM_TARBALL=y
-# BR2_LINUX_KERNEL_CUSTOM_GIT=y
-
-# @unframework Linux fork and tag
-# (cherry-picked from Lichee-Pi Linux fork nano-5.2-flash branch as of 2021-03-06)
-BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="https://github.com/unframework/linux/archive/v5.11-nano-4/v5.11-nano-4.tar.gz"
-BR2_LINUX_KERNEL_VERSION="v5.11-nano-4"
-
-# original Lichee-Pi Linux fork and branch without Flash-specific config changes
-# BR2_LINUX_KERNEL_CUSTOM_REPO_URL="https://github.com/Lichee-Pi/linux"
-# BR2_LINUX_KERNEL_CUSTOM_REPO_VERSION="nano-5.2-tf"
+BR2_LINUX_KERNEL_CUSTOM_TARBALL_LOCATION="https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.18.64.tar.xz"
+# mainline has no F1C100s display support; this adds it (as the 5.11 fork did)
+BR2_LINUX_KERNEL_PATCH="$(BR2_EXTERNAL_LICHEEPI_NANO_PATH)/board/licheepi_nano/linux/patches"
 
 BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
-BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_LICHEEPI_NANO_PATH)/board/licheepi_nano/licheepi_nano_linux_defconfig"
+BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_LICHEEPI_NANO_PATH)/board/licheepi_nano/linux/linux_defconfig"
 
-# original Lichee-Pi Linux fork provided defconfig
-# BR2_LINUX_KERNEL_DEFCONFIG="licheepi_nano"
-
-# custom DTS file with local overrides
+# custom DTS on top of mainline's Lichee Pi Nano board file
 BR2_LINUX_KERNEL_DTS_SUPPORT=y
-BR2_LINUX_KERNEL_CUSTOM_DTS_PATH="$(BR2_EXTERNAL_LICHEEPI_NANO_PATH)/board/licheepi_nano/suniv-f1c100s-licheepi-nano-custom.dts"
+BR2_LINUX_KERNEL_CUSTOM_DTS_PATH="$(BR2_EXTERNAL_LICHEEPI_NANO_PATH)/board/licheepi_nano/linux/suniv-f1c100s-licheepi-nano-custom.dts"
 
 #
 # Build root FS ext2 (for TF card)
 #
 BR2_TARGET_ROOTFS_EXT2=y
 BR2_TARGET_ROOTFS_EXT2_4=y
-BR2_TARGET_ROOTFS_EXT2_SIZE="10M"
+BR2_TARGET_ROOTFS_EXT2_SIZE="64M"
 
 # BR2_TARGET_ROOTFS_TAR is not set
+
+#
+# The chess clock application (source in clock/, packaged in package/fbclock;
+# it pulls in Pillow, FreeType and the DejaVu fonts)
+#
+BR2_PACKAGE_PYTHON3=y
+BR2_PACKAGE_PYTHON3_PYC_ONLY=y
+BR2_PACKAGE_FBCLOCK=y
+# only DejaVu Sans is used
+# BR2_PACKAGE_DEJAVU_MONO is not set
+# BR2_PACKAGE_DEJAVU_SERIF is not set
+# BR2_PACKAGE_DEJAVU_SANS_CONDENSED is not set
+# BR2_PACKAGE_DEJAVU_SERIF_CONDENSED is not set
 
 #
 # Package up the images for deployment to board

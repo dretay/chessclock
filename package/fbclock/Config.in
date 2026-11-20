@@ -1,0 +1,13 @@
+config BR2_PACKAGE_FBCLOCK
+	bool "fbclock"
+	depends on BR2_PACKAGE_PYTHON3
+	select BR2_PACKAGE_PYTHON_PILLOW
+	select BR2_PACKAGE_FREETYPE  # Pillow's text rendering
+	select BR2_PACKAGE_DEJAVU    # the font the clock draws with
+	help
+	  Full-screen chess clock for the framebuffer: famous games replayed
+	  on a chessboard beside a chess-clock case showing the time, with a
+	  touch-screen settings page. Source in clock/ of this repository.
+
+comment "fbclock needs python3"
+	depends on !BR2_PACKAGE_PYTHON3

@@ -4,3 +4,8 @@
 
 # output folder from Docker command
 /dist
+/dist.tar
+
+# Python caches (e.g. from running clock/fbclock.py on a desktop)
+__pycache__/
+*.pyc

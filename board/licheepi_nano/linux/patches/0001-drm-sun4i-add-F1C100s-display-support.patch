@@ -1,0 +1,82 @@
+From: LicheePi Nano chess clock <noreply@example.invalid>
+Subject: [PATCH] drm/sun4i: add Allwinner F1C100s (suniv) display support
+
+Mainline has no display support for the F1C100s. Like the 5.11 kernel
+fork this board used before (unframework/linux v5.11-nano-4), accept the
+F1C100s display engine, frontend, backend and TCON in the existing sun4i
+DRM driver. Its TCON is a cut-down sun4i-style TCON: channel 0 only
+(channel 1's clock input is undocumented), with a minimum DCLK divider of 4.
+
+---
+diff --color -ru a/drivers/gpu/drm/sun4i/sun4i_backend.c b/drivers/gpu/drm/sun4i/sun4i_backend.c
+--- a/drivers/gpu/drm/sun4i/sun4i_backend.c	2026-11-19 23:40:21
++++ b/drivers/gpu/drm/sun4i/sun4i_backend.c	2026-11-19 23:40:21
+@@ -976,6 +976,9 @@
+ 	component_del(&pdev->dev, &sun4i_backend_ops);
+ }
+ 
++static const struct sun4i_backend_quirks suniv_backend_quirks = {
++};
++
+ static const struct sun4i_backend_quirks sun4i_backend_quirks = {
+ 	.needs_output_muxing = true,
+ };
+@@ -998,6 +1001,10 @@
+ };
+ 
+ static const struct of_device_id sun4i_backend_of_table[] = {
++	{
++		.compatible = "allwinner,suniv-f1c100s-display-backend",
++		.data = &suniv_backend_quirks,
++	},
+ 	{
+ 		.compatible = "allwinner,sun4i-a10-display-backend",
+ 		.data = &sun4i_backend_quirks,
+diff --color -ru a/drivers/gpu/drm/sun4i/sun4i_drv.c b/drivers/gpu/drm/sun4i/sun4i_drv.c
+--- a/drivers/gpu/drm/sun4i/sun4i_drv.c	2026-11-19 23:40:21
++++ b/drivers/gpu/drm/sun4i/sun4i_drv.c	2026-11-19 23:40:21
+@@ -158,7 +158,8 @@
+ 
+ static bool sun4i_drv_node_is_frontend(struct device_node *node)
+ {
+-	return of_device_is_compatible(node, "allwinner,sun4i-a10-display-frontend") ||
++	return of_device_is_compatible(node, "allwinner,suniv-f1c100s-display-frontend") ||
++		of_device_is_compatible(node, "allwinner,sun4i-a10-display-frontend") ||
+ 		of_device_is_compatible(node, "allwinner,sun5i-a13-display-frontend") ||
+ 		of_device_is_compatible(node, "allwinner,sun6i-a31-display-frontend") ||
+ 		of_device_is_compatible(node, "allwinner,sun7i-a20-display-frontend") ||
+@@ -420,6 +421,7 @@
+ }
+ 
+ static const struct of_device_id sun4i_drv_of_table[] = {
++	{ .compatible = "allwinner,suniv-f1c100s-display-engine" },
+ 	{ .compatible = "allwinner,sun4i-a10-display-engine" },
+ 	{ .compatible = "allwinner,sun5i-a10s-display-engine" },
+ 	{ .compatible = "allwinner,sun5i-a13-display-engine" },
+diff --color -ru a/drivers/gpu/drm/sun4i/sun4i_tcon.c b/drivers/gpu/drm/sun4i/sun4i_tcon.c
+--- a/drivers/gpu/drm/sun4i/sun4i_tcon.c	2026-11-19 23:40:21
++++ b/drivers/gpu/drm/sun4i/sun4i_tcon.c	2026-11-19 23:40:21
+@@ -1449,6 +1449,15 @@
+ 	return ret;
+ }
+ 
++static const struct sun4i_tcon_quirks suniv_f1c100s_quirks = {
++	/*
++	 * The F1C100s SoC has a second channel in TCON, but the clock input of
++	 * it is not documented.
++	 */
++	.has_channel_0		= true,
++	.dclk_min_div		= 4,
++};
++
+ static const struct sun4i_tcon_quirks sun4i_a10_quirks = {
+ 	.has_channel_0		= true,
+ 	.has_channel_1		= true,
+@@ -1546,6 +1555,7 @@
+ 
+ /* sun4i_drv uses this list to check if a device node is a TCON */
+ const struct of_device_id sun4i_tcon_of_table[] = {
++	{ .compatible = "allwinner,suniv-f1c100s-tcon", .data = &suniv_f1c100s_quirks },
+ 	{ .compatible = "allwinner,sun4i-a10-tcon", .data = &sun4i_a10_quirks },
+ 	{ .compatible = "allwinner,sun5i-a13-tcon", .data = &sun5i_a13_quirks },
+ 	{ .compatible = "allwinner,sun6i-a31-tcon", .data = &sun6i_a31_quirks },

@@ -1,0 +1,46 @@
+#!/bin/sh
+#
+# Start the full-screen framebuffer clock, and restart it if it ever exits.
+#
+
+DAEMON=/usr/bin/fbclock.py
+PIDFILE=/var/run/fbclock.pid          # the restart loop
+APPPIDFILE=/var/run/fbclock-app.pid   # the clock itself
+# kept on the SD card (unlike /var/log), along with the previous run's log,
+# so a problem can still be looked into after a reboot
+LOGDIR=/var/lib/fbclock
+LOGFILE=$LOGDIR/fbclock.log
+
+start() {
+	printf "Starting fbclock: "
+	# keep kernel messages from scribbling over the display
+	dmesg -n 1
+	mkdir -p "$LOGDIR"
+	[ -f "$LOGFILE" ] && mv -f "$LOGFILE" "$LOGFILE.1"
+	# a small shell loop runs the clock, logs anything it prints (e.g. a
+	# traceback), and starts it again a couple of seconds after it exits
+	start-stop-daemon -S -q -b -m -p "$PIDFILE" -x /bin/sh -- -c "
+		while true; do
+			/usr/bin/python3 -u $DAEMON >>$LOGFILE 2>&1 &
+			echo \$! > $APPPIDFILE
+			wait \$!
+			echo \"fbclock: exited with status \$?, restarting\" >>$LOGFILE
+			sleep 2
+		done" \
+		&& echo "OK" || echo "FAIL"
+}
+
+stop() {
+	printf "Stopping fbclock: "
+	# stop the restart loop first, then the clock itself
+	start-stop-daemon -K -q -p "$PIDFILE"
+	start-stop-daemon -K -q -p "$APPPIDFILE" && echo "OK" || echo "FAIL"
+	rm -f "$PIDFILE" "$APPPIDFILE"
+}
+
+case "$1" in
+	start) start ;;
+	stop) stop ;;
+	restart|reload) stop; sleep 1; start ;;
+	*) echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

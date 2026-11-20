@@ -1,0 +1,195 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR X11)
+//
+// Lichee Pi Nano with the 5" 800x480 resistive-touch panel, for mainline
+// Linux (6.18). Built on the mainline board file, which already has the SD
+// card, SPI flash, USB, serial console and audio codec; this adds what the
+// chess clock needs on top.
+//
+// The display pipeline (frontend -> backend -> TCON -> panel) is not in
+// mainline: the nodes below are carried over from the 5.11 kernel fork this
+// board used before (unframework/linux v5.11-nano-4), and need the
+// 0001-drm-sun4i-add-F1C100s-display-support.patch kernel patch.
+
+/dts-v1/;
+#include "allwinner/suniv-f1c100s-licheepi-nano.dts"
+
+/ {
+	model = "Lichee Pi Nano (Custom)";
+
+	de: display-engine {
+		compatible = "allwinner,suniv-f1c100s-display-engine";
+		allwinner,pipelines = <&fe0>;
+		status = "okay";
+	};
+
+	panel: panel {
+		compatible = "lg,lb070wv8", "simple-panel";
+		power-supply = <&reg_vcc3v3>;
+		backlight = <&backlight>;
+
+		port {
+			panel_input: endpoint {
+				remote-endpoint = <&tcon0_out_lcd>;
+			};
+		};
+	};
+
+	// PE6 drives the enable pin of the backlight driver (PT4103, "PWM1" on
+	// the schematic), which accepts PWM below 1kHz. Brightness is set
+	// through /sys/class/backlight/backlight/brightness.
+	backlight: backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pwm 1 2000000 0>;	// channel 1, 2ms period (500Hz)
+		brightness-levels = <0 255>;
+		num-interpolated-steps = <255>;
+		default-brightness-level = <255>;
+	};
+
+	soc {
+		fe0: display-frontend@1e00000 {
+			compatible = "allwinner,suniv-f1c100s-display-frontend";
+			reg = <0x01e00000 0x20000>;
+			interrupts = <30>;
+			clocks = <&ccu CLK_BUS_DE_FE>, <&ccu CLK_DE_FE>,
+				 <&ccu CLK_DRAM_DE_FE>;
+			clock-names = "ahb", "mod", "ram";
+			resets = <&ccu RST_BUS_DE_FE>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				fe0_out: port@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					fe0_out_be0: endpoint@0 {
+						reg = <0>;
+						remote-endpoint = <&be0_in_fe0>;
+					};
+				};
+			};
+		};
+
+		be0: display-backend@1e60000 {
+			compatible = "allwinner,suniv-f1c100s-display-backend";
+			reg = <0x01e60000 0x10000>;
+			reg-names = "be";
+			interrupts = <31>;
+			clocks = <&ccu CLK_BUS_DE_BE>, <&ccu CLK_DE_BE>,
+				 <&ccu CLK_DRAM_DE_BE>;
+			clock-names = "ahb", "mod", "ram";
+			resets = <&ccu RST_BUS_DE_BE>;
+			reset-names = "be";
+			assigned-clocks = <&ccu CLK_DE_BE>;
+			assigned-clock-rates = <300000000>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				be0_in: port@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					be0_in_fe0: endpoint@0 {
+						reg = <0>;
+						remote-endpoint = <&fe0_out_be0>;
+					};
+				};
+
+				be0_out: port@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					be0_out_tcon0: endpoint@0 {
+						reg = <0>;
+						remote-endpoint = <&tcon0_in_be0>;
+					};
+				};
+			};
+		};
+
+		tcon0: lcd-controller@1c0c000 {
+			compatible = "allwinner,suniv-f1c100s-tcon";
+			reg = <0x01c0c000 0x1000>;
+			interrupts = <29>;
+			clocks = <&ccu CLK_BUS_LCD>, <&ccu CLK_TCON>;
+			clock-names = "ahb", "tcon-ch0";
+			clock-output-names = "tcon-pixel-clock";
+			resets = <&ccu RST_BUS_LCD>;
+			reset-names = "lcd";
+			pinctrl-names = "default";
+			pinctrl-0 = <&lcd_rgb666_pins>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				tcon0_in: port@0 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <0>;
+
+					tcon0_in_be0: endpoint@0 {
+						reg = <0>;
+						remote-endpoint = <&be0_out_tcon0>;
+					};
+				};
+
+				tcon0_out: port@1 {
+					#address-cells = <1>;
+					#size-cells = <0>;
+					reg = <1>;
+
+					tcon0_out_lcd: endpoint@0 {
+						reg = <0>;
+						remote-endpoint = <&panel_input>;
+					};
+				};
+			};
+		};
+	};
+};
+
+&pio {
+	lcd_rgb666_pins: lcd-rgb666-pins {
+		pins = "PD0", "PD1", "PD2", "PD3", "PD4",
+		       "PD5", "PD6", "PD7", "PD8", "PD9",
+		       "PD10", "PD11", "PD12", "PD13", "PD14",
+		       "PD15", "PD16", "PD17", "PD18", "PD19",
+		       "PD20", "PD21";
+		function = "lcd";
+	};
+
+	// The resistive touch film (40-pin LCD connector, pins 37-40) goes to
+	// the on-board NS2009 touch chip (U4, address 0x48) on TWI0 at PE11/PE12,
+	// which fbclock.py reads through /dev/i2c-0. (Mainline only describes
+	// TWI0 on PD0/PD12, which collide with the LCD.) The board has no
+	// external pull-ups on this bus; without these every transfer times out.
+	i2c0_pe_pins: i2c0-pe-pins {
+		pins = "PE11", "PE12";
+		function = "i2c0";
+		bias-pull-up;
+	};
+
+	pwm1_pe6_pin: pwm1-pe6-pin {
+		pins = "PE6";
+		function = "pwm1";
+	};
+};
+
+&i2c0 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c0_pe_pins>;
+	status = "okay";
+};
+
+&pwm {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pwm1_pe6_pin>;
+	status = "okay";
+};

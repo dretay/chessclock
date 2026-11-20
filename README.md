@@ -1,110 +1,110 @@
-# Lichee Pi Nano Bootable Linux Image (Buildroot)
+# Chess Clock
 
-![Lichee Pi Nano with LCD screen](licheepi-nano-lcd.jpg)
+A desk clock for chess-loving kids, built on a tiny [Lichee Pi Nano](https://wiki.sipeed.com/soft/Lichee/zh/Nano-Doc-Backup/get_started/first_eye.html) and a 5" touch screen.
 
-[Lichee Pi Nano](https://wiki.sipeed.com/soft/Lichee/zh/Nano-Doc-Backup/get_started/first_eye.html) ([English article](https://www.cnx-software.com/2018/08/17/licheepi-nano-cheap-sd-card-sized-linux-board/), [old site](http://nano.lichee.pro/index.html)) is a very small single-board computer that is about the size of an SD card. It can run Linux. There is a good amount of official documentation on the [original manufacturer site](http://nano.lichee.pro/get_started/first_eye.html) (in Chinese, but easily readable thanks to Google Translate). However, the tooling used to build the full card/SPI-Flash images is mostly made up of custom shell scripts, and is not always easy to extend or maintain.
+![The chess clock](docs/clock.png)
 
-This repository contains a Buildroot-based Linux image build for the Lichee Pi Nano. It compiles a U-Boot image, Linux kernel, the rootfs image and the final partitioned binary image for flashing onto the bootable micro SD card (note: SPI-Flash boot image builds are possible but I did not get a chance to try them yet).
+A chessboard quietly replays famous games - the Opera Game, the Immortal Game, Fischer's Game of the Century and more - one sliding move every few seconds. Beside it, a walnut chess-clock case shows the time on two clock faces, with the pieces each side has lost collecting in a felt tray.
 
-All the custom configuration is packaged as a `BR2_EXTERNAL` Buildroot extension to avoid the need to fork the entire Buildroot repo. You can fork this project or integrate it as a Git subtree to customize your own OS build on top of it as needed.
+* Each game opens with a caption naming it, its year and its players.
+* Every minute, the clock's plunger dips and the minute face flips over like a split-flap display.
+* On the hour, a pawn marches up the hour face and promotes into the new hour.
+* Tap the screen for **Settings**: set the time, choose daytime and night-time brightness (night runs 9 PM to 7 AM), or turn the display upside down.
 
-The build process uses [Docker](Dockerfile) for reproducibility and convenience. If you are an advanced Linux user you can set up your own build on your host machine by running the same commands as [Dockerfile.base].
+![The settings screen](docs/settings.png)
 
-Explore the configuration and modify it at will: e.g. start with the main Buildroot defconfig file in [configs/licheepi_nano_defconfig](configs/licheepi_nano_defconfig). You will most likely need to update the Linux DTS (device tree) file to match your board usage, for which you can edit [suniv-f1c100s-licheepi-nano-custom.dts](board/licheepi_nano/suniv-f1c100s-licheepi-nano-custom.dts). Sample peripheral descriptions are listed in comments there - uncomment and modify what you need. This custom DTS file includes the original [suniv-f1c100s-licheepi-nano.dts](https://github.com/unframework/linux/blob/nano-5.11/arch/arm/boot/dts/suniv-f1c100s-licheepi-nano.dts) in the kernel tree, so you don't need to fork the kernel or duplicate code to make your local customizations. I may also set up an equivalent customizable U-Boot DTS file in the future.
+Everything runs on a single-core 400MHz ARM9 with 32MB of RAM: a minimal Linux built with [Buildroot](https://buildroot.org), and the clock written in Python, drawing straight to the screen with no desktop or windowing system.
 
-More customization is available by changing other files in the `board` and `configs` directories, such as the kernel boot command, kernel defconfig and SD image layout. There is also a preconfigured rootfs overlay folder, ready to populate.
+## Hardware
 
-This effort heavily borrowed from the work done by the FunKey Zero project: https://github.com/Squonk42/buildroot-licheepi-zero/. The latter targets Lichee Pi Zero, a sibling board to the Nano, but I was able to adapt it for use with Nano, and also converted the content to be a `BR2_EXTERNAL` extension rather than a full Buildroot fork.
+| Part | Notes |
+|---|---|
+| [Lichee Pi Nano](https://wiki.sipeed.com/soft/Lichee/zh/Nano-Doc-Backup/get_started/first_eye.html) | Allwinner F1C100s, 32MB RAM, boots from microSD |
+| 5" 800x480 40-pin RGB TFT with 4-wire resistive touch | e.g. the F50GLQ24E22. Its ribbon plugs straight into the Nano; the touch film's 4-wire tail goes to the ribbon's last four pins, which the Nano routes to its on-board touch chip |
+| microSD card | any size; the image is about 75MB |
+| 5V USB power supply and micro-USB cable | a right-angle plug fits the enclosure best |
+| *Optional:* the [3D-printed enclosure](enclosure) | picture frame, back cover and desk cradle; 4x M3 x 6mm self-tapping screws and some thin foam |
+| *Optional:* a 3.3V USB-serial adapter | for the console, on the Nano's UART0 at 115200 baud (login `root` / `root`) |
 
-Also check out https://github.com/florpor/licheepi-nano: that work was done prior to mine but I somehow didn't find it until later, oops.
+**One limitation:** the Nano has no battery-backed clock, so the time resets at every power cut and has to be set again from Settings. A DS3231 real-time clock module on the touch chip's I2C bus would fix this.
 
-## Dependencies
+## Getting Started
 
-Builds are Docker-based: multi-stage syntax support is needed (available since Docker Engine 17.05 release in 2017). Docker BuildKit support is needed for direct `tar` file output but you can omit that and manually copy `sdcard.img` from the built Docker images.
+1. **Build the SD card image** (see [Building](#building) below), which produces `dist/sdcard.img`.
+2. **Write it to a microSD card.** On macOS, find the card with `diskutil list` (say it's `/dev/disk4` - double-check, `dd` overwrites whatever disk it's given):
 
-## Building the Image
+   ```sh
+   diskutil unmountDisk /dev/disk4
+   sudo dd if=dist/sdcard.img of=/dev/rdisk4 bs=4m status=progress
+   diskutil eject /dev/disk4
+   ```
 
-The easiest way is using Docker (on Windows/MacOS/Linux). If your Docker is older than v23, ensure that you have [BuildKit enabled](https://docs.docker.com/build/buildkit/#getting-started).
+   If macOS then says the disk isn't readable, click **Ignore**. On Linux, `dd` to `/dev/sdX`; on Windows, use Balena Etcher.
+3. **Boot it.** A chess knight splash appears within a few seconds, then the clock.
+4. **Set the time:** tap the screen, use the arrows, and press **Save**. Adjust the brightness sliders there too.
 
-First, clone this repo to your host:
+Settings are kept on the SD card, so they survive power cuts (the time itself doesn't; see above). Reflashing the card resets them.
 
-```sh
-git clone git@github.com:unframework/licheepi-nano-buildroot.git
-```
+## Building
 
-There are two options available - fast build using the [prepared Docker Hub images](https://hub.docker.com/r/unframework/licheepi-nano-buildroot) or from scratch (takes 1-2 hours or more).
+Builds run in containers - Apple's [`container`](https://github.com/apple/container) tool on macOS, or Docker 23+. There are two steps: a slow one-off **base image** (the cross-compiler and a complete first build, 1-2 hours), then a **fast build** on top of it that copies in your current files and rebuilds what changed (a few minutes).
 
-Fast build:
-
-```sh
-docker build --output type=tar,dest=- . | (mkdir -p dist && tar x -C dist)
-```
-
-The built image will be available in `dist/sdcard.img` - you can write this to your bootable micro SD card (see below).
-
-Full rebuild from scratch:
-
-```sh
-docker build -f Dockerfile.base --output type=tar,dest=- . | (mkdir -p dist && tar x -C dist)
-```
-
-## Write Bootable Image to SD Card
-
-On Windows, use Rufus or Balena Etcher to write the bootable SD card image (`sdcard.img`). Typical image size is at least 18-20Mb, which should fit on most modern SD cards.
-
-Example command to write image to SD card on Linux host:
+### On macOS with Apple's `container`
 
 ```sh
-sudo dd if=output/images/sdcard.img of=DEVICE # e.g. /dev/sd?, etc
+# once: the base image, built natively for Apple silicon
+container build --memory 4g --cpus 8 -f Dockerfile.base --target main -t licheepi-nano-mybase:latest .
+
+# each time: the fast build, unpacked into dist/
+container build --memory 4g --cpus 8 --build-arg BASE_IMAGE=licheepi-nano-mybase \
+    -o type=tar,dest=dist.tar . \
+  && mkdir -p dist && tar -xf dist.tar -C dist --strip-components=1 && rm dist.tar
 ```
 
-Then, plug in the micro SD card into your Lichee Nano and turn it on!
+`container` can't send the build output to the terminal (`dest=-` writes a file literally named `-`), hence the tar file. The upstream project's published base image on Docker Hub is amd64-only and predates this project, so build your own.
 
-## Iterating on the Base Image
-
-The "fast build" Docker command allows tweaking config files in `board` and `configs` without having to rebuild everything. First it pulls the [pre-built Docker Hub image](https://hub.docker.com/r/unframework/licheepi-nano-buildroot), re-copies the defconfig and board folder from local workspace into it, and runs the `make` command once again.
-
-Note that certain config file changes will not automatically cause Buildroot to rebuild affected folders. Please see the Buildroot manual sections [Understanding when a full rebuild is necessary](https://buildroot.org/downloads/manual/manual.html#full-rebuild) and [Understanding how to rebuild packages](https://buildroot.org/downloads/manual/manual.html#rebuild-pkg).
-
-It's very convenient to run the intermediate Docker image and inspect the build folder, run `make menuconfig`, etc:
-
-```sh
-docker build --target main -t licheepi-nano-tmp
-docker run -it licheepi-nano-tmp /bin/bash
-```
-
-Just don't forget to e.g. carry out any resulting `.config` file changes back into your source folder as needed.
-
-Once you are happy with your own additions, you can run a full Docker image rebuild and tag the result:
+### With Docker
 
 ```sh
 docker build -f Dockerfile.base --target main -t licheepi-nano-mybase:latest .
+docker build --build-arg BASE_IMAGE=licheepi-nano-mybase --output type=tar,dest=- . | (mkdir -p dist && tar x -C dist)
 ```
 
-And then use that image as the base for generating the SD image as well as further config iterations:
+### What the fast build rebuilds
 
-```sh
-docker build \
-  --build-arg="BASE_IMAGE=licheepi-nano-mybase" \
-  --output type=tar,dest=- . \
-  | (mkdir -p dist && tar x -C dist)
-```
+It copies `board/`, `configs/`, `package/` and `clock/` into the base image and runs Buildroot again, always rebuilding the kernel (so kernel config and patch changes take effect), the clock, U-Boot and the boot script. Other changes don't always trigger a rebuild in Buildroot - see its manual on [when a full rebuild is necessary](https://buildroot.org/downloads/manual/manual.html#full-rebuild) - so when in doubt, rebuild the base image. To look around inside the build (or run `make menuconfig`): `container run -it licheepi-nano-mybase /bin/bash`.
 
-For reference, here is how the base image is generated and published (these are the commands I run as the repo maintainer):
+## Repository Layout
 
-```sh
-docker build -f Dockerfile.base --target main -t unframework/licheepi-nano-buildroot:$(git rev-parse --short HEAD) .
-docker build -f Dockerfile.base --target main -t unframework/licheepi-nano-buildroot:latest .
-docker push unframework/licheepi-nano-buildroot:$(git rev-parse --short HEAD)
-docker push unframework/licheepi-nano-buildroot:latest
-```
+| Path | |
+|---|---|
+| [`clock/`](clock) | the clock application, with [its own README](clock/README.md): settings, logs, touch calibration, trying it on a desktop |
+| [`enclosure/`](enclosure) | the 3D-printable enclosure, with [its own README](enclosure/README.md): parts, printing, assembly |
+| [`package/fbclock/`](package/fbclock) | the Buildroot package that installs the clock |
+| [`configs/licheepi_nano_defconfig`](configs/licheepi_nano_defconfig) | the Buildroot configuration: packages, kernel, U-Boot, SD card image |
+| [`board/licheepi_nano/linux/`](board/licheepi_nano/linux) | kernel config, device tree and display patch |
+| [`board/licheepi_nano/`](board/licheepi_nano) | boot script, SD card layout, and a root filesystem overlay for small system tweaks |
+| `Dockerfile.base`, `Dockerfile` | the base image and fast build |
+| [`docs/`](docs) | screenshots |
 
-## Linux and U-Boot Versions
+The Buildroot customisation is a `BR2_EXTERNAL` extension, so Buildroot itself is used unmodified.
 
-The built kernel is [a Linux fork based off 5.11](https://github.com/unframework/linux/commits/nano-5.11), with hardware-specific customizations. I have cherry-picked the original customizations from @Lichee-Pi Linux repo [nano-5.2-tf branch](https://github.com/torvalds/linux/compare/master...Lichee-Pi:nano-5.2-tf) and [nano-5.2-flash branch](https://github.com/torvalds/linux/compare/master...Lichee-Pi:nano-5.2-flash) (both based off Linux version 5.2) and added tiny fixes due to newer kernel version.
+## How It Works
 
-The built U-Boot is [a fork based off v2021.01](https://github.com/unframework/u-boot/commits/2021.01-f1c100s) with hardware-specific customizations, which I ported over from [the original @Lichee-Pi v2018.01 fork](https://github.com/Lichee-Pi/u-boot/commits/nano-v2018.01) referenced in the docs. By the way, the latter is actually itself a rebase of [an earlier repo branch maintained by @Icenowy](https://github.com/u-boot/u-boot/compare/master...Icenowy:f1c100s-spiflash). Splash screen support is not yet ported.
+**Software.** The clock is one Python program using Pillow to draw directly into the Linux framebuffer. With only about 26MB of RAM available to programs, it never holds a whole screen as an image: the board's squares and the parts of the clock case are drawn and written separately, piece slides redraw only the area the piece moves through, and the minute flip and hour promotion are prepared in advance and played back as small changed strips. It restarts itself if anything goes wrong, and logs to the SD card. More in [clock/README.md](clock/README.md).
 
-## LCD Screen Support
+**Kernel.** Mainline Linux 6.18 LTS. Mainline supports most of the F1C100s - SD card, DMA, I2C, PWM, watchdog, audio - but not its display, so [one small patch](board/licheepi_nano/linux/patches) adds that, carried over from the [5.11 kernel fork](https://github.com/unframework/linux/commits/nano-5.11) this project started on. The kernel config is cut down to what the clock uses (no networking, USB or loadable modules, compiled for size), which leaves several megabytes more RAM than the old kernel did.
 
-By default, the `suniv-f1c100s-licheepi-nano.dts` device tree expects a 800x480 TFT screen to be plugged into the 40-pin flex-PCB connector on the board. You can change this to be a 480x272 TFT screen - simply uncomment the `panel` block at line 14 in [suniv-f1c100s-licheepi-nano-custom.dts](board/licheepi_nano/suniv-f1c100s-licheepi-nano-custom.dts). This will override the `compatible` string for the driver and trigger the lower resolution (see also [original docs](http://nano.lichee.pro/build_sys/devicetree.html#lcd)).
+**Device tree.** The [custom device tree](board/licheepi_nano/linux/suniv-f1c100s-licheepi-nano-custom.dts) builds on mainline's Lichee Pi Nano file and adds:
+
+* the display pipeline and the 800x480 panel;
+* a dimmable backlight - the backlight driver's enable pin (PE6) driven by PWM at 500Hz;
+* the I2C bus to the Nano's on-board NS2009 resistive-touch chip (PE11/PE12), with the pins' internal pull-ups enabled, since the board has none and the bus doesn't work without them.
+
+**Boot.** U-Boot is [a v2021.01 fork](https://github.com/unframework/u-boot/commits/2021.01-f1c100s) with F1C100s support. Kernel messages go only to the serial console, so the screen shows nothing until a startup script puts up the splash image, ready-made in the screen's own pixel format.
+
+## Credits
+
+The Buildroot setup started from [unframework/licheepi-nano-buildroot](https://github.com/unframework/licheepi-nano-buildroot), which in turn adapted the FunKey Zero project's [buildroot-licheepi-zero](https://github.com/Squonk42/buildroot-licheepi-zero/). The F1C100s kernel and U-Boot work comes from @Icenowy, @Lichee-Pi and @unframework. The famous games are public-domain chess history.
+
+Licensed under the GPL-3.0 (see [LICENSE](LICENSE)).
