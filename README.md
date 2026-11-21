@@ -6,10 +6,10 @@ A desk clock for chess-loving kids, built on a tiny [Lichee Pi Nano](https://wik
 
 A chessboard quietly replays famous games - the Opera Game, the Immortal Game, Fischer's Game of the Century and more - one sliding move every few seconds. Beside it, a walnut chess-clock case shows the time on two clock faces, with the pieces each side has lost collecting in a felt tray.
 
-* Each game opens with a caption naming it, its year and its players.
+* Each game opens with a caption naming it, its year and its players. Captured pieces arc off the board into the tray, and when a game ends in checkmate the beaten king topples over.
 * Every minute, the clock's plunger dips and the minute face flips over like a split-flap display.
 * On the hour, a pawn marches up the hour face and promotes into the new hour.
-* Tap the screen for **Settings**: set the time, choose daytime and night-time brightness (night runs 9 PM to 7 AM), or turn the display upside down.
+* Press and hold the screen for two seconds - the clock's plunger sinks as you hold - to open **Settings** (so a passing tap can't change anything; a quick tap shows the game's name instead): set the time, choose daytime and night-time brightness (night runs 9 PM to 7 AM, with a gentle fade between them), or turn the display upside down.
 
 ![The settings screen](docs/settings.png)
 
@@ -41,7 +41,7 @@ Everything runs on a single-core 400MHz ARM9 with 32MB of RAM: a minimal Linux b
 
    If macOS then says the disk isn't readable, click **Ignore**. On Linux, `dd` to `/dev/sdX`; on Windows, use Balena Etcher.
 3. **Boot it.** A chess knight splash appears within a few seconds, then the clock.
-4. **Set the time:** tap the screen, use the arrows, and press **Save**. Adjust the brightness sliders there too.
+4. **Set the time:** press and hold the screen until Settings opens (two seconds), use the arrows, and press **Save**. Adjust the brightness sliders there too.
 
 Settings are kept on the SD card, so they survive power cuts (the time itself doesn't; see above). Reflashing the card resets them.
 
@@ -85,15 +85,16 @@ It copies `board/`, `configs/`, `package/` and `clock/` into the base image and 
 | [`board/licheepi_nano/linux/`](board/licheepi_nano/linux) | kernel config, device tree and display patch |
 | [`board/licheepi_nano/`](board/licheepi_nano) | boot script, SD card layout, and a root filesystem overlay for small system tweaks |
 | `Dockerfile.base`, `Dockerfile` | the base image and fast build |
+| [`tools/`](tools) | development tools: talk to the board over serial, time its boot, simulate the clock on a desktop, check the games (see [below](#development-tools)) |
 | [`docs/`](docs) | screenshots |
 
 The Buildroot customisation is a `BR2_EXTERNAL` extension, so Buildroot itself is used unmodified.
 
 ## How It Works
 
-**Software.** The clock is one Python program using Pillow to draw directly into the Linux framebuffer. With only about 26MB of RAM available to programs, it never holds a whole screen as an image: the board's squares and the parts of the clock case are drawn and written separately, piece slides redraw only the area the piece moves through, and the minute flip and hour promotion are prepared in advance and played back as small changed strips. It restarts itself if anything goes wrong, and logs to the SD card. More in [clock/README.md](clock/README.md).
+**Software.** The clock is one Python program using Pillow to draw directly into the Linux framebuffer, installed pre-compiled and caching its drawings on the SD card so it starts in about 5 seconds. With only about 26MB of RAM available to programs, it never holds a whole screen as an image: the board's squares and the parts of the clock case are drawn and written separately, piece slides redraw only the area the piece moves through, and the minute flip and hour promotion are prepared in advance and played back as small changed strips. It restarts itself if anything goes wrong, and logs to the SD card. More in [clock/README.md](clock/README.md).
 
-**Kernel.** Mainline Linux 6.18 LTS. Mainline supports most of the F1C100s - SD card, DMA, I2C, PWM, watchdog, audio - but not its display, so [one small patch](board/licheepi_nano/linux/patches) adds that, carried over from the [5.11 kernel fork](https://github.com/unframework/linux/commits/nano-5.11) this project started on. The kernel config is cut down to what the clock uses (no networking, USB or loadable modules, compiled for size), which leaves several megabytes more RAM than the old kernel did.
+**Kernel.** Mainline Linux 6.18 LTS. Mainline supports most of the F1C100s - SD card, DMA, I2C, PWM, watchdog, audio - but not its display, so [one small patch](board/licheepi_nano/linux/patches) adds that, carried over from the [5.11 kernel fork](https://github.com/unframework/linux/commits/nano-5.11) this project started on. The kernel config is cut down to what the clock uses (no networking, USB, loadable modules or text console, compiled for size), which leaves several megabytes more RAM than the old kernel did.
 
 **Device tree.** The [custom device tree](board/licheepi_nano/linux/suniv-f1c100s-licheepi-nano-custom.dts) builds on mainline's Lichee Pi Nano file and adds:
 
@@ -101,7 +102,19 @@ The Buildroot customisation is a `BR2_EXTERNAL` extension, so Buildroot itself i
 * a dimmable backlight - the backlight driver's enable pin (PE6) driven by PWM at 500Hz;
 * the I2C bus to the Nano's on-board NS2009 resistive-touch chip (PE11/PE12), with the pins' internal pull-ups enabled, since the board has none and the bus doesn't work without them.
 
-**Boot.** U-Boot is [a v2021.01 fork](https://github.com/unframework/u-boot/commits/2021.01-f1c100s) with F1C100s support. Kernel messages go only to the serial console, so the screen shows nothing until a startup script puts up the splash image, ready-made in the screen's own pixel format.
+**Boot.** U-Boot is [a v2021.01 fork](https://github.com/unframework/u-boot/commits/2021.01-f1c100s) with F1C100s support, set up ([`uboot.fragment`](board/licheepi_nano/uboot.fragment)) to boot without its usual 2-second countdown or a USB scan; holding a key on the serial console while powering on still stops at its prompt. The kernel is LZ4-compressed, which unpacks faster than gzip on this CPU, and boots `quiet` so it doesn't spend time printing every message over the serial line. The screen shows nothing until the first startup script puts up the splash image, ready-made in the screen's own pixel format; that script uses only shell built-ins, as starting other programs is slow on this CPU.
+
+## Development Tools
+
+The [`tools/`](tools) folder holds what this project was developed with (`pip install -r tools/requirements.txt` for pyserial and Pillow). The board ones use a USB-serial adapter on the Nano's UART0; set `CLOCK_SERIAL` if yours isn't `/dev/cu.usbserial-0001`.
+
+| Tool | |
+|---|---|
+| `run_on_board.py "COMMAND" ...` | run shell commands on the board and print the output (logs in as root first if needed) |
+| `push_to_board.py LOCAL REMOTE` | copy a file to the board over serial (~10KB/s), checksum-verified - e.g. a changed `clock/fbclock.py` to `/usr/lib/python3.11/site-packages/`, then restart the clock, to try a change without reflashing |
+| `boot_time.py [--bench URL DEVICE CH]` | time a boot from power-on, stage by stage; `--bench` switches the power through a lab-bench server's API, otherwise you power-cycle it yourself |
+| `simulate.py FONT_DIR [OUT_DIR]` | run the clock's animations and touch handling on a desktop against an in-memory screen, save frames as PNGs, and check the results |
+| `check_games.py [PGN]` | check every game in `clock/games.pgn` replays correctly - run it after adding a game |
 
 ## Credits
 

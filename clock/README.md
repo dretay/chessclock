@@ -5,26 +5,41 @@ Lichee Pi Nano's 5" 800x480 touch screen.
 
 * **Left:** a chessboard replaying famous games, one sliding move every 3
   seconds. Each game starts with its name and players in a caption.
+  Captured pieces arc off the board into the tray; a pawn promoting gets a
+  gold ring burst; and when a game ends in checkmate, the beaten king topples
+  over and a caption names the winner.
 * **Right:** a walnut chess-clock case with the hour and minutes on two clock
   faces, and a felt tray holding the pieces each side has lost.
 * **Every minute** the case's plunger dips and the minute face flips over
   like a split-flap display. **On the hour** a pawn marches up the hour face
   and promotes into the new hour.
-* **Tap the screen** for Settings: set the time, adjust daytime and
+* **Press and hold the screen** for two seconds for Settings - the plunger
+  sinks while you hold, and Settings opens when it reaches the bottom, so a
+  passing tap (or a curious child) can't change anything. A quick tap shows
+  the game's name and players again. In Settings: set the time, adjust daytime and
   night-time brightness (live preview while dragging), or turn the display
-  upside down.
+  upside down. Brightness eases between the day and night levels over three
+  minutes, like a lamp dimming.
 
 It is a single Python program drawing with Pillow straight to the Linux
 framebuffer (`/dev/fb0`) - no X11, Wayland or SDL. The board has 32MB of RAM,
 so it never holds a full-screen image: board squares and parts of the clock
 case are drawn and written separately, and animation frames are prepared in
-advance and written as small changed strips.
+advance and written as small changed strips. Animations run at up to 30
+frames a second.
+
+Starting up is kept short (about 5 seconds) by installing the program
+pre-compiled, and by saving the drawn chess pieces and the Settings screen to
+the SD card (`/var/lib/fbclock/cache`) the first time they are drawn. The
+first start after flashing takes a few seconds longer while it fills the
+cache; the cache clears itself whenever the program changes.
 
 ## Files
 
 | In this folder | Installed as | |
 |---|---|---|
-| `fbclock.py` | `/usr/bin/fbclock.py` | the clock |
+| `fbclock.py` | `/usr/lib/python3.11/site-packages/fbclock.pyc` | the clock, installed as a pre-compiled module |
+| `fbclock` | `/usr/bin/fbclock` | starts it |
 | `games.pgn` | `/usr/share/fbclock/games.pgn` | the games it replays (standard PGN; add your own) |
 | `splash/*.raw.gz` | `/usr/share/fbclock/` | boot splash, ready-made in the screen's pixel format, one per orientation |
 | `fbclock.conf` | `/etc/fbclock.conf` | default settings and touch calibration |
@@ -62,8 +77,14 @@ clock ever exits the log says so before it is restarted.
 
 ```sh
 /etc/init.d/S99fbclock stop|start|restart
-python3 /usr/bin/fbclock.py --touch-debug     # print raw and screen touch positions
+fbclock --touch-debug                         # print raw and screen touch positions
 ```
+
+To try a changed `fbclock.py` on the board without reflashing, copy it to
+`/usr/lib/python3.11/site-packages/` (next to `fbclock.pyc`, which it then
+takes precedence over) and restart the clock; `tools/push_to_board.py` does
+the copying over the serial console. `tools/simulate.py` checks the
+animations and touch handling on a desktop first.
 
 To recalibrate the touch screen: stop the clock, run `--touch-debug`, tap near
 each corner, and put the raw readings into `fbclock.conf`.

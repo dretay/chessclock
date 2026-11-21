@@ -1,0 +1,7 @@
+# Changes on top of the U-Boot fork's licheepi_nano_defconfig, for a faster boot
+
+# boot straight away instead of counting down for 2 seconds (holding a key on
+# the serial console while powering on still stops at the U-Boot prompt)
+CONFIG_BOOTDELAY=0
+# nothing is plugged into USB, so don't scan it at every boot
+# CONFIG_USE_PREBOOT is not set

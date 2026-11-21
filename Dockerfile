@@ -32,9 +32,13 @@ RUN rm -rf output/build/linux-custom
 # the clock is a local package: Buildroot only copies its source in once, so
 # start it afresh to pick up changes in clock/
 RUN rm -rf output/build/fbclock-*
-RUN cd output/build/uboot-v2021.01-f1c100s-4/ && rm -f .stamp_built .stamp_*installed
+# (U-Boot from scratch too, so changes to its config fragment take effect)
+RUN rm -rf output/build/uboot-v2021.01-f1c100s-4
 RUN cd output/build/host-uboot-tools-2021.07/ && rm -f .stamp_built .stamp_*installed
 RUN cd output/build/linux-firmware-20221214/ && rm -f .stamp_built .stamp_*installed
+
+# turning a package off doesn't remove what it already installed
+RUN rm -f output/target/etc/init.d/S40network
 
 # re-run build
 RUN make

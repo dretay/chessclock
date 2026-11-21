@@ -3,7 +3,7 @@
 # Start the full-screen framebuffer clock, and restart it if it ever exits.
 #
 
-DAEMON=/usr/bin/fbclock.py
+DAEMON=/usr/bin/fbclock
 PIDFILE=/var/run/fbclock.pid          # the restart loop
 APPPIDFILE=/var/run/fbclock-app.pid   # the clock itself
 # kept on the SD card (unlike /var/log), along with the previous run's log,

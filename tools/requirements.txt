@@ -1,0 +1,3 @@
+# for the tools in this folder (pip install -r tools/requirements.txt)
+pyserial
+Pillow

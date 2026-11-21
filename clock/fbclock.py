@@ -5,8 +5,10 @@ sliding one piece every few seconds, beside a walnut chess-clock case showing
 the hour and minutes on two clock faces, with the pieces each side has lost
 in a tray below. On the hour, a pawn marches up and promotes into the new
 hour; each minute the case's plunger dips and the minute face flips over.
-Tapping the (resistive) touchscreen opens Settings: the time, daytime and
-night-time brightness, and turning the display upside down.
+Pressing and holding the (resistive) touchscreen for two seconds - the
+plunger sinks meanwhile - opens Settings: the time, daytime and night-time
+brightness, and turning the display upside down. A quick tap shows the
+game's name again.
 
 Rendering uses Pillow and writes raw pixels to /dev/fb0 (no X11/SDL). The
 board only has 32MB of RAM, so the screen is never held as one full image:
@@ -25,14 +27,16 @@ Environment overrides:
   FBCLOCK_TOUCH_BUS I2C bus with the NS2009 touch chip (default /dev/i2c-0)
   FBCLOCK_GAMES     PGN file (default /usr/share/fbclock/games.pgn)
   FBCLOCK_FONTS     extra directory to search for DejaVu fonts
+  FBCLOCK_CACHE     where to keep drawings between runs (default /var/lib/fbclock/cache)
   FBCLOCK_MOVE_SECS seconds between moves (default 3)
   FBCLOCK_PREVIEW   render one frame to this PNG and exit (for development),
                     sized FBCLOCK_SIZE (default 800x480), after FBCLOCK_PLY moves
   FBCLOCK_PREVIEW_SETTER  if set, preview the settings screen instead
 
-Command line:
-  fbclock.py --touch-debug                    print raw/screen touch positions
-  fbclock.py --make-splash DIR WxHxBPP        write the boot splash images
+On the board this is installed as the (pre-compiled) fbclock module, started
+by /usr/bin/fbclock. Command line:
+  fbclock --touch-debug                       print raw/screen touch positions
+  fbclock --make-splash DIR WxHxBPP           write the boot splash images
 """
 
 import fcntl
@@ -45,19 +49,36 @@ import re
 import sys
 import time
 
-from PIL import Image, ImageChops, ImageDraw, ImageFont
+# Pillow builds large EXIF tag tables when it is imported (over a second on
+# this CPU); the clock never reads EXIF data, so stand in an empty module
+import types
+sys.modules.setdefault("PIL.ExifTags", types.ModuleType("PIL.ExifTags"))
+from PIL import Image, ImageChops, ImageDraw, ImageFont  # noqa: E402
 
 # ---------------------------------------------------------------- settings
 
 GAMES_FILE = os.environ.get("FBCLOCK_GAMES", "/usr/share/fbclock/games.pgn")
 SPLASH_DIR = "/usr/share/fbclock"   # boot splash images, see splash_name()
 CONFIG_FILE = "/etc/fbclock.conf"
+# drawings kept on the SD card so later starts are quicker (pieces, the
+# settings screen); not used for desktop previews
+CACHE_DIR = os.environ.get("FBCLOCK_CACHE", "" if os.environ.get("FBCLOCK_PREVIEW")
+                           else "/var/lib/fbclock/cache")
 MOVE_SECS = float(os.environ.get("FBCLOCK_MOVE_SECS", "3"))
 SLIDE_SECS = 0.8          # how long a piece takes to glide to its new square
+FRAME_SECS = 1 / 30       # animations run at most 30 frames a second
+FLY_SECS = 0.7            # a captured piece flies off the board into the tray
+TOPPLE_SECS = 0.9         # checkmate: the beaten king tips over...
+FALLEN_ANGLE, FALLEN_DROP = -90, 0.12   # ...onto its side (degrees; drop is a fraction of a square)
+BURST_SECS = 0.45         # a pawn promoting during a game: a gold ring bursts out
+FADE_SECS = 180           # brightness eases between daytime and night-time over this long
 START_HOLD_SECS = 4       # show the starting position this long
 CAPTION_SECS = 12         # how long a new game's name stays on screen
 END_HOLD_SECS = 20        # show the final position this long
 SETTER_TIMEOUT = 60       # leave the settings screen after this long without a tap
+HOLD_SECS = 2.0           # Settings opens after pressing and holding this long (so a
+                          # passing tap can't change anything); meanwhile the plunger sinks
+TAP_SECS = 0.6            # a press shorter than this is a tap: it shows the game's name
 MIN_BRIGHTNESS = 5        # percent; the sliders never go fully dark
 # Daytime/night-time brightness (percent) and when night starts and ends are
 # kept in CONFIG_FILE as DAY_BRIGHTNESS, NIGHT_BRIGHTNESS, NIGHT_START and
@@ -316,6 +337,7 @@ class GamePlayer:
         self.ply = 0
         self.last_move = None
         self.check_sq = None
+        self.mated = False                     # the game ended in checkmate
 
     @property
     def finished(self):
@@ -333,10 +355,59 @@ class GamePlayer:
             return dirty
         self.ply += 1
         self.check_sq = self.pos.king_square(self.pos.white) if san[-1] in "+#" else None
+        self.mated = san.endswith("#")
         dirty |= changed | set(self.last_move)
         if self.check_sq is not None:
             dirty.add(self.check_sq)
         return dirty
+
+# ------------------------------------------------------------------ cache
+
+def _cache_stamp():
+    """Changes whenever the program does, so cached drawings get redone."""
+    try:
+        st = os.stat(__file__)
+        return "%x%x" % (st.st_size, int(st.st_mtime))
+    except OSError:
+        return "0"
+
+
+CACHE_STAMP = _cache_stamp()
+
+
+def cache_path(name):
+    return os.path.join(CACHE_DIR, "%s-%s" % (CACHE_STAMP, name)) if CACHE_DIR else None
+
+
+def cache_read(name):
+    path = cache_path(name)
+    if not path:
+        return None
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def cache_write(name, chunks):
+    """Save a drawing (written in pieces, safely), clearing out any left by
+    other versions of the program."""
+    if not CACHE_DIR:
+        return
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        for old in os.listdir(CACHE_DIR):
+            if not old.startswith(CACHE_STAMP + "-"):
+                os.remove(os.path.join(CACHE_DIR, old))
+        path = cache_path(name)
+        with open(path + ".tmp", "wb") as f:
+            for chunk in chunks:
+                f.write(chunk)
+        os.replace(path + ".tmp", path)
+    except OSError as e:
+        print("fbclock: could not cache %s: %s" % (name, e), flush=True)
+
 
 # ---------------------------------------------------------------- graphics
 
@@ -385,7 +456,8 @@ class BoardRenderer:
             reach = grown
         return ImageChops.invert(reach)
 
-    def tile(self, index, piece, highlight=False, check=False):
+    def tile(self, index, piece, highlight=False, check=False, angle=0, drop=0.0):
+        """One square. A non-zero angle draws the piece tipped over (see tilted)."""
         w, h = self.cell_w, self.cell_h
         f, r = index % 8, index // 8
         light = (f + r) % 2 == 1
@@ -404,17 +476,44 @@ class BoardRenderer:
         if r == 0:
             d.text((w - pad, h - pad), "abcdefgh"[f], font=self.coord_font, fill=coord, anchor="rs")
         if piece:
-            rgb, mask = self.sprite(piece)
+            rgb, mask = self.tilted(piece, angle, drop) if angle else self.sprite(piece)
             img.paste(rgb, (0, 0), mask)
         return img
+
+    def tilted(self, piece, angle, drop=0.0):
+        """A piece turned angle degrees about the middle of its square and
+        lowered by drop (a fraction of the square), as when a king topples."""
+        key = (piece, angle, drop)
+        if key in self.sprites:
+            return self.sprites[key]
+        rgb, mask = self.sprite(piece)
+        how = dict(resample=Image.Resampling.BICUBIC, center=(self.cell_w / 2, self.cell_h / 2),
+                   translate=(0, int(drop * self.cell_h)))
+        out = rgb.rotate(angle, **how), mask.rotate(angle, **how)
+        if (angle, drop) == (FALLEN_ANGLE, FALLEN_DROP):
+            self.sprites[key] = out            # a fallen king stays until the next game
+        return out
+
+    def _masks(self, kind):
+        """(solid, outline) masks for a kind of piece, from the cache if this
+        size was drawn before: drawing them takes seconds on this CPU."""
+        w, h = self.cell_w, self.cell_h
+        name = "piece-%s-%dx%d-%d.raw" % (kind, w, h, self.piece_font.size)
+        data = cache_read(name)
+        if data is not None and len(data) == 2 * w * h:
+            return (Image.frombytes("L", (w, h), data[:w * h]),
+                    Image.frombytes("L", (w, h), data[w * h:]))
+        outline = self._glyph_mask(GLYPHS_OUTLINE[kind], self.piece_font)
+        solid = self._silhouette(outline)
+        cache_write(name, (solid.tobytes(), outline.tobytes()))
+        return solid, outline
 
     def sprite(self, piece):
         """(colour image, mask) for a piece, cell-sized with the piece centred."""
         if piece not in self.sprites:
             kind = piece.upper()
             if kind not in self.masks:
-                outline = self._glyph_mask(GLYPHS_OUTLINE[kind], self.piece_font)
-                self.masks[kind] = (self._silhouette(outline), outline)
+                self.masks[kind] = self._masks(kind)
             solid, outline = self.masks[kind]
             if piece.isupper():
                 rgb = Image.new("RGB", (self.cell_w, self.cell_h), WHITE_PIECE)
@@ -555,20 +654,30 @@ class ClockPanel:
         d.line((inset, inset + r, inset, img.height - inset - r), fill=FELT_SHADOW, width=3)
         return img
 
+    def tray_slots(self, captured):
+        """Where each lost piece sits within the tray: a list of (x, y) per row."""
+        size, pad = self.tray_piece, self.border + 2
+        tw, th = self.tray[2] - self.tray[0], self.tray[3] - self.tray[1]
+        rows = []
+        for row, pieces in enumerate(captured):
+            slots = []
+            if pieces:
+                step = min(size * 0.8, (tw - 2 * pad - size) / max(1, len(pieces) - 1))
+                x = (tw - (step * (len(pieces) - 1) + size)) / 2
+                y = (th - 2 * size) // 2 + row * size
+                for _ in pieces:
+                    slots.append((int(x), y))
+                    x += step
+            rows.append(slots)
+        return rows
+
     def tray_image(self, captured):
         """(image, x, y) of the tray: black's lost pieces above white's."""
         img = self._tray_box()
-        size, pad = self.tray_piece, self.border + 2
-        for row, pieces in enumerate(captured):
-            if not pieces:
-                continue
-            step = min(size * 0.8, (img.width - 2 * pad - size) / max(1, len(pieces) - 1))
-            x = (img.width - (step * (len(pieces) - 1) + size)) / 2
-            y = (img.height - 2 * size) // 2 + row * size
-            for p in pieces:
+        for pieces, slots in zip(captured, self.tray_slots(captured)):
+            for p, xy in zip(pieces, slots):
                 rgb, mask = self.tray_pieces.sprite(p)
-                img.paste(rgb, (int(x), y), mask)
-                x += step
+                img.paste(rgb, xy, mask)
         return img, self.x0 + self.tray[0], self.y0 + self.tray[1]
 
     def full(self, hour, minute, captured):
@@ -579,10 +688,9 @@ class ClockPanel:
         return img, self.x0, self.y0
 
 
-def render_caption(layout, headers):
-    """A rounded label naming the game, e.g. "The Opera Game, 1858" over
-    "Paul Morphy vs Duke Karl / Count Isouard". Returns [(RGBA image, x, y)]
-    placed near the bottom of the screen."""
+def game_caption(layout, headers):
+    """A label naming the game, e.g. "The Opera Game, 1858" over
+    "Paul Morphy vs Duke Karl / Count Isouard"."""
     title = headers.get("Event", "").strip()
     year = headers.get("Date", "")[:4].strip("?.")
     if year:
@@ -590,6 +698,12 @@ def render_caption(layout, headers):
     players = "%s vs %s" % (headers.get("White", "?"), headers.get("Black", "?"))
     if not title:
         return []
+    return render_caption(layout, title, players)
+
+
+def render_caption(layout, title, players, top=False):
+    """A rounded label: title over a smaller second line. Returns
+    [(RGBA image, x, y)] placed near the bottom of the board (or the top)."""
     bx0, by0, bx1, by1 = layout.board_rect
     w, h = bx1 - bx0, layout.height
     max_w = int(w * 0.90)
@@ -604,8 +718,8 @@ def render_caption(layout, headers):
                         outline=CAPTION_EDGE, width=2)
     d.text((cw / 2, pad_y), title, font=tfont, fill=ACCENT, anchor="mt")
     d.text((cw / 2, pad_y + tfont.size + gap), players, font=pfont, fill=TEXT, anchor="mt")
-    # sit just above the bottom edge of the board
-    return [(img, bx0 + (w - cw) // 2, by1 - ch - h // 40)]
+    # sit just inside the bottom (or top) edge of the board
+    return [(img, bx0 + (w - cw) // 2, by0 + h // 40 if top else by1 - ch - h // 40)]
 
 
 def bounds(layers):
@@ -1048,6 +1162,9 @@ class Backlight:
         # eyes judge brightness roughly logarithmically, so square the
         # fraction: the slider then has fine steps at the dim end
         level = max(1, round(self.max * (percent / 100) ** 2))
+        if level == getattr(self, "level", None):
+            return
+        self.level = level
         try:
             with open(os.path.join(self.path, "brightness"), "w") as f:
                 f.write(str(level))
@@ -1143,24 +1260,6 @@ def save_settings(values):
         print("fbclock: could not save settings: %s" % e, flush=True)
 
 
-def quiet_console():
-    """Stop the text console from drawing over the clock."""
-    try:
-        with open("/sys/class/graphics/fbcon/cursor_blink", "w") as f:
-            f.write("0")
-    except OSError:
-        pass
-    for tty in ("/dev/tty1", "/dev/tty0"):
-        try:
-            with open(tty, "w") as f:
-                # hide cursor, disable screen blanking and powerdown (no clearing:
-                # the boot splash stays up until the clock is drawn over it)
-                f.write("\033[?25l\033[9;0]\033[14;0]")
-            break
-        except OSError:
-            pass
-
-
 # -------------------------------------------------------------------- main
 
 class App:
@@ -1185,6 +1284,10 @@ class App:
         self.repeat_at = 0.0
         self.backlight = Backlight.find()
         self.shown_brightness = None
+        self.fade = None                       # (from %, to %, start) while easing day <-> night
+        self.fallen = None                     # square of a king toppled by checkmate
+        self.hold_start = None                 # when the current press on the clock began
+        self.hold_shown = 0.0                  # how far down the plunger is drawn for it
         self.load_brightness_settings()
 
     def poll_touch(self):
@@ -1193,6 +1296,22 @@ class App:
         during a piece slide or a minute flip isn't missed."""
         if self.touch:
             self.pending.extend(self.touch.poll())
+
+    def frames(self, secs):
+        """Progress from 0 to 1 for an animation lasting secs: at most
+        FRAME_SECS apart, always ending on exactly 1, and checking the touch
+        screen between frames."""
+        t0 = next_frame = time.monotonic()
+        while True:
+            wait = next_frame - time.monotonic()
+            if wait > 0:
+                time.sleep(wait)
+            next_frame = max(next_frame + FRAME_SECS, time.monotonic())
+            k = min(1.0, (time.monotonic() - t0) / secs)
+            yield k
+            self.poll_touch()
+            if k >= 1.0:
+                return
 
     @staticmethod
     def hour_minute(lt):
@@ -1236,27 +1355,45 @@ class App:
             return self.night_start <= now < self.night_end
         return now >= self.night_start or now < self.night_end    # spans midnight
 
-    def apply_brightness(self, percent=None):
+    def apply_brightness(self, percent=None, fade=False):
         """Set the backlight: an explicit percent (a slider being dragged),
-        or by default the daytime/night-time setting for right now."""
-        if percent is None:
-            percent = self.night if self.is_night() else self.day
+        or by default the daytime/night-time setting for right now. With
+        fade, ease there over FADE_SECS instead (see update_fade)."""
+        target = (self.night if self.is_night() else self.day) if percent is None else percent
+        if fade and self.shown_brightness is not None and target != self.shown_brightness:
+            if not (self.fade and self.fade[1] == target):
+                self.fade = (self.shown_brightness, target, time.monotonic())
+            return
+        self.fade = None
+        self.set_brightness(target)
+
+    def set_brightness(self, percent):
         if self.backlight and percent != self.shown_brightness:
             self.backlight.set(percent)
-            self.shown_brightness = percent
+        self.shown_brightness = percent
+
+    def update_fade(self):
+        """Step a day/night brightness change along (like a lamp dimming)."""
+        if self.fade:
+            start, end, t0 = self.fade
+            k = min(1.0, (time.monotonic() - t0) / FADE_SECS)
+            self.set_brightness(start + (end - start) * k)
+            if k >= 1.0:
+                self.fade = None
 
     def tick(self):
         """Keep the clock faces current; on the hour, a pawn promotes."""
         lt = time.localtime()
         if (lt.tm_hour, lt.tm_min) == self.shown_time:
             return
-        self.apply_brightness()                # day/night may have changed
+        self.apply_brightness(fade=True)       # day/night may have changed
         old_hour = self.shown_time and self.hour_minute(
             time.struct_time((0, 0, 0, self.shown_time[0]) + (0,) * 5))[0]
         old_minute = self.shown_time and "%02d" % self.shown_time[1]
         self.shown_time = (lt.tm_hour, lt.tm_min)
         hour, minute = self.hour_minute(lt)
         if old_minute:
+            self.lift_plunger()
             ready, self.ready_flip = self.ready_flip, None
             if ready and ready[0] == (old_minute, minute):
                 self.play_frames(ready[1])          # built in advance: right on time
@@ -1369,9 +1506,9 @@ class App:
         size = pieces.cell_w
         cx, cy = (base.width - size) // 2, (base.height - size) // 2
         fade, march, crown, reveal = PROMOTE_SECS
-        t0 = time.monotonic()
-        while True:
-            t = time.monotonic() - t0
+        total = sum(PROMOTE_SECS)
+        for progress in self.frames(total):
+            t = progress * total
             if t < fade:
                 frame = Image.blend(old_img, base, t / fade)
             elif t < fade + march:
@@ -1399,7 +1536,6 @@ class App:
             else:
                 break
             self.fb.blit(frame, fx, fy)
-            self.poll_touch()
         self.fb.blit(new_img, fx, fy)
 
     def draw_squares(self, squares):
@@ -1464,9 +1600,7 @@ class App:
         starts = [L.square_pos(f) for _, f, _ in movers]
         ends = [L.square_pos(t) for _, _, t in movers]
         shown = list(starts)
-        t0 = time.monotonic()
-        while True:
-            t = min(1.0, (time.monotonic() - t0) / SLIDE_SECS)
+        for t in self.frames(SLIDE_SECS):
             e = t * t * (3 - 2 * t)                           # ease in and out
             now = [(round(a[0] + (b[0] - a[0]) * e), round(a[1] + (b[1] - a[1]) * e))
                    for a, b in zip(starts, ends)]
@@ -1476,20 +1610,115 @@ class App:
                 rect = (min(ax, bx), min(ay, by), max(ax, bx) + L.cell_w, max(ay, by) + L.cell_h)
                 self.fb.blit(*self.render_region(rect, tile_for, sprites))
             shown = now
-            self.poll_touch()
-            if t >= 1.0:
-                break
         # settle into the real position: captures removed, check shown
         self.draw_squares(dirty | old_marks | {frm, to})
+        if before[frm] in "Pp" and p.pos.board[to] not in "Pp":
+            self.promotion_burst(to)
+        from_squares = {f for _, f, _ in movers}
+        for s in range(64):                    # the captured piece (if any) goes to the tray
+            if before[s] and s not in from_squares and p.pos.board[s] != before[s]:
+                self.fly_to_tray(before[s], s)
         self.update_tray()
+
+    def position_tiles(self):
+        """tile_for(square) for the current position, remembering each tile."""
+        p, tiles = self.player, {}
+        hl = set(p.last_move or ())
+
+        def tile_for(s):
+            if s not in tiles:
+                fallen = (FALLEN_ANGLE, FALLEN_DROP) if s == self.fallen else ()
+                tiles[s] = self.board.tile(s, p.pos.board[s], s in hl, s == p.check_sq, *fallen)
+            return tiles[s]
+        return tile_for
+
+    def promotion_burst(self, square):
+        """A pawn promotes during a game: a gold ring bursts out around the
+        new piece, as on the hour face."""
+        L = self.layout
+        sx, sy = L.square_pos(square)
+        c, reach = L.cell_w, int(L.cell_w * 0.8)
+        bx0, by0, bx1, by1 = L.board_rect
+        rect = (max(bx0, sx - reach), max(by0, sy - reach), min(bx1, sx + c + reach), min(by1, sy + c + reach))
+        tile_for = self.position_tiles()
+        rgb, mask = self.board.sprite(self.player.pos.board[square])
+        for k in self.frames(BURST_SECS):
+            img, x0, y0 = self.render_region(rect, tile_for)
+            r, cx, cy = c * (0.35 + 0.75 * k), sx + c / 2 - x0, sy + c / 2 - y0
+            ImageDraw.Draw(img).ellipse((cx - r, cy - r, cx + r, cy + r), outline=ACCENT,
+                                        width=max(2, int(7 * (1 - k)) + 1))
+            img.paste(rgb, (sx - x0, sy - y0), mask)
+            self.fb.blit(img, x0, y0)
+        self.draw_region(rect)
+
+    def fly_to_tray(self, piece, square):
+        """A captured piece arcs off the board and lands in its place in the
+        tray, shrinking to the tray's size on the way."""
+        L, panel = self.layout, self.panel
+        captured = captured_pieces(self.player.pos.board)
+        row = 0 if piece.islower() else 1      # black's losses are the top row
+        if piece not in captured[row]:
+            return
+        i = len(captured[row]) - 1 - captured[row][::-1].index(piece)
+        tx, ty = panel.tray_slots(captured)[row][i]
+        end_size, start_size = panel.tray_piece, L.cell_w
+        ex = panel.x0 + panel.tray[0] + tx + end_size / 2
+        ey = panel.y0 + panel.tray[1] + ty + end_size / 2
+        sx, sy = L.square_pos(square)
+        bx, by = sx + start_size / 2, sy + start_size / 2
+        # the clock case behind the flight, as it is on screen now
+        shown = self.shown_time or (0, 0)
+        hour, minute = self.hour_minute(time.struct_time((0, 0, 0) + shown + (0,) * 4))
+        case, cx0, cy0 = panel.full(hour, minute, self.shown_captured or captured)
+        tile_for = self.position_tiles()
+        rgb, mask = self.board.sprite(piece)
+        lift, prev = L.height * 0.22, None
+        for k in self.frames(FLY_SECS):
+            e = k * k * (3 - 2 * k)
+            size = max(4, round(start_size + (end_size - start_size) * e))
+            x = round(bx + (ex - bx) * e - size / 2)
+            y = round(by + (ey - by) * e - math.sin(math.pi * e) * lift - size / 2)
+            box = (x, y, x + size, y + size)
+            rect = box if prev is None else (min(box[0], prev[0]), min(box[1], prev[1]),
+                                             max(box[2], prev[2]), max(box[3], prev[3]))
+            img, x0, y0 = self.render_region(rect, tile_for)
+            if x0 + img.width > cx0:           # the part over the clock case
+                px = max(x0, cx0)
+                img.paste(case.crop((px - cx0, y0 - cy0, x0 + img.width - cx0, y0 + img.height - cy0)),
+                          (px - x0, 0))
+            img.paste(rgb.resize((size, size)), (x - x0, y - y0), mask.resize((size, size)))
+            self.fb.blit(img, x0, y0)
+            prev = box
+
+    def topple_king(self):
+        """Checkmate: the beaten king tips over onto its side (and stays
+        down until the next game), and a caption names the winner."""
+        p, L = self.player, self.layout
+        s = p.pos.king_square(p.pos.white)     # the side to move has been mated
+        king = p.pos.board[s]
+        sx, sy = L.square_pos(s)
+        rect = (sx, sy, sx + L.cell_w, sy + L.cell_h)
+        hl = set(p.last_move or ())
+        for k in self.frames(TOPPLE_SECS):
+            if k < 0.75:
+                e = (k / 0.75) ** 2            # falls faster and faster...
+            else:
+                e = 1 - 0.08 * math.sin((k - 0.75) / 0.25 * math.pi)   # ...and bounces
+            tile = self.board.tile(s, king, s in hl, True, FALLEN_ANGLE * e, FALLEN_DROP * e)
+            self.fb.blit(*self.render_region(rect, lambda q: tile))
+        self.fallen = s
+        self.draw_region(rect)
+        winner = p.headers.get("Black" if p.pos.white else "White", "").strip()
+        self.hide_caption()
+        self.caption_layers = render_caption(L, "Checkmate!", "%s wins" % winner if winner else "",
+                                             top=sy >= L.height // 2)
+        self.caption_until = time.monotonic() + CAPTION_SECS
+        self.draw_region(bounds(self.caption_layers))
 
     def draw_region(self, rect):
         """Redraw a rectangle of the current position in one write, so it
         appears at once instead of filling in square by square."""
-        p = self.player
-        hl = set(p.last_move or ())
-        self.fb.blit(*self.render_region(
-            rect, lambda s: self.board.tile(s, p.pos.board[s], s in hl, s == p.check_sq)))
+        self.fb.blit(*self.render_region(rect, self.position_tiles()))
 
     def draw_board(self):
         """The whole board, written in a few horizontal bands: each band
@@ -1501,7 +1730,7 @@ class App:
             self.poll_touch()
 
     def show_caption(self, draw=True):
-        self.caption_layers = render_caption(self.layout, self.player.headers)
+        self.caption_layers = game_caption(self.layout, self.player.headers)
         self.caption_until = time.monotonic() + CAPTION_SECS
         if draw and self.caption_layers:
             self.draw_region(bounds(self.caption_layers))
@@ -1520,9 +1749,44 @@ class App:
         self.draw_panel()
 
     def draw_setter(self):
+        """Show the settings screen. Drawing it takes most of a second, so
+        the first time it is saved as screen bytes; after that it is copied
+        straight to the screen, and only the values are drawn fresh."""
+        fb = self.fb
+        mem = getattr(fb, "mem", None)
+        plain = mem is not None and fb.stride == fb.width * fb.bytes_pp
+        name = "settings-%dx%dx%d-%d.raw" % (fb.width, fb.height, fb.bpp, getattr(fb, "rotated", False))
+        size = fb.stride * fb.height if plain else 0
+        if plain and self.show_cached(cache_path(name), size):
+            for i in range(len(self.setter.FIELDS)):
+                self.paint_value(i)
+            for key in self.setter.sliders:
+                self.paint_slider(key)
+            return
         half = self.layout.width // 2
         for x0, x1 in ((0, half), (half, self.layout.width)):
-            self.fb.blit(self.setter.render(x0, x1), x0, 0)
+            fb.blit(self.setter.render(x0, x1), x0, 0)
+        if plain:                              # save what is on the screen now
+            chunk = 65536
+            cache_write(name, (mem[i:min(size, i + chunk)] for i in range(0, size, chunk)))
+
+    def show_cached(self, path, size):
+        """Copy a saved full screen straight to the display, if there is one."""
+        if not path:
+            return False
+        try:
+            with open(path, "rb") as f:
+                if os.fstat(f.fileno()).st_size != size:
+                    return False
+                offset = 0
+                while True:
+                    chunk = f.read(65536)
+                    if not chunk:
+                        return True
+                    self.fb.mem[offset:offset + len(chunk)] = chunk
+                    offset += len(chunk)
+        except OSError:
+            return False
 
     def paint_button(self, key, pressed):
         self.fb.blit(*self.setter.render_button(key, pressed))
@@ -1537,10 +1801,17 @@ class App:
         """React to a press starting ("down"), sliding ("move") or ending ("up")."""
         now = time.monotonic()
         if self.setter is None:
-            if kind == "down":                 # any press on the clock opens settings
-                self.setter = TimeSetter(self.layout, time.localtime(), self.day, self.night)
-                self.held = None
-                self.draw_setter()
+            # on the clock, a long press opens Settings (see update_hold) and
+            # a quick tap brings back the game's caption
+            if kind == "down":
+                self.hold_start = now
+            elif kind == "up" and self.hold_start is not None:
+                tap = now - self.hold_start < TAP_SECS
+                self.hold_start = None
+                self.lift_plunger()
+                if tap:
+                    self.hide_caption()
+                    self.show_caption()
             return
         st = self.setter
         st.last_tap = now
@@ -1581,6 +1852,28 @@ class App:
                 self.day, self.night = st.values["day"], st.values["night"]
                 save_settings({"DAY_BRIGHTNESS": self.day, "NIGHT_BRIGHTNESS": self.night})
             self.close_setter()
+
+    def update_hold(self):
+        """While the clock is pressed, sink the plunger; when it reaches the
+        bottom, open Settings."""
+        k = (time.monotonic() - self.hold_start) / HOLD_SECS
+        if k >= 1.0:
+            self.hold_start, self.hold_shown = None, 0.0
+            self.setter = TimeSetter(self.layout, time.localtime(), self.day, self.night)
+            self.held = None
+            self.draw_setter()
+            return
+        if k < TAP_SECS / HOLD_SECS:           # nothing to show for a quick tap
+            return
+        level = round(k * 12) / 12
+        if level != self.hold_shown:
+            self.fb.blit(*self.panel.plunger(level))
+            self.hold_shown = level
+
+    def lift_plunger(self):
+        if self.hold_shown:
+            self.fb.blit(*self.panel.plunger(0.0))
+            self.hold_shown = 0.0
 
     def close_setter(self):
         self.setter = None
@@ -1629,7 +1922,7 @@ class App:
             now = time.monotonic()
             timeout = max(0.05, min(next_move - now, 1.0))
             if self.touch:
-                busy = self.setter is not None or self.touch.samples
+                busy = self.setter is not None or self.touch.samples or self.hold_start is not None
                 time.sleep(Touch.FAST_POLL_SECS if busy else Touch.POLL_SECS)
                 self.poll_touch()
                 while self.pending:
@@ -1638,6 +1931,8 @@ class App:
             else:
                 time.sleep(timeout)
 
+            if self.setter is None and self.hold_start is not None:
+                self.update_hold()
             if self.setter is not None:
                 self.repeat_held()
                 if self.setter.expired():
@@ -1645,19 +1940,23 @@ class App:
                 continue
 
             now = time.monotonic()
-            if now >= next_move:
+            if now >= next_move and self.hold_start is None:   # not while being pressed
                 p = self.player
                 if p.finished:
                     p.new_game()
+                    self.fallen = None
                     self.show_caption(draw=False)
                     self.draw_board()
                     self.update_tray()
                     next_move = now + START_HOLD_SECS
                 else:
                     self.play_move()
+                    if p.finished and p.mated:
+                        self.topple_king()
                     next_move = time.monotonic() + (END_HOLD_SECS if p.finished else MOVE_SECS - SLIDE_SECS)
             if self.caption_layers and time.monotonic() >= self.caption_until:
                 self.hide_caption()
+            self.update_fade()
             self.prepare_next_flip()
             self.tick()
 
@@ -1720,7 +2019,6 @@ def main():
         touch.rotated = fb.rotated
     print("fbclock: %dx%d %dbpp, touch: %s" % (fb.width, fb.height, fb.bpp, "yes" if touch else "no"),
           flush=True)
-    quiet_console()
     App(fb, touch).run()
 
 
