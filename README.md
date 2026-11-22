@@ -70,6 +70,12 @@ docker build -f Dockerfile.base --target main -t licheepi-nano-mybase:latest .
 docker build --build-arg BASE_IMAGE=licheepi-nano-mybase --output type=tar,dest=- . | (mkdir -p dist && tar x -C dist)
 ```
 
+### Choosing the app
+
+The image starts one full-screen app at boot: the chess clock (the default) or the
+[vacation countdown](vacation/README.md). Pick it in the fast build with `--build-arg APP=vacation`
+(or `APP=chess`).
+
 ### What the fast build rebuilds
 
 It copies `board/`, `configs/`, `package/` and `clock/` into the base image and runs Buildroot again, always rebuilding the kernel (so kernel config and patch changes take effect), the clock, U-Boot and the boot script. Other changes don't always trigger a rebuild in Buildroot - see its manual on [when a full rebuild is necessary](https://buildroot.org/downloads/manual/manual.html#full-rebuild) - so when in doubt, rebuild the base image. To look around inside the build (or run `make menuconfig`): `container run -it licheepi-nano-mybase /bin/bash`.
@@ -81,6 +87,9 @@ It copies `board/`, `configs/`, `package/` and `clock/` into the base image and 
 | [`clock/`](clock) | the clock application, with [its own README](clock/README.md): settings, logs, touch calibration, trying it on a desktop |
 | [`enclosure/`](enclosure) | the 3D-printable enclosure, with [its own README](enclosure/README.md): parts, printing, assembly |
 | [`package/fbclock/`](package/fbclock) | the Buildroot package that installs the clock |
+| [`vacation/`](vacation) | the vacation countdown, [its own README](vacation/README.md): a C drawing library and a Python app |
+| [`package/fbvacation/`](package/fbvacation) | the Buildroot package that installs it (`APP=vacation`) |
+| [`tools/themegen/`](tools/themegen) | makes a vacation theme's artwork on a desktop (Blender, Pillow), [README](tools/themegen/README.md) |
 | [`configs/licheepi_nano_defconfig`](configs/licheepi_nano_defconfig) | the Buildroot configuration: packages, kernel, U-Boot, SD card image |
 | [`board/licheepi_nano/linux/`](board/licheepi_nano/linux) | kernel config, device tree and display patch |
 | [`board/licheepi_nano/`](board/licheepi_nano) | boot script, SD card layout, and a root filesystem overlay for small system tweaks |

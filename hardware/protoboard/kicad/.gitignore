@@ -1,0 +1,7 @@
+.route/
+# KiCad: lock files, local window state, backups, autosaves, footprint cache
+*.lck
+*.kicad_prl
+*-backups/
+_autosave-*
+fp-info-cache

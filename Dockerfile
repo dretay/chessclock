@@ -10,12 +10,17 @@ ARG BASE_VERSION=latest
 
 FROM $BASE_IMAGE:$BASE_VERSION AS local
 
+# which full-screen app the image starts at boot: chess (the chess clock, clock/) or vacation
+# (the vacation countdown, vacation/), e.g. --build-arg APP=vacation
+ARG APP=chess
+
 # copy newest version of local files
 WORKDIR /root/licheepi-nano
 COPY board/ board/
 COPY configs/ configs/
 COPY package/ package/
 COPY clock/ clock/
+COPY vacation/ vacation/
 COPY \
     Config.in \
     external.desc \
@@ -24,6 +29,13 @@ COPY \
 
 WORKDIR /root/buildroot
 RUN BR2_EXTERNAL=/root/licheepi-nano make licheepi_nano_defconfig
+# the app: the defconfig has the chess clock; for the vacation countdown, swap it out
+RUN if [ "$APP" = vacation ]; then \
+        sed -i '/BR2_PACKAGE_FBCLOCK/d' .config && echo 'BR2_PACKAGE_FBVACATION=y' >> .config && make olddefconfig && \
+        rm -f output/target/etc/init.d/S99fbclock output/target/etc/init.d/S00splash; \
+    elif [ "$APP" = chess ]; then \
+        rm -f output/target/etc/init.d/S99vacation; \
+    else echo "APP must be chess or vacation, not $APP"; exit 1; fi
 
 # Rebuild the kernel from a freshly unpacked source tree: the base image may
 # hold a different kernel version, and kernel patches are only applied when
@@ -31,7 +43,7 @@ RUN BR2_EXTERNAL=/root/licheepi-nano make licheepi_nano_defconfig
 RUN rm -rf output/build/linux-custom
 # the clock is a local package: Buildroot only copies its source in once, so
 # start it afresh to pick up changes in clock/
-RUN rm -rf output/build/fbclock-*
+RUN rm -rf output/build/fbclock-* output/build/fbvacation-*
 # (U-Boot from scratch too, so changes to its config fragment take effect)
 RUN rm -rf output/build/uboot-v2021.01-f1c100s-4
 RUN cd output/build/host-uboot-tools-2021.07/ && rm -f .stamp_built .stamp_*installed
