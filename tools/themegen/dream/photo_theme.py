@@ -207,6 +207,8 @@ def label(text):
     return img.crop(img.getbbox())
 for text in ("DAYS", "DAY"):
     lb = label(text); blob += struct.pack("<HH", lb.width, lb.height) + premultiplied(lb)
+import card_extras                              # "Bon voyage!" and the last day's colon (card_extras.py)
+blob += card_extras.extras_blob(CH)
 save_gz("cards.bin.gz", bytes(blob))
 SCENE["cards"] = CARDS
 json.dump(SCENE, open(os.path.join(OUT, "theme.json"), "w"), indent=1)

@@ -24,6 +24,12 @@ define FBVACATION_INSTALL_TARGET_CMDS
 	$(INSTALL) -D -m 0644 $(@D)/vacation_settings.py $(FBVACATION_MODULE_DIR)/vacation_settings.py
 	$(INSTALL) -D -m 0644 $(@D)/vacation_touch.py $(FBVACATION_MODULE_DIR)/vacation_touch.py
 	$(INSTALL) -D -m 0644 $(@D)/vacation_layout.py $(FBVACATION_MODULE_DIR)/vacation_layout.py
+	$(INSTALL) -D -m 0644 $(@D)/vacation_map.py $(FBVACATION_MODULE_DIR)/vacation_map.py
+	rm -rf $(TARGET_DIR)/usr/share/vacation/map/tiles
+	mkdir -p $(TARGET_DIR)/usr/share/vacation/map
+	cp -r $(@D)/map/tiles $(TARGET_DIR)/usr/share/vacation/map/tiles
+	$(INSTALL) -D -m 0644 $(@D)/map/map.json $(TARGET_DIR)/usr/share/vacation/map/map.json
+	$(INSTALL) -D -m 0644 $(@D)/ships_example.csv $(TARGET_DIR)/usr/share/vacation/ships_example.csv
 	$(INSTALL) -D -m 0644 $(@D)/ui/ui.bin.gz $(TARGET_DIR)/usr/share/vacation/ui/ui.bin.gz
 	$(INSTALL) -D -m 0644 $(@D)/fonts/OFL.txt $(TARGET_DIR)/usr/share/vacation/ui/OFL.txt
 	$(INSTALL) -D -m 0755 $(@D)/vacation $(TARGET_DIR)/usr/bin/vacation

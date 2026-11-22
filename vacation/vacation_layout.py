@@ -7,7 +7,7 @@ draws Settings without Pillow, so it opens at once.
 W, H = 800, 480
 
 # fonts: name -> point size
-FONTS = {"title": 46, "value": 42, "label": 30, "small": 19, "button": 30, "chip": 24}
+FONTS = {"title": 46, "value": 42, "label": 30, "small": 19, "button": 30, "chip": 24, "ship": 20, "tiny": 14}
 
 IVORY, GOLD, DIM, DARK = (244, 238, 222), (226, 190, 120), (170, 176, 190), (24, 22, 30)
 PANEL_FILL, PANEL_ALPHA, PANEL_LINE_ALPHA = (8, 14, 30), 178, 34
@@ -17,8 +17,9 @@ MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", 
 # ---- page 1: dates
 PAGE1_ROWS = [("Sail date", 78, [("sm", 100), ("sd", 80), ("sy", 106)]),
               ("Today", 236, [("tm", 100), ("td", 80), ("ty", 106), None, ("hh", 80), ("mi", 80), ("ap", 84)])]
-PAGE1_BUTTONS = {"cancel": (36, 404, 216, 458), "calibrate": (236, 412, 396, 450),
-                 "fireworks": (404, 412, 564, 450), "save": (584, 404, 764, 458)}
+PAGE1_BUTTONS = {"cancel": (30, 404, 170, 458), "calibrate": (186, 412, 322, 450), "fireworks": (332, 412, 468, 450),
+                 "ship": (478, 412, 614, 450), "save": (630, 404, 770, 458)}
+PAGE1_SPLITS = [(178, "cancel"), (327, "calibrate"), (473, "fireworks"), (622, "ship"), (9999, "save")]   # bottom row, by x
 
 # ---- page 2: fireworks
 SCHEDULES = [("random", "Random"), ("show", "Nightly show"), ("both", "Both"), ("off", "Off")]
@@ -28,6 +29,11 @@ PAGE2_CHIP_ROWS = [("Schedule", 88, SCHEDULES), ("Random", 150, RATES)]
 CHIP_X0, CHIP_W, CHIP_H, CHIP_GAP = 190, 136, 48, 10
 PAGE2_ROW_B = ("Show time", 226, [("fh", 80), ("fm", 80), ("fa", 84)])
 PAGE2_BUTTONS = {"back": (36, 404, 236, 458), "demo": (300, 412, 500, 450), "save": (564, 404, 764, 458)}
+
+# ---- page 3: the ship the fleet map follows
+PAGE3_PANEL = (20, 74, 780, 250)
+PAGE3_CHIP_ROWS = [100, 172]                                    # two rows of four ships
+PAGE3_BUTTONS = {"back": (36, 404, 236, 458), "save": (564, 404, 764, 458)}
 
 COL_X0, COL_GAP, SPLIT_GAP, COL_H = 182, 8, 22, 128
 
@@ -43,16 +49,28 @@ def columns(row_cols, top):
 
 # every fixed piece of text, by font (numbers are drawn digit by digit)
 STRINGS = {
-    "title": ["Settings", "Fireworks", "Touch calibration"],
+    "title": ["Settings", "Fireworks", "Touch calibration", "Ship map"],
     "label": ["Sail date", "Today", "Schedule", "Random", "Show time", " days to go", " day to go",
               "Today's the day!", "Already sailed", "Saved", "No changes", "Calibrated",
               "Tap the centre of the cross (1 of 4)", "Tap the centre of the cross (2 of 4)",
               "Tap the centre of the cross (3 of 4)", "Tap the centre of the cross (4 of 4)",
               "That didn't look right: nothing changed"],
     "small": ["date & time", "bursts", "nightly show", "back to the countdown", "Calibrate touch", "Fireworks ›",
-              "Demo show", "Demo show on exit", "fireworks!"],
+              "Demo show", "Demo show on exit", "fireworks!",
+              "Ship map ›", "The map centres on this ship and shows what it reports.", "the ship to follow"],
     "button": ["Cancel", "Save", "‹ Back"],
     "chip": [t for _, t in SCHEDULES] + [t for _, t in RATES],
     "value": MONTHS + ["AM", "PM"],
 }
-DIGIT_FONTS = ["value", "label"]          # these get 0-9 as single glyphs too
+# ---- the fleet map (vacation_map.py; the chart itself is tools/themegen/build_map.py)
+FLEET = ["Magic", "Wonder", "Dream", "Fantasy", "Wish", "Treasure", "Destiny", "Adventure"]   # "Disney ..."
+STRINGS["ship"] = FLEET
+STRINGS["small"] += ["Positions from ", " min ago", " h ago", " days ago", "Positions just in", "Example positions",
+                     "at sea", "No position reported yet", "Beyond the Caribbean map"] + ["Disney " + n for n in FLEET]
+STRINGS["label"] += ["Disney " + n for n in FLEET] + ["Follow"]
+STRINGS["chip"] += FLEET
+STRINGS["tiny"] = ["Imagery: NASA Blue Marble", "Imagery: NASA Black Marble"]
+CHAR_FONTS = ["small"]     # every printable character on its own too (AIS destinations are free text)
+EXTRA_CHARS = "\u00b0\u2032\u00b7"    # degree, minute, middle dot
+
+DIGIT_FONTS = ["value", "label", "small"]    # these get 0-9 as single glyphs too

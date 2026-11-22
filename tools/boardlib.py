@@ -8,7 +8,7 @@ import time
 import serial
 
 PORT = os.environ.get("CLOCK_SERIAL", "/dev/cu.usbserial-0001")
-BAUD = 115200
+BAUD = int(os.environ.get("CLOCK_BAUD", "115200"))   # the console's own is 115200 (see fast_serial.py)
 
 
 def open_port(timeout=0.05):

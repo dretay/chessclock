@@ -103,6 +103,9 @@ static int card_w, card_h, shadow_ox, shadow_oy, shadow_w, shadow_h;
 static uint8_t *card_top[10], *card_bot[10], *shadow_img, *label_img[2]; static int label_w[2], label_h[2];
 static int cards_cx = 400, cards_top = 12, cards_gap = 8, label_gap = 7;
 static int days = -1, ndig, dig[4], old_dig[4], old_ndig, flip_start[4];
+static int split, old_split;                 /* a colon before card `split` (the last day's HH:MM), 0 = none */
+static int banner_on;                        /* "Bon voyage!" instead of the cards */
+static uint8_t *banner_img, *colon_img; static int banner_w, banner_h, colon_w, colon_h;
 static int cards_dirty = 1, flip_ms = 650, full_redraw = 1;
 static int last_t = -1, frame_no;
 static double st_acc[6]; static int st_frames;     /* time per stage: base, sea+refresh, particles, cards, copy, total */
@@ -112,8 +115,18 @@ static double st_acc[6]; static int st_frames;     /* time per stage: base, sea+
    the screen position so still areas stay still; values are capped at 252 so nothing wraps. */
 static uint8_t dlut[4][256]; static int dither_on = 1;
 static const uint8_t dpat[2][2] = {{0, 2}, {3, 1}};
+static int fade_lvl = 256; static uint8_t flut[256];   /* brightness of what goes to the screen (vfx_fade) */
 static void copy_out(int y, int a, int b) {
     uint32_t *d = fb + y * fb_stride; const uint32_t *s = out + y * W;
+    if (fade_lvl < 256) {
+        const uint8_t *t0 = dither_on ? dlut[dpat[y & 1][0]] : NULL, *t1 = dither_on ? dlut[dpat[y & 1][1]] : NULL;
+        for (int x = a; x <= b; x++) {
+            const uint32_t p = s[x]; int r = flut[(p >> 16) & 255], g = flut[(p >> 8) & 255], bl = flut[p & 255];
+            if (t0) { const uint8_t *t = (x & 1) ? t1 : t0; r = t[r]; g = t[g]; bl = t[bl]; }
+            d[x] = (uint32_t)r << 16 | (uint32_t)g << 8 | (uint32_t)bl;
+        }
+        return;
+    }
     if (!dither_on) { memcpy(d + a, s + a, (size_t)(b - a + 1) * 4); return; }
     const uint8_t *t0 = dlut[dpat[y & 1][0]], *t1 = dlut[dpat[y & 1][1]];
     for (int x = a; x <= b; x++) {
@@ -140,7 +153,17 @@ static void *gzload(const char *dir, const char *name, size_t *len) {
         if (n == cap) { cap *= 2; buf = realloc(buf, cap); }
         int k = gzread(g, buf + n, (unsigned)(cap - n)); if (k <= 0) break; n += (size_t)k;
     }
-    gzclose(g); if (len) *len = n; return buf;
+    gzclose(g); if (len) *len = n;
+    uint8_t *fit = realloc(buf, n ? n : 1); return fit ? fit : buf;      /* (give back the slack) */
+}
+/* a gzipped file into a buffer of its own size exactly; 0 when it filled it */
+static int gzload_into(const char *dir, const char *name, uint8_t *buf, size_t want) {
+    if (!zlib_ready()) return -1;
+    char path[512]; snprintf(path, sizeof path, "%s/%s", dir, name);
+    gzFile g = gzopen(path, "rb"); if (!g) { fprintf(stderr, "vacfx: can't open %s\n", path); return -1; }
+    size_t n = 0; int k;
+    while (n < want && (k = gzread(g, buf + n, (unsigned)(want - n))) > 0) n += (size_t)k;
+    gzclose(g); return n == want ? 0 : -1;
 }
 
 static void spans_add(int16_t *lo, int16_t *hi, int y, int x0, int x1) {
@@ -613,9 +636,18 @@ static void draw_ambient(void) {
 }
 
 /* ------------------------------------------------------------------ the flip clock */
-static void cards_layout(int n, int *x0, int *wtot) { *wtot = n * card_w + (n - 1) * cards_gap; *x0 = cards_cx - *wtot / 2; }
-static void cards_rect(int n, int *a, int *b, int *c, int *d) {
-    int x0, wt; cards_layout(n, &x0, &wt);
+static int split_w(int sp) { return sp && colon_img ? colon_w + cards_gap : sp ? cards_gap * 2 : 0; }
+static void cards_layout_s(int n, int sp, int *x0, int *wtot) { *wtot = n * card_w + (n - 1) * cards_gap + split_w(sp); *x0 = cards_cx - *wtot / 2; }
+static void cards_layout(int n, int *x0, int *wtot) { cards_layout_s(n, split, x0, wtot); }
+static int card_x(int x0, int k) { return x0 + k * (card_w + cards_gap) + (split && k >= split ? split_w(split) : 0); }
+static void cards_rect_s(int n, int sp, int *a, int *b, int *c, int *d);
+static void cards_rect(int n, int *a, int *b, int *c, int *d) { cards_rect_s(n, split, a, b, c, d); }
+static void cards_rect_s(int n, int sp, int *a, int *b, int *c, int *d) {
+    int x0, wt; cards_layout_s(n, sp, &x0, &wt);
+    if (banner_img && (banner_on || n == 0)) {             /* (the banner's footprint too: it may be showing) */
+        if (x0 > cards_cx - banner_w / 2) { wt += x0 - (cards_cx - banner_w / 2); x0 = cards_cx - banner_w / 2; }
+        if (wt < banner_w) wt = banner_w;
+    }
     *a = x0 + shadow_ox; *b = cards_top + shadow_oy; *c = x0 + wt - 1 - shadow_ox;
     *d = cards_top + card_h + (label_gap >= 0 ? label_gap + label_h[0] : 0) + 14;      /* (label_gap < 0: no label) */
     if (*a > cards_cx - 62) *a = cards_cx - 62;          /* wide enough for the hold bar */
@@ -625,10 +657,16 @@ static void cards_rect(int n, int *a, int *b, int *c, int *d) {
 static void draw_cards(int t_ms, int clip) {
     if (days < 0) return;
     const int level = lerp_i(256, 205, night_lvl), half = card_h / 2;
+    if (banner_on && banner_img) {
+        sprite(banner_img, banner_w, banner_h, cards_cx - banner_w / 2, cards_top + (card_h - banner_h) / 2, level, clip);
+        return;
+    }
     int x0, wt; cards_layout(ndig, &x0, &wt);
-    for (int k = 0; k < ndig; k++) sprite(shadow_img, shadow_w, shadow_h, x0 + k * (card_w + cards_gap) + shadow_ox, cards_top + shadow_oy, level, clip);
+    for (int k = 0; k < ndig; k++) sprite(shadow_img, shadow_w, shadow_h, card_x(x0, k) + shadow_ox, cards_top + shadow_oy, level, clip);
+    if (split && colon_img) sprite(colon_img, colon_w, colon_h, card_x(x0, split) - cards_gap - colon_w,
+                                   cards_top + (card_h - colon_h) / 2, level, clip);
     for (int k = 0; k < ndig; k++) {
-        const int x = x0 + k * (card_w + cards_gap), hinge = cards_top + half, d = dig[k];
+        const int x = card_x(x0, k), hinge = cards_top + half, d = dig[k];
         const int el = flip_start[k] < 0 ? flip_ms : t_ms - flip_start[k];
         if (el >= flip_ms || el < 0) {
             sprite(card_top[d], card_w, half, x, cards_top, level, clip); sprite(card_bot[d], card_w, half, x, hinge, level, clip);
@@ -702,6 +740,10 @@ int vfx_open(const char *fbdev, const char *theme) {
     for (int d = 0; d < 10; d++) { card_top[d] = cb + o; o += halfsz; card_bot[d] = cb + o; o += halfsz; }
     for (int l = 0; l < 2; l++) { memcpy(u16, cb + o, 4); o += 4; label_w[l] = u16[0]; label_h[l] = u16[1]; label_img[l] = cb + o; o += (size_t)label_w[l] * label_h[l] * 4; }
     if (o > n) { fprintf(stderr, "vacfx: cards file too short\n"); return -1; }
+    /* newer themes: the "Bon voyage!" banner and the last day's colon */
+    if (o + 4 <= n) { memcpy(u16, cb + o, 4); o += 4; banner_w = u16[0]; banner_h = u16[1]; banner_img = cb + o; o += (size_t)banner_w * banner_h * 4; }
+    if (o + 4 <= n) { memcpy(u16, cb + o, 4); o += 4; colon_w = u16[0]; colon_h = u16[1]; colon_img = cb + o; o += (size_t)colon_w * colon_h * 4; }
+    if (o > n) { banner_img = colon_img = NULL; }
     /* the screen */
     fb_fd = open(fbdev, O_RDWR | O_CREAT, 0644); if (fb_fd < 0) { perror(fbdev); return -1; }
     struct stat st; fstat(fb_fd, &st);
@@ -773,21 +815,37 @@ void vfx_dim(void) {
 /* for previews: 1 gulls, 2 dolphins, 3 the raft, now */
 void vfx_demo(int what) { if (what == 1) next_gulls_ms = 0; if (what == 2) next_pod_ms = 0; if (what == 3) { raft_start = -1; next_raft_ms = 0; } }
 
-/* the countdown; flip: animate the cards that change */
-void vfx_days(int d, int flip, int t_ms) {
-    d = clampi(d, 0, 9999);
-    if (d == days && !flip) return;
-    const int n = d >= 1000 ? 4 : d >= 100 ? 3 : 2;
-    int nd[4]; for (int k = n - 1, v = d; k >= 0; k--, v /= 10) nd[k] = v % 10;
-    if (days >= 0) { int a, b, c, e; cards_rect(ndig, &a, &b, &c, &e); rect_add(rlo, rhi, a, b, c, e); }   /* old footprint */
-    old_ndig = ndig; memcpy(old_dig, dig, sizeof dig);
+/* the cards show value as n digits (with a colon before digit sp, if sp); flip: animate the ones that change */
+static void set_cards(int value, int n, int sp, int flip, int t_ms) {
+    int nd[4]; for (int k = n - 1, v = value; k >= 0; k--, v /= 10) nd[k] = v % 10;
+    if (days >= 0) { int a, b, c, e; cards_rect_s(ndig, split, &a, &b, &c, &e); rect_add(rlo, rhi, a, b, c, e); }   /* old footprint */
+    const int same_shape = n == ndig && sp == split;
+    old_ndig = ndig; old_split = split; memcpy(old_dig, dig, sizeof dig);
     for (int k = 0; k < n; k++) {
-        const int ok = k - (n - old_ndig);                     /* the same place value before */
+        const int ok = same_shape ? k : sp ? -1 : k - (n - old_ndig);   /* the same place value before */
         const int od = (days >= 0 && ok >= 0 && ok < old_ndig) ? old_dig[ok] : (nd[k] + 1) % 10;
         old_dig[k] = od;
         flip_start[k] = (flip && od != nd[k]) ? t_ms + (n - 1 - k) * 90 : -1;
     }
-    memcpy(dig, nd, sizeof nd); ndig = n; days = d; cards_dirty = 1;
+    memcpy(dig, nd, sizeof nd); ndig = n; split = sp; days = value; banner_on = 0; cards_dirty = 1;
+}
+/* the countdown in days */
+void vfx_days(int d, int flip, int t_ms) {
+    d = clampi(d, 0, 9999);
+    if (d == days && !flip && !split && !banner_on) return;
+    set_cards(d, d >= 1000 ? 4 : d >= 100 ? 3 : 2, 0, flip, t_ms);
+}
+/* the last day: hours and minutes, HH:MM */
+void vfx_clock(int hh, int mm, int flip, int t_ms) {
+    hh = clampi(hh, 0, 99); mm = clampi(mm, 0, 59);
+    if (split && hh * 100 + mm == days && !flip && !banner_on) return;
+    set_cards(hh * 100 + mm, 4, 2, flip, t_ms);
+}
+/* sailing: "Bon voyage!" in place of the cards (if the theme has it) */
+void vfx_banner(int on) {
+    if (!banner_img || (on != 0) == banner_on) return;
+    int a, b, c, e; cards_rect(ndig, &a, &b, &c, &e); rect_add(rlo, rhi, a, b, c, e);
+    banner_on = on != 0; if (days < 0) days = 0; cards_dirty = 1;
 }
 void vfx_fireworks(int rockets) { rocket_gap_min = 300; rocket_gap_max = 550; rockets_pending += rockets; if (next_rocket_ms > 200) next_rocket_ms = 0; }
 
@@ -852,7 +910,11 @@ int vfx_frame(int t_ms) {
 typedef struct { char name[64]; int w, h, ox, oy, adv; const uint8_t *a; } uiimg_t;
 static uiimg_t *ui; static int nui; static uint8_t *ui_blob, *ui_bg;
 static int16_t ulo[H], uhi[H];
-int vfx_ui_open(const char *ui_dir, const char *theme_dir) {
+int vfx_ui_open_bg(const char *ui_dir, const char *bg_dir, const char *bg_name);
+void vfx_ui_close(void);
+int vfx_ui_open(const char *ui_dir, const char *theme_dir) { return vfx_ui_open_bg(ui_dir, theme_dir, "settings_bg.rgb.gz"); }
+/* with another 800x480 RGB background (the fleet map's chart) */
+static int ui_load(const char *ui_dir) {
     size_t n; ui_blob = gzload(ui_dir, "ui.bin.gz", &n);
     if (!ui_blob || memcmp(ui_blob, "VUI1", 4)) { fprintf(stderr, "vacfx: bad ui.bin.gz\n"); return -1; }
     uint16_t cnt; memcpy(&cnt, ui_blob + 4, 2); nui = cnt; ui = calloc((size_t)nui, sizeof *ui);
@@ -864,10 +926,61 @@ int vfx_ui_open(const char *ui_dir, const char *theme_dir) {
         o += (size_t)wh[0] * wh[1];
         if (o > n) { fprintf(stderr, "vacfx: ui.bin.gz too short\n"); return -1; }
     }
-    ui_bg = gzload(theme_dir, "settings_bg.rgb.gz", &n);
-    if (!ui_bg || n != W * H * 3) { fprintf(stderr, "vacfx: bad settings_bg.rgb.gz\n"); return -1; }
     for (int y = 0; y < H; y++) { ulo[y] = 1; uhi[y] = 0; }
     return 0;
+}
+/* The background lives in the countdown's blended picture (base: W*H*4 bytes, more than the W*H*3
+   needed), which isn't used meanwhile and is blended again when the page closes: memory is tight. */
+int vfx_ui_open_bg(const char *ui_dir, const char *bg_dir, const char *bg_name) {
+    if (ui_load(ui_dir)) return -1;
+    ui_bg = (uint8_t *)base;
+    if (gzload_into(bg_dir, bg_name, ui_bg, W * H * 3)) {
+        fprintf(stderr, "vacfx: bad %s\n", bg_name); vfx_ui_close(); return -1;
+    }
+    return 0;
+}
+/* with a background put together from pieces (the fleet map's tiles): starts black */
+int vfx_ui_open_blank(const char *ui_dir) {
+    if (ui_load(ui_dir)) return -1;
+    ui_bg = (uint8_t *)base; memset(ui_bg, 0, W * H * 3); return 0;
+}
+/* fill part of the background with one colour */
+void vfx_ui_bg_fill(int x0, int y0, int x1, int y1, int rgb) {
+    if (!ui_bg) return;
+    x0 = clampi(x0, 0, W); x1 = clampi(x1, 0, W); y0 = clampi(y0, 0, H); y1 = clampi(y1, 0, H);
+    for (int y = y0; y < y1; y++) for (int x = x0; x < x1; x++) {
+        uint8_t *p = ui_bg + (y * W + x) * 3; p[0] = (uint8_t)(rgb >> 16); p[1] = (uint8_t)(rgb >> 8); p[2] = (uint8_t)rgb;
+    }
+}
+/* a gzipped tw x th RGB image (dir/name) into the background at (x, y), clipped; 0 when done */
+int vfx_ui_bg_tile(const char *dir, const char *name, int x, int y, int tw, int th) {
+    if (!ui_bg) return -1;
+    uint8_t *t = malloc((size_t)tw * th * 3);
+    if (!t || gzload_into(dir, name, t, (size_t)tw * th * 3)) { free(t); return -1; }
+    for (int r = 0; r < th; r++) {
+        const int yy = y + r; if (yy < 0 || yy >= H) continue;
+        const int c0 = x < 0 ? -x : 0, c1 = x + tw > W ? W - x : tw; if (c1 <= c0) continue;
+        memcpy(ui_bg + (yy * W + x + c0) * 3, t + (r * tw + c0) * 3, (size_t)(c1 - c0) * 3);
+    }
+    free(t); return 0;
+}
+/* what's been drawn so far becomes part of the background (things vfx_ui_bg restores: the map's
+   trail and route, under the ships) */
+void vfx_ui_bake(void) {
+    if (!ui_bg) return;
+    for (int i = 0; i < W * H; i++) { const uint32_t p = out[i]; uint8_t *b = ui_bg + i * 3; b[0] = (uint8_t)(p >> 16); b[1] = (uint8_t)(p >> 8); b[2] = (uint8_t)p; }
+}
+/* darken (blend toward rgb) rows y0..y1 of the background, alpha a0 at y0 fading to a1 at y1 */
+void vfx_ui_bg_band(int y0, int y1, int rgb, int a0, int a1) {
+    if (!ui_bg || y1 <= y0) return;
+    const int R = (rgb >> 16) & 255, G = (rgb >> 8) & 255, B = rgb & 255;
+    for (int y = clampi(y0, 0, H); y < clampi(y1, 0, H); y++) {
+        const int a = a0 + (a1 - a0) * (y - y0) / (y1 - y0);
+        for (int x = 0; x < W; x++) {
+            uint8_t *p = ui_bg + (y * W + x) * 3;
+            p[0] = (uint8_t)(p[0] + ((R - p[0]) * a >> 8)); p[1] = (uint8_t)(p[1] + ((G - p[1]) * a >> 8)); p[2] = (uint8_t)(p[2] + ((B - p[2]) * a >> 8));
+        }
+    }
 }
 int vfx_ui_find(const char *name) { for (int k = 0; k < nui; k++) if (!strcmp(ui[k].name, name)) return k; return -1; }
 int vfx_ui_metric(int id, int what) {
@@ -884,7 +997,7 @@ void vfx_ui_bg(int x0, int y0, int x1, int y1, int shade) {
     }
     ui_dirty(x0, y0, x1, y1);
 }
-static int isqrt(int v) { int r = 0, b = 1 << 14; while (b > v) b >>= 2; while (b) { if (v >= r + b) { v -= r + b; r = (r >> 1) + b; } else r >>= 1; b >>= 2; } return r; }
+static int isqrt(int v) { int r = 0, b = 1 << 30;      /* (any non-negative int) */ while (b > v) b >>= 2; while (b) { if (v >= r + b) { v -= r + b; r = (r >> 1) + b; } else r >>= 1; b >>= 2; } return r; }
 /* how much of pixel (x, y) is inside the rounded rectangle, 0..256 (antialiased corners) */
 static int rr_cover(int x, int y, int x0, int y0, int x1, int y1, int r) {
     if (x < x0 || x >= x1 || y < y0 || y >= y1) return 0;
@@ -919,11 +1032,47 @@ void vfx_ui_text(int id, int pen_x, int base_y, int rgb, int alpha) {
     }
     ui_dirty(x0, y0, x0 + u->w, y0 + u->h);
 }
+/* a smooth line of width w with round ends (w = 0..: a dot), coordinates in 1/16 px; alpha 0..255 */
+void vfx_ui_line(int ax, int ay, int bx, int by, int w, int rgb, int alpha) {
+    const int r = w / 2, x0 = (ax < bx ? ax : bx) - r - 16, x1 = (ax > bx ? ax : bx) + r + 16, y0 = (ay < by ? ay : by) - r - 16, y1 = (ay > by ? ay : by) + r + 16;
+    const int64_t dx = bx - ax, dy = by - ay, len2 = dx * dx + dy * dy;
+    for (int py = clampi(y0 >> 4, 0, H - 1); py <= clampi(y1 >> 4, 0, H - 1); py++)
+        for (int px = clampi(x0 >> 4, 0, W - 1); px <= clampi(x1 >> 4, 0, W - 1); px++) {
+            const int64_t qx = px * 16 + 8 - ax, qy = py * 16 + 8 - ay;
+            int64_t t = len2 ? (qx * dx + qy * dy) * 256 / len2 : 0; if (t < 0) t = 0; if (t > 256) t = 256;
+            const int64_t ex = qx - dx * t / 256, ey = qy - dy * t / 256;
+            const int d = isqrt((int)(ex * ex + ey * ey)), cov = clampi((r - d + 8) * 16, 0, 256);
+            if (cov) ui_blend(out + py * W + px, rgb, cov * alpha >> 8);
+        }
+    ui_dirty(x0 >> 4, y0 >> 4, (x1 >> 4) + 1, (y1 >> 4) + 1);
+}
+/* a ring: radius r and width w, in 1/16 px */
+void vfx_ui_ring(int cx, int cy, int r, int w, int rgb, int alpha) {
+    const int x0 = (cx - r - w) >> 4, x1 = (cx + r + w) >> 4, y0 = (cy - r - w) >> 4, y1 = (cy + r + w) >> 4;
+    for (int py = clampi(y0, 0, H - 1); py <= clampi(y1, 0, H - 1); py++)
+        for (int px = clampi(x0, 0, W - 1); px <= clampi(x1, 0, W - 1); px++) {
+            const int qx = px * 16 + 8 - cx, qy = py * 16 + 8 - cy, d = isqrt(qx * qx + qy * qy);
+            const int cov = clampi((w / 2 - abs(d - r) + 8) * 16, 0, 256);
+            if (cov) ui_blend(out + py * W + px, rgb, cov * alpha >> 8);
+        }
+    ui_dirty(x0, y0, x1 + 1, y1 + 1);
+}
 void vfx_ui_flush(void) {
     for (int y = 0; y < H; y++) if (ulo[y] <= uhi[y]) { copy_out(y, ulo[y], uhi[y]); ulo[y] = 1; uhi[y] = 0; }
 }
-void vfx_ui_close(void) { free(ui); free(ui_blob); free(ui_bg); ui = NULL; ui_blob = ui_bg = NULL; nui = 0; full_redraw = 1; cards_dirty = 1; }
+void vfx_ui_close(void) {
+    free(ui); free(ui_blob); ui = NULL; ui_blob = ui_bg = NULL; nui = 0;
+    reblend_row = 0; reblend_rows(H);                      /* the picture back where the page was */
+    full_redraw = 1; cards_dirty = 1;
+}
 void vfx_dither(int on) { dither_on = on; full_redraw = 1; }
+/* fade the whole screen: 0 black .. 256 as it is; resends everything at that brightness (anything
+   drawn meanwhile goes out at it too, so a page can be drawn in the dark and faded in) */
+void vfx_fade(int level) {
+    fade_lvl = clampi(level, 0, 256);
+    for (int v = 0; v < 256; v++) flut[v] = (uint8_t)(v * fade_lvl >> 8);
+    for (int y = 0; y < H; y++) copy_out(y, 0, W - 1);
+}
 /* fireworks: n rockets, launched gap_min..gap_max ms apart (the nightly show's finale is quick) */
 void vfx_fireworks_gap(int n, int gap_min, int gap_max) { rocket_gap_min = gap_min; rocket_gap_max = gap_max; rockets_pending += n; if (next_rocket_ms > gap_max) next_rocket_ms = 0; }
 

@@ -3,6 +3,7 @@
   Page 1  the sail date, and today's date and time (the board has no clock battery)
   Page 2  fireworks: when (random through the night, a nightly show at a set time, both, or off),
           how often the random ones go up, and the show's time
+  Page 3  the ship the fleet map follows
   and a touch calibration screen.
 
 It runs inside the countdown program, drawing with the C library (vacfx.c's vfx_ui_*) from text
@@ -51,6 +52,8 @@ class Settings:
         self.mode = c.get("FIREWORKS_MODE", "random")
         try: self.rate = int(c.get("FIREWORKS_EVERY_MIN", "15"))
         except ValueError: self.rate = 15
+        ship = c.get("MAP_SHIP") or c.get("SHIP", "Disney Dream")
+        self.map_ship = ship.replace("Disney ", "") if ship.replace("Disney ", "") in L.FLEET else "Dream"
         self.clock_changed = False
         self.demo = False                  # a fireworks show as soon as Settings closes (Fireworks page)
         self.page = 1; self.pressed = None
@@ -138,7 +141,7 @@ class Settings:
         self.text("value", self.text_of(k), cx, top + 79, L.IVORY, "m", a)
 
     def draw_button(self, name):
-        x0, y0, x1, y1 = box = (L.PAGE1_BUTTONS if self.page == 1 else L.PAGE2_BUTTONS)[name]
+        x0, y0, x1, y1 = box = {1: L.PAGE1_BUTTONS, 2: L.PAGE2_BUTTONS, 3: L.PAGE3_BUTTONS}[self.page][name]
         self.bg((x0 - 2, y0 - 2, x1 + 2, y1 + 2)); hot = self.pressed == name; cx = (x0 + x1) // 2
         if name == "save":
             self.round(box, 14, (238, 206, 138) if hot else L.GOLD, 255)
@@ -151,7 +154,7 @@ class Settings:
             self.text("small", "Demo show on exit", cx, y0 + 25, L.DARK, "m")
         else:
             self.round(box, 12, (255, 255, 255), 40 if hot else 0, (255, 255, 255), 70)
-            label = {"calibrate": "Calibrate touch", "fireworks": "Fireworks ›", "demo": "Demo show"}[name]
+            label = {"calibrate": "Calibrate touch", "fireworks": "Fireworks ›", "ship": "Ship map ›", "demo": "Demo show"}[name]
             self.text("small", label, cx, y0 + 25, L.DIM, "m")
 
     def chip_box(self, row, i):
@@ -171,6 +174,18 @@ class Settings:
 
     def show_dim(self): return self.mode not in ("show", "both")
 
+    def ship_box(self, i):
+        y = L.PAGE3_CHIP_ROWS[i // 4]; x = L.CHIP_X0 + (i % 4) * (L.CHIP_W + L.CHIP_GAP)
+        return (x, y, x + L.CHIP_W, y + L.CHIP_H)
+
+    def draw_ship_chip(self, i):
+        box = self.ship_box(i); name = L.FLEET[i]
+        on = self.map_ship == name; hot = self.pressed == ("ship", i)
+        self.under_panel((box[0] - 1, box[1] - 1, box[2] + 1, box[3] + 1))
+        if on: self.round(box, 12, L.GOLD, 255)
+        else: self.round(box, 12, (255, 255, 255), 60 if hot else 18, (255, 255, 255), 70)
+        self.text("chip", name, (box[0] + box[2]) // 2, box[1] + 32, L.DARK if on else L.IVORY, "m")
+
     def draw_page(self):
         self.bg((0, 0, L.W, L.H))
         if self.page == 1:
@@ -180,6 +195,14 @@ class Settings:
             self.text("small", "date & time", 40, 345, L.DIM)
             for k in self.cols1: self.draw_col(k)
             for b in L.PAGE1_BUTTONS: self.draw_button(b)
+        elif self.page == 3:
+            self.text("title", "Ship map", 36, 58, L.IVORY)
+            self.panel(L.PAGE3_PANEL)
+            self.text("label", "Follow", 40, L.PAGE3_CHIP_ROWS[0] + 34, L.IVORY)
+            self.text("small", "the ship to follow", 40, L.PAGE3_CHIP_ROWS[0] + 58, L.DIM)
+            for i in range(len(L.FLEET)): self.draw_ship_chip(i)
+            self.text("small", "The map centres on this ship and shows what it reports.", L.W // 2, 300, L.DIM, "m")
+            for b in L.PAGE3_BUTTONS: self.draw_button(b)
         else:
             self.text("title", "Fireworks", 36, 58, L.IVORY)
             self.panel(L.PAGE2_PANEL_A)
@@ -199,12 +222,20 @@ class Settings:
     def hit(self, x, y):
         """Generous on purpose: a resistive screen's aim drifts."""
         if self.page == 1:
-            if y >= 372: return "cancel" if x < 226 else "calibrate" if x < 400 else "fireworks" if x < 574 else "save"
+            if y >= 372: return next(name for edge, name in L.PAGE1_SPLITS if x < edge)
             for _, top, cols in L.PAGE1_ROWS:
                 if top <= y < top + 148:
                     for c in cols:
                         if c and self.cols1[c[0]][0] - 6 <= x < self.cols1[c[0]][2] + 6:
                             return ("up", c[0]) if y < top + 74 else ("down", c[0])
+            return None
+        if self.page == 3:
+            if y >= 382: return "back" if x < 400 else "save"
+            x0, y0, x1, y1 = L.PAGE3_PANEL
+            if y0 <= y < y1 and x >= L.CHIP_X0 - 20:
+                row = 0 if y < (L.PAGE3_CHIP_ROWS[0] + L.CHIP_H + L.PAGE3_CHIP_ROWS[1]) // 2 else 1
+                i = max(0, min(3, (x - L.CHIP_X0 + L.CHIP_GAP // 2) // (L.CHIP_W + L.CHIP_GAP)))
+                return ("ship", row * 4 + i)
             return None
         if y >= 382: return "back" if x < 268 else "demo" if x < 532 else "save"
         x0a, y0a, x1a, y1a = L.PAGE2_PANEL_A
@@ -229,6 +260,7 @@ class Settings:
                 for k in ("sd", "td"): self.draw_col(k)
             self.draw_header()
         elif isinstance(target, tuple) and target[0] == "chip": self.draw_chip(target[1], target[2])
+        elif isinstance(target, tuple) and target[0] == "ship": self.draw_ship_chip(target[1])
         elif target: self.draw_button(target)
 
     def release(self, target, x, y):
@@ -236,6 +268,10 @@ class Settings:
         again = self.hit(x, y) == target
         if self.is_arrow(target):
             self.draw_col(target[1], self.page == 2 and self.show_dim()); return None
+        if isinstance(target, tuple) and target[0] == "ship":
+            if again: self.map_ship = L.FLEET[target[1]]
+            for i in range(len(L.FLEET)): self.draw_ship_chip(i)
+            return None
         if isinstance(target, tuple) and target[0] == "chip":
             if again:
                 row, i = target[1], target[2]; value = L.PAGE2_CHIP_ROWS[row][2][i][0]
@@ -251,6 +287,7 @@ class Settings:
         if target in ("save", "cancel"): return target
         if target == "demo": self.demo = not self.demo; self.draw_button("demo"); return None
         if target == "fireworks": self.page = 2; self.draw_page()
+        elif target == "ship": self.page = 3; self.draw_page()
         elif target == "back": self.page = 1; self.draw_page()
         elif target == "calibrate": self.calibrate(); self.draw_page()
         return None
@@ -356,6 +393,7 @@ class Settings:
         write_conf_value(path, "SAIL_DATE", "%04d-%02d-%02d" % (v["sy"], v["sm"], v["sd"]))
         write_conf_value(path, "FIREWORKS_MODE", self.mode)
         write_conf_value(path, "FIREWORKS_EVERY_MIN", self.rate)
+        write_conf_value(path, "MAP_SHIP", "Disney " + self.map_ship)
         write_conf_value(path, "FIREWORKS_SHOW_TIME", "%02d:%02d" % (v["fh"] % 12 + (12 if v["fa"] else 0), v["fm"]))
         if self.clock_changed:
             h = v["hh"] % 12 + (12 if v["ap"] else 0)
