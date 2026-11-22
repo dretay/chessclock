@@ -3,7 +3,7 @@
 The Caribbean from space, NASA's Blue Marble by day and Black Marble (city lights) at night, centred on
 the ship picked in Settings (MAP_SHIP): it gets a pulsing ring and a card with what its AIS reports
 (position, speed and course, status, destination and ETA, when it last reported). Any other ship in
-view is a small ship pointing its way, with its name on a tag (your ship's, SHIP, in gold). The
+view is a small ship pointing its way, with its name on a tag (your own ship, SHIP, has its name in gold on the card when it's the one followed). The
 status line says how old the positions are.
 
 The map comes in 256-px tiles made on a desktop (tools/themegen/build_map.py -> map/tiles/,
@@ -320,11 +320,11 @@ class MapScreen:
         follow = name == self.follow
         if far:                                             # a tag placed further out: a faint line to its ship
             tx = min(max(x, box[0]), box[2]); ty = min(max(y, box[1]), box[3])
-            self.fx.vfx_ui_line(int(x * 16), int(y * 16), int(tx * 16), int(ty * 16), 16, rgb(L.GOLD if mine else L.IVORY), 120)
+            self.fx.vfx_ui_line(int(x * 16), int(y * 16), int(tx * 16), int(ty * 16), 16, rgb(L.IVORY), 120)
         self.draw_ship(x, y, heading, speed, big=follow, glow=L.GOLD if follow else None)
         if not follow:                                      # a name tag: unlike the ports' plain names
-            self.fx.vfx_ui_round(box[0], box[1], box[2], box[3], 8, rgb((6, 14, 30)), 215, rgb(L.GOLD if mine else L.IVORY), 150 if mine else 90)
-            self.text("ship", short, lx, base, L.GOLD if mine else L.IVORY, halo=False)
+            self.fx.vfx_ui_round(box[0], box[1], box[2], box[3], 8, rgb((6, 14, 30)), 215, rgb(L.IVORY), 90)
+            self.text("ship", short, lx, base, L.IVORY, halo=False)
 
     def pulse(self, phase):
         """The followed ship's ring, growing and fading every two seconds."""
