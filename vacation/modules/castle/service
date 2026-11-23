@@ -1,0 +1,5 @@
+#!/bin/sh
+# The castle module's background job: ride wait times from ThemeParks.wiki (waits.py) into
+# $MODULE_DATA/waits.json for the wait-times screen. The app's service starts it (in this folder,
+# with MODULE_DATA set), on a kernel with WiFi.
+exec python3 -u waits.py

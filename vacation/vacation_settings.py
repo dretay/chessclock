@@ -3,7 +3,8 @@
   Page 1  the sail date, and today's date and time (the board has no clock battery)
   Page 2  fireworks: when (random through the night, a nightly show at a set time, both, or off),
           how often the random ones go up, and the show's time
-  Page 3  the ship the fleet map follows
+  Page 3  the theme's own settings (the active module's, from its module.json "settings": the cruise's
+          ship to follow on the map, the castle's rides to show), as chips, a page at a time
   Page 4  WiFi: the networks in range, and which one the board is on (vacation_wifi.py); tapping one
           opens page 5, a keyboard for its password. Joining saves it on the board straight away.
   and a touch calibration screen.
@@ -13,10 +14,11 @@ pre-drawn on a desktop (tools/themegen/build_ui.py; layout in vacation_layout.py
 it opens at once. Save writes vacation.conf (and sets the clock if today's date or time were
 changed); Cancel, or a minute and a half untouched, leaves everything as it was.
 """
-import calendar, datetime, os, threading, time
+import calendar, datetime, json, os, threading, time
 
 import vacation_layout as L
 import vacation_wifi as wifi
+from vacation_text import Text, plain
 
 IDLE_SECS = 90
 REPEAT_DELAY, REPEAT_EVERY = 0.5, 0.12
@@ -55,8 +57,7 @@ class Settings:
         self.mode = c.get("FIREWORKS_MODE", "random")
         try: self.rate = int(c.get("FIREWORKS_EVERY_MIN", "15"))
         except ValueError: self.rate = 15
-        ship = c.get("MAP_SHIP") or c.get("SHIP", "Disney Dream")
-        self.map_ship = ship.replace("Disney ", "") if ship.replace("Disney ", "") in L.FLEET else "Dream"
+        self.load_theme_setting(app)
         self.clock_changed = False
         self.demo = False                  # a fireworks show as soon as Settings closes (Fireworks page)
         self.page = 1; self.pressed = None
@@ -68,7 +69,76 @@ class Settings:
         self.cols1 = {}
         for _, top, cols in L.PAGE1_ROWS: self.cols1.update(L.columns(cols, top))
         self.cols2 = L.columns(L.PAGE2_ROW_B[2], L.PAGE2_ROW_B[1])
-        self.ids = {}
+        self.ids = {}; self.txt = Text(self.fx)
+
+    # ---------------------------------------------------------------- the theme's setting (page 3)
+    def load_theme_setting(self, app):
+        """The active module's first setting (module.json "settings"): its options, and what's chosen.
+        "one": pick one; "many": pick any (stored joined with |, as names may have commas). Options are
+        listed in module.json, or come from a file the module's service writes ("options_from", e.g.
+        waits.json's rides), else that file's *_example.json beside the module."""
+        mod = getattr(app, "module", None)
+        specs = (mod.meta.get("settings") or []) if mod else []
+        self.theme = specs[0] if specs else None; self.theme_opts = []; self.theme_pick = set(); self.theme_page = 0
+        self.module_name = mod.name if mod else ""
+        self.short = {plain(k): v for k, v in ((mod.meta.get("short_names") or {}) if mod else {}).items()}
+        if not self.theme: return
+        sp = self.theme; key = sp["key"]
+        if "options" in sp: opts = list(sp["options"])
+        else:
+            src = sp.get("options_from", ""); stem, ext = os.path.splitext(src); opts = []
+            for path in (os.path.join(mod.data_dir, src), os.path.join(mod.dir, stem + "_example" + ext)):
+                try: opts = sorted({r["name"] for r in json.load(open(path)).get("rides", [])}, key=lambda n: self.short.get(plain(n), plain(n)).strip('"').lower()); break
+                except (OSError, ValueError, KeyError, TypeError): pass
+        self.theme_opts = opts
+        cur = app.conf.get(key, "")
+        if sp.get("type") == "many": self.theme_pick = {v for v in cur.split("|") if v in opts}
+        else:
+            v = cur or sp.get("default") or (app.conf.get(sp["fallback"], "") if sp.get("fallback") else "")
+            self.theme_pick = {v if v in opts else (opts[0] if opts else "")}
+
+    def opt_label(self, name):
+        sp = self.theme or {}; s = self.short.get(plain(name), plain(name)).strip('"')
+        strip = sp.get("strip", "")
+        return s[len(strip):] if strip and s.startswith(strip) else s
+
+    def per_page(self): return L.PAGE3_GRID[2] * L.PAGE3_GRID[3]
+    def pages(self): return max(1, -(-len(self.theme_opts) // self.per_page()))
+
+    def opt_box(self, i):
+        x0, y0, cols, rows, ch, gap = L.PAGE3_GRID
+        cw = (L.W - 2 * x0 - (cols - 1) * gap) // cols
+        k = i % self.per_page(); c, r = k % cols, k // cols
+        x = x0 + c * (cw + gap); y = y0 + r * (ch + gap)
+        return (x, y, x + cw, y + ch)
+
+    def draw_opt(self, i):
+        box = self.opt_box(i); name = self.theme_opts[i]
+        on = name in self.theme_pick; hot = self.pressed == ("opt", i)
+        self.under_panel((box[0] - 1, box[1] - 1, box[2] + 1, box[3] + 1))
+        if on: self.round(box, 12, L.GOLD, 255)
+        else: self.round(box, 12, (255, 255, 255), 60 if hot else 18, (255, 255, 255), 70)
+        label = self.opt_label(name); t = self.txt
+        font = "chip" if t.sid("chip|" + label) >= 0 else "small"            # (pre-drawn: the cruise's ships)
+        t.draw(font, t.fit(font, label, box[2] - box[0] - 20), (box[0] + box[2]) // 2, box[1] + (27 if font == "chip" else 25),
+               L.DARK if on else L.IVORY, "m")
+
+    def draw_theme_page(self):
+        self.text("title", "Theme settings", 36, 58, L.IVORY)
+        self.panel(L.PAGE3_PANEL)
+        if not self.theme or not self.theme_opts:
+            self.txt.draw("label", "Nothing to set for this theme" if not self.theme else "Nothing to choose from yet",
+                          L.W // 2, (L.PAGE3_PANEL[1] + L.PAGE3_PANEL[3]) // 2, L.DIM, "m")
+        else:
+            w = self.txt.draw("label", plain(self.theme.get("label", "")), 40, L.PAGE3_LABEL_Y, L.IVORY)
+            if self.theme.get("note"): self.txt.draw("small", plain(self.theme["note"]), 40 + w + 14, L.PAGE3_LABEL_Y, L.DIM)
+            first = self.theme_page * self.per_page()
+            for i in range(first, min(len(self.theme_opts), first + self.per_page())): self.draw_opt(i)
+            if self.pages() > 1:
+                self.txt.draw("small", "%d of %d" % (self.theme_page + 1, self.pages()), 400, 437, L.DIM, "m")
+        for b in L.PAGE3_BUTTONS:
+            if b in ("prev", "next") and self.pages() < 2: continue
+            self.draw_button(b)
 
     # ---------------------------------------------------------------- drawing primitives (all in C)
     def sid(self, key):
@@ -164,7 +234,9 @@ class Settings:
             self.text("small", "Demo show on exit", cx, y0 + 25, L.DARK, "m")
         else:
             self.round(box, 12, (255, 255, 255), 40 if hot else 0, (255, 255, 255), 70)
-            label = {"calibrate": "Touch", "fireworks": "Fireworks ›", "ship": "Ship map ›", "wifi": "WiFi ›", "demo": "Demo show",
+            if name in ("prev", "next"):
+                self.text("button", "‹" if name == "prev" else "›", cx, y0 + 30, L.IVORY if self.pages() > 1 else L.DIM, "m"); return
+            label = {"calibrate": "Touch", "fireworks": "Fireworks ›", "theme": "Theme ›", "wifi": "WiFi ›", "demo": "Demo show",
                      "rescan": "Rescan", "forget": "Forget network"}[name]
             self.text("small", label, cx, y0 + 25, L.DIM, "m")
 
@@ -185,18 +257,6 @@ class Settings:
 
     def show_dim(self): return self.mode not in ("show", "both")
 
-    def ship_box(self, i):
-        y = L.PAGE3_CHIP_ROWS[i // 4]; x = L.CHIP_X0 + (i % 4) * (L.CHIP_W + L.CHIP_GAP)
-        return (x, y, x + L.CHIP_W, y + L.CHIP_H)
-
-    def draw_ship_chip(self, i):
-        box = self.ship_box(i); name = L.FLEET[i]
-        on = self.map_ship == name; hot = self.pressed == ("ship", i)
-        self.under_panel((box[0] - 1, box[1] - 1, box[2] + 1, box[3] + 1))
-        if on: self.round(box, 12, L.GOLD, 255)
-        else: self.round(box, 12, (255, 255, 255), 60 if hot else 18, (255, 255, 255), 70)
-        self.text("chip", name, (box[0] + box[2]) // 2, box[1] + 32, L.DARK if on else L.IVORY, "m")
-
     def draw_page(self):
         self.bg((0, 0, L.W, L.H))
         if self.page == 1:
@@ -211,13 +271,7 @@ class Settings:
         elif self.page == 5:
             self.draw_keyboard_page()
         elif self.page == 3:
-            self.text("title", "Ship map", 36, 58, L.IVORY)
-            self.panel(L.PAGE3_PANEL)
-            self.text("label", "Follow", 40, L.PAGE3_CHIP_ROWS[0] + 34, L.IVORY)
-            self.text("small", "the ship to follow", 40, L.PAGE3_CHIP_ROWS[0] + 58, L.DIM)
-            for i in range(len(L.FLEET)): self.draw_ship_chip(i)
-            self.text("small", "The map centres on this ship and shows what it reports.", L.W // 2, 300, L.DIM, "m")
-            for b in L.PAGE3_BUTTONS: self.draw_button(b)
+            self.draw_theme_page()
         else:
             self.text("title", "Fireworks", 36, 58, L.IVORY)
             self.panel(L.PAGE2_PANEL_A)
@@ -247,12 +301,17 @@ class Settings:
         if self.page == 4: return self.hit_wifi(x, y)
         if self.page == 5: return self.hit_keyboard(x, y)
         if self.page == 3:
-            if y >= 382: return "back" if x < 400 else "save"
-            x0, y0, x1, y1 = L.PAGE3_PANEL
-            if y0 <= y < y1 and x >= L.CHIP_X0 - 20:
-                row = 0 if y < (L.PAGE3_CHIP_ROWS[0] + L.CHIP_H + L.PAGE3_CHIP_ROWS[1]) // 2 else 1
-                i = max(0, min(3, (x - L.CHIP_X0 + L.CHIP_GAP // 2) // (L.CHIP_W + L.CHIP_GAP)))
-                return ("ship", row * 4 + i)
+            if y >= 400:
+                if x < 268: return "back"
+                if x >= 532: return "save"
+                if self.pages() < 2: return None
+                return "prev" if x < 400 else "next"
+            x0, y0, cols, rows, ch, gap = L.PAGE3_GRID
+            if y >= y0 - gap // 2 and self.theme_opts:
+                cw = (L.W - 2 * x0 - (cols - 1) * gap) // cols
+                c = max(0, min(cols - 1, (x - x0 + gap // 2) // (cw + gap))); r = (y - y0 + gap // 2) // (ch + gap)
+                i = self.theme_page * self.per_page() + r * cols + c
+                if 0 <= r < rows and i < len(self.theme_opts): return ("opt", i)
             return None
         if y >= 382: return "back" if x < 268 else "demo" if x < 532 else "save"
         x0a, y0a, x1a, y1a = L.PAGE2_PANEL_A
@@ -277,7 +336,7 @@ class Settings:
                 for k in ("sd", "td"): self.draw_col(k)
             self.draw_header()
         elif isinstance(target, tuple) and target[0] == "chip": self.draw_chip(target[1], target[2])
-        elif isinstance(target, tuple) and target[0] == "ship": self.draw_ship_chip(target[1])
+        elif isinstance(target, tuple) and target[0] == "opt": self.draw_opt(target[1])
         elif isinstance(target, tuple) and target[0] == "net": self.draw_net_row(target[1])
         elif isinstance(target, tuple) and target[0] == "key": self.draw_key(target[1])
         elif target: self.draw_button(target)
@@ -293,9 +352,13 @@ class Settings:
             self.draw_net_row(target[1])
             if again and target[1] < len(self.nets): self.pick_network(self.nets[target[1]])
             return None
-        if isinstance(target, tuple) and target[0] == "ship":
-            if again: self.map_ship = L.FLEET[target[1]]
-            for i in range(len(L.FLEET)): self.draw_ship_chip(i)
+        if isinstance(target, tuple) and target[0] == "opt":
+            name = self.theme_opts[target[1]]
+            if again:
+                if self.theme.get("type") == "many": self.theme_pick ^= {name}
+                else: self.theme_pick = {name}
+            first = self.theme_page * self.per_page()
+            for i in range(first, min(len(self.theme_opts), first + self.per_page())): self.draw_opt(i)
             return None
         if isinstance(target, tuple) and target[0] == "chip":
             if again:
@@ -312,7 +375,9 @@ class Settings:
         if target in ("save", "cancel"): return target
         if target == "demo": self.demo = not self.demo; self.draw_button("demo"); return None
         if target == "fireworks": self.page = 2; self.draw_page()
-        elif target == "ship": self.page = 3; self.draw_page()
+        elif target == "theme": self.page = 3; self.draw_page()
+        elif target in ("prev", "next"):
+            self.theme_page = (self.theme_page + (1 if target == "next" else -1)) % self.pages(); self.draw_page()
         elif target == "wifi": self.page = 4; self.draw_page(); self.start_scan()
         elif target == "rescan": self.start_scan()
         elif target == "forget" and self.wifi_state[0] != "off": self.start_job("forget", lambda w: w.forget())
@@ -621,7 +686,9 @@ class Settings:
         write_conf_value(path, "SAIL_DATE", "%04d-%02d-%02d" % (v["sy"], v["sm"], v["sd"]))
         write_conf_value(path, "FIREWORKS_MODE", self.mode)
         write_conf_value(path, "FIREWORKS_EVERY_MIN", self.rate)
-        write_conf_value(path, "MAP_SHIP", "Disney " + self.map_ship)
+        if self.theme and self.theme_opts:                         # the theme's setting (e.g. MAP_SHIP, RIDES)
+            val = "|".join(sorted(self.theme_pick)) if self.theme.get("type") == "many" else next(iter(self.theme_pick), "")
+            write_conf_value(path, self.theme["key"], val)
         write_conf_value(path, "FIREWORKS_SHOW_TIME", "%02d:%02d" % (v["fh"] % 12 + (12 if v["fa"] else 0), v["fm"]))
         if self.clock_changed:
             h = v["hh"] % 12 + (12 if v["ap"] else 0)

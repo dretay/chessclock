@@ -96,6 +96,10 @@ typedef struct { int32_t x, y, rx, ry, v; } shadow_t;     /* 1/256 px; v in 1/25
 static shadow_t shadows[3];
 static int mast_x = -1, mast_y, amb_q8 = 256, ntube; static int tube[32][2];
 static int next_gulls_ms = 5000, next_pod_ms = 10000, next_raft_ms = 8000, raft_start = -1, raft_dur;
+/* which of the scene's own effects run (vfx_effects): the ship has them all; a castle, none of them.
+   Fireworks, window lights and the cards are every scene's. */
+enum { FX_WATER = 1, FX_WAKE = 2, FX_SMOKE = 4, FX_GULLS = 8, FX_DOLPHINS = 16, FX_RAFT = 32, FX_ALL = 63 };
+static int fx_on = FX_ALL;
 static int hold_lvl, hold_drawn;           /* the press-and-hold bar under the cards */
 
 /* flip clock */
@@ -228,7 +232,7 @@ static inline uint32_t ripple_px(int x, int y, int amp_q8, int amy, int ph1, int
 static int shadow_row(int y, uint8_t *sh, int *ax, int *bx);
 static void refresh_row(int y, int x0, int x1, int t_ms, uint32_t *dst) {
     const uint32_t *src = base + y * W;
-    if (y < horizon + 2) { memcpy(dst + x0, src + x0, (size_t)(x1 - x0 + 1) * 4); return; }
+    if (y < horizon + 2 || !(fx_on & FX_WATER)) { memcpy(dst + x0, src + x0, (size_t)(x1 - x0 + 1) * 4); return; }
     const int depth_q8 = ((y - horizon) << 8) / (H - horizon);
     const int amp_q8 = 90 + ((614 * depth_q8) >> 8), amy = (amp_q8 * 115) >> 8;
     const int ph1 = (int)(((int64_t)y * k1 + (int64_t)t_ms * w1) >> 8), ph2 = (int)(((int64_t)y * k2 - (int64_t)t_ms * w2) >> 8);
@@ -369,7 +373,7 @@ static int wl_at(int x) {
 static void step_particles(int dt) {
     const int sc = 256;
     /* hull wash: foam all along the waterline, heaviest at the bow wave, sliding aft */
-    foam_acc += dt * 55;
+    foam_acc += (fx_on & FX_WAKE) ? dt * 55 : 0;
     while (foam_acc >= 1000) {
         foam_acc -= 1000; part_t *p = spawn(P_FOAM); if (!p) break;
         const int u = (int)(((rnd() & 1023) * (rnd() & 1023)) >> 12);               /* 0..255, more near the bow */
@@ -384,7 +388,7 @@ static void step_particles(int dt) {
     }
     /* the bow wave: white water breaking off the stem and peeling aft and outward along the hull
        (the photo's own bow foam is painted out: frozen, it looked wrong) */
-    bow_acc += dt * 46;
+    bow_acc += (fx_on & FX_WAKE) ? dt * 46 : 0;
     while (bow_acc >= 1000) {
         bow_acc -= 1000; part_t *p = spawn(P_FOAM); if (!p) break;
         const int x = bow_x + rr(-9, 3);
@@ -394,14 +398,14 @@ static void step_particles(int dt) {
         p->life = rr(600, 1500); p->size = (int16_t)rr(260, 480); p->col = (uint32_t)rr(140, 210);
     }
     /* and a little spray thrown up and forward at the stem */
-    spray_acc += dt * 9;
+    spray_acc += (fx_on & FX_WAKE) ? dt * 9 : 0;
     while (spray_acc >= 1000) {
         spray_acc -= 1000; part_t *p = spawn(P_SPLASH); if (!p) break;
         p->x = (bow_x + rr(-4, 2)) << 8; p->y = (wl_at(bow_x) - 1) << 8;
         p->vx = rr(2, 9) * 256 - (hull_dx * rr(0, 4)); p->vy = -rr(5, 13) * 256; p->life = rr(300, 550);
     }
     /* the stern wake: churned water streaming away behind the ship */
-    wake_acc += dt * 16;
+    wake_acc += (fx_on & FX_WAKE) ? dt * 16 : 0;
     while (wake_acc >= 1000) {
         wake_acc -= 1000; part_t *p = spawn(P_WAKE); if (!p) break;
         p->x = (stern_x + rr(-2, 4)) << 8; p->y = ((wl_at(stern_x + 3) + rr(-3, 2)) << 8);
@@ -410,7 +414,7 @@ static void step_particles(int dt) {
         p->life = rr(2500, 4500); p->size = (int16_t)rr(256, 512); p->col = (uint32_t)rr(77, 128);
     }
     /* funnel smoke */
-    smoke_acc += dt * 6;
+    smoke_acc += (fx_on & FX_SMOKE) ? dt * 6 : 0;
     while (smoke_acc >= 1000) {
         smoke_acc -= 1000;
         for (int s = 0; s < 2; s++) {
@@ -434,7 +438,7 @@ static void step_particles(int dt) {
     /* gulls: a few at a time, every minute or so, in daylight */
     if ((next_gulls_ms -= dt) < 0) {
         next_gulls_ms = rr(35000, 80000);
-        if (night_lvl < 128) {
+        if (night_lvl < 128 && (fx_on & FX_GULLS)) {
             const int dir = rnd() & 1 ? 1 : -1, n = rr(1, 3), y0 = horizon * rr(64, 218) / 256;
             for (int k = 0; k < n; k++) { part_t *p = spawn(P_GULL); if (!p) break;
                 p->x = (dir > 0 ? -20 - k * rr(14, 30) : W + 20 + k * rr(14, 30)) << 8; p->y = (y0 + rr(-14, 14)) << 8;
@@ -445,7 +449,7 @@ static void step_particles(int dt) {
     /* dolphins: now and then a small pod leaps ahead of the bow */
     if ((next_pod_ms -= dt) < 0) {
         next_pod_ms = rr(40000, 90000);
-        if (night_lvl < 128) {
+        if (night_lvl < 128 && (fx_on & FX_DOLPHINS)) {
             const int n = rr(2, 3); int delay = 0;
             for (int k = 0; k < n; k++) { part_t *p = spawn(P_DOLPHIN); if (!p) break;
                 p->px = (bow_x + rr(25, 80) * sca / 256) << 8; p->py = (bow_y + rr(12, 40) * sca / 256) << 8;
@@ -454,7 +458,7 @@ static void step_particles(int dt) {
         }
     }
     /* the AquaDuck: a raft whooshes along the tube every so often */
-    if (raft_start < 0 && (next_raft_ms -= dt) < 0) { next_raft_ms = rr(25000, 55000); if (night_lvl < 154 && ntube > 1) { raft_start = last_t; raft_dur = rr(2800, 3800); } }
+    if (raft_start < 0 && (next_raft_ms -= dt) < 0) { next_raft_ms = rr(25000, 55000); if (night_lvl < 154 && ntube > 1 && (fx_on & FX_RAFT)) { raft_start = last_t; raft_dur = rr(2800, 3800); } }
     if (raft_start >= 0 && last_t - raft_start > raft_dur) raft_start = -1;
     /* move */
     const int drag_foam = 256 - dt * 115 / 256, drag_spark = 256 - dt * 268 / 1000;   /* ~0.6^t, ~0.35^t */
@@ -775,7 +779,7 @@ void vfx_scene(int hz, int s1x, int s1y, int s2x, int s2y, int smoke_scale_q8, i
     memset(wc, 0, W * H);
     for (int x = 0; x < W; x++) {
         wl[x] = -1; for (int y = H - 1; y > horizon; y--) if (ship[y * W + x]) { wl[x] = (int16_t)y; break; }
-        for (int y = horizon + 2; y < H; y++) {
+        for (int y = horizon + 2; y < H && (fx_on & FX_WATER); y++) {
             if (ship[y * W + x]) continue;
             int v = 255;
             if (wl[x] >= 0 && y > wl[x] && y < wl[x] + 20) {
@@ -808,6 +812,9 @@ void vfx_ambient(int mx, int my, int scale_q8, int n, const int *xy) {
     for (int k = 0; k < 3; k++) new_shadow(&shadows[k], rr(-100, W));
 }
 void vfx_hold(int level) { hold_lvl = clampi(level, 0, 256); }
+/* which of the scene's own effects run: bits 1 sea, 2 wake and foam, 4 smoke, 8 gulls, 16 dolphins,
+   32 the raft (all of them by default: the ship). Call before vfx_scene (the sea is set up there). */
+void vfx_effects(int mask) { fx_on = mask & FX_ALL; }
 /* darken what's on the screen (an instant "opening Settings": the Settings screen takes a few seconds) */
 void vfx_dim(void) {
     for (int y = 0; y < H; y++) { uint32_t *r = fb + y * fb_stride; for (int x = 0; x < W; x++) r[x] = (r[x] >> 2) & 0x3f3f3f; }
@@ -874,7 +881,7 @@ int vfx_frame(int t_ms) {
     }
     /* the sea, staggered: near rows every 2nd frame, the middle third every 3rd, the far third every 4th
        (the ripple moves well under a pixel in that time) */
-    for (int y = horizon + 2; y < H; y++) {
+    for (int y = horizon + 2; y < H && (fx_on & FX_WATER); y++) {
         const int depth_q8 = ((y - horizon) << 8) / (H - horizon), every = depth_q8 < 85 ? 4 : depth_q8 < 170 ? 3 : 2;
         if ((y + frame_no) % every == 0) spans_add(rlo, rhi, y, 0, W - 1);
     }

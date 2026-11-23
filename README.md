@@ -55,11 +55,20 @@ Builds run in containers - Apple's [`container`](https://github.com/apple/contai
 # once: the base image, built natively for Apple silicon
 container build --memory 4g --cpus 8 -f Dockerfile.base --target main -t licheepi-nano-mybase:latest .
 
-# each time: the fast build, unpacked into dist/
-container build --memory 4g --cpus 8 --build-arg BASE_IMAGE=licheepi-nano-mybase \
-    -o type=tar,dest=dist.tar . \
-  && mkdir -p dist && tar -xf dist.tar -C dist --strip-components=1 && rm dist.tar
+# each time: an incremental build, into build/images/ (or build/images-wifi/ with --wifi)
+tools/build.sh [--wifi] [--app vacation]
 ```
+
+`tools/build.sh` keeps the Buildroot tree between builds, in a container volume (`licheepi-out`,
+`licheepi-out-wifi`; ~8 GB each), seeded from the base image the first time: a build that changes
+nothing takes under half a minute, and only what changed is rebuilt (including the kernel,
+BusyBox and U-Boot when their patches or config fragments change, which Buildroot alone wouldn't
+notice). `--fresh` starts that kind of build over; `container volume rm licheepi-out` frees it.
+
+The Dockerfile's fast build still works (`container build --build-arg BASE_IMAGE=licheepi-nano-mybase
+-o type=tar,dest=dist.tar .`), but every build adds gigabytes of layers to the builder's cache, which
+the builder never gives back to macOS: `container builder stop && container builder delete` after
+building returns it (not `container image prune --all`, which also deletes the base image).
 
 `container` can't send the build output to the terminal (`dest=-` writes a file literally named `-`), hence the tar file. The upstream project's published base image on Docker Hub is amd64-only and predates this project, so build your own.
 

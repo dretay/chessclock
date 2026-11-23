@@ -1,0 +1,47 @@
+{
+  "id": "castle",
+  "name": "Magic Kingdom",
+  "version": "0.1.0",
+  "api": 1,
+  "scene": {
+    "engine": "ship",
+    "dir": "scenes",
+    "default": "magic-kingdom"
+  },
+  "screens": [
+    {
+      "id": "waits",
+      "file": "board.py",
+      "class": "WaitsScreen",
+      "enabled": "WAITS",
+      "secs": "WAITS_SECS"
+    }
+  ],
+  "settings": [
+    {
+      "key": "RIDES",
+      "label": "Rides",
+      "note": "on the wait times (none picked: all of them)",
+      "type": "many",
+      "options_from": "waits.json"
+    }
+  ],
+  "short_names": {
+    "Tomorrowland Transit Authority PeopleMover": "PeopleMover",
+    "Buzz Lightyear's Space Ranger Spin": "Buzz Lightyear",
+    "The Many Adventures of Winnie the Pooh": "Winnie the Pooh",
+    "Walt Disney's Enchanted Tiki Room": "Enchanted Tiki Room",
+    "Under the Sea - Journey of The Little Mermaid": "Little Mermaid",
+    "Prince Charming Regal Carrousel": "Regal Carrousel",
+    "Walt Disney's Carousel of Progress": "Carousel of Progress",
+    "Monsters, Inc. Laugh Floor": "Laugh Floor",
+    "Country Bear Musical Jamboree": "Country Bear Jamboree",
+    "Big Thunder Mountain Railroad": "Big Thunder Mountain",
+    "A Pirate's Adventure ~ Treasures of the Seven Seas": "A Pirate's Adventure",
+    "Casey Jr. Splash 'N' Soak Station": "Casey Jr. Splash 'N' Soak",
+    "The Magic Carpets of Aladdin": "Magic Carpets of Aladdin",
+    "Walt Disney World Railroad - Frontierland": "Railroad: Frontierland",
+    "Walt Disney World Railroad - Main Street, U.S.A.": "Railroad: Main Street",
+    "Walt Disney World Railroad - Fantasyland": "Railroad: Fantasyland"
+  }
+}

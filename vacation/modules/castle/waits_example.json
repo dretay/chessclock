@@ -1,0 +1,336 @@
+{
+ "park": "Magic Kingdom",
+ "updated": null,
+ "example": true,
+ "hours": [
+  "2026-11-22T09:00:00-05:00",
+  "2026-11-22T23:00:00-05:00"
+ ],
+ "rides": [
+  {
+   "name": "\"it's a small world\"",
+   "status": "OPERATING",
+   "wait": 30,
+   "updated": null
+  },
+  {
+   "name": "A Pirate's Adventure ~ Treasures of the Seven Seas",
+   "status": "CLOSED",
+   "wait": null,
+   "updated": null
+  },
+  {
+   "name": "Astro Orbiter",
+   "status": "OPERATING",
+   "wait": 5,
+   "updated": null
+  },
+  {
+   "name": "Big Thunder Mountain Railroad",
+   "status": "DOWN",
+   "wait": 60,
+   "updated": null
+  },
+  {
+   "name": "Buzz Lightyear\u2019s Space Ranger Spin",
+   "status": "OPERATING",
+   "wait": 15,
+   "updated": null
+  },
+  {
+   "name": "Casey Jr. Splash 'N' Soak Station",
+   "status": "CLOSED",
+   "wait": null,
+   "updated": null
+  },
+  {
+   "name": "Cinderella Castle",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": null
+  },
+  {
+   "name": "Country Bear Musical Jamboree",
+   "status": "OPERATING",
+   "wait": 10,
+   "updated": null
+  },
+  {
+   "name": "Dumbo the Flying Elephant",
+   "status": "OPERATING",
+   "wait": 5,
+   "updated": null
+  },
+  {
+   "name": "Enchanted Tales with Belle",
+   "status": "OPERATING",
+   "wait": 20,
+   "updated": null
+  },
+  {
+   "name": "Haunted Mansion",
+   "status": "OPERATING",
+   "wait": 13,
+   "updated": null
+  },
+  {
+   "name": "Jingle Cruise",
+   "status": "OPERATING",
+   "wait": 5,
+   "updated": null
+  },
+  {
+   "name": "Mad Tea Party",
+   "status": "OPERATING",
+   "wait": 25,
+   "updated": null
+  },
+  {
+   "name": "Main Street Vehicles",
+   "status": "CLOSED",
+   "wait": null,
+   "updated": null
+  },
+  {
+   "name": "Mickey's PhilharMagic",
+   "status": "OPERATING",
+   "wait": 5,
+   "updated": null
+  },
+  {
+   "name": "Monsters, Inc. Laugh Floor",
+   "status": "CLOSED",
+   "wait": 10,
+   "updated": null
+  },
+  {
+   "name": "Peter Pan's Flight",
+   "status": "OPERATING",
+   "wait": 30,
+   "updated": null
+  },
+  {
+   "name": "Pirates of the Caribbean",
+   "status": "OPERATING",
+   "wait": 5,
+   "updated": null
+  },
+  {
+   "name": "Prince Charming Regal Carrousel",
+   "status": "OPERATING",
+   "wait": 5,
+   "updated": null
+  },
+  {
+   "name": "Seven Dwarfs Mine Train",
+   "status": "OPERATING",
+   "wait": 25,
+   "updated": null
+  },
+  {
+   "name": "Space Mountain",
+   "status": "OPERATING",
+   "wait": 5,
+   "updated": null
+  },
+  {
+   "name": "Swiss Family Treehouse",
+   "status": "OPERATING",
+   "wait": 5,
+   "updated": null
+  },
+  {
+   "name": "TRON Lightcycle / Run",
+   "status": "OPERATING",
+   "wait": 75,
+   "updated": null
+  },
+  {
+   "name": "The Barnstormer",
+   "status": "OPERATING",
+   "wait": 35,
+   "updated": null
+  },
+  {
+   "name": "The Hall of Presidents",
+   "status": "OPERATING",
+   "wait": 15,
+   "updated": null
+  },
+  {
+   "name": "The Magic Carpets of Aladdin",
+   "status": "OPERATING",
+   "wait": 20,
+   "updated": null
+  },
+  {
+   "name": "The Many Adventures of Winnie the Pooh",
+   "status": "OPERATING",
+   "wait": 15,
+   "updated": null
+  },
+  {
+   "name": "Tiana's Bayou Adventure",
+   "status": "REFURBISHMENT",
+   "wait": null,
+   "updated": null
+  },
+  {
+   "name": "Tomorrowland Speedway",
+   "status": "OPERATING",
+   "wait": 10,
+   "updated": null
+  },
+  {
+   "name": "Tomorrowland Transit Authority PeopleMover",
+   "status": "OPERATING",
+   "wait": 35,
+   "updated": null
+  },
+  {
+   "name": "Under the Sea - Journey of The Little Mermaid",
+   "status": "OPERATING",
+   "wait": 5,
+   "updated": null
+  },
+  {
+   "name": "Walt Disney World Railroad - Fantasyland",
+   "status": "CLOSED",
+   "wait": null,
+   "updated": null
+  },
+  {
+   "name": "Walt Disney World Railroad - Frontierland",
+   "status": "CLOSED",
+   "wait": null,
+   "updated": null
+  },
+  {
+   "name": "Walt Disney World Railroad - Main Street, U.S.A.",
+   "status": "CLOSED",
+   "wait": null,
+   "updated": null
+  },
+  {
+   "name": "Walt Disney's Carousel of Progress",
+   "status": "REFURBISHMENT",
+   "wait": null,
+   "updated": null
+  },
+  {
+   "name": "Walt Disney's Enchanted Tiki Room",
+   "status": "OPERATING",
+   "wait": 10,
+   "updated": null
+  }
+ ],
+ "shows": [
+  {
+   "name": "Meet Ariel at Her Grotto",
+   "times": [
+    "2026-11-22T10:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Meet Daring Disney Pals as Circus Stars at Pete's Silly Sideshow",
+   "times": [
+    "2026-11-22T10:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Flag Retreat",
+   "times": [
+    "2026-11-22T17:00:00-05:00"
+   ]
+  },
+  {
+   "name": "The Dapper Dans",
+   "times": [
+    "2026-11-22T09:00:00-05:00",
+    "2026-11-22T09:50:00-05:00",
+    "2026-11-22T10:40:00-05:00",
+    "2026-11-22T12:05:00-05:00",
+    "2026-11-22T13:10:00-05:00",
+    "2026-11-22T14:55:00-05:00",
+    "2026-11-22T15:55:00-05:00"
+   ]
+  },
+  {
+   "name": "Happily Ever After",
+   "times": [
+    "2026-11-22T20:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Meet Visiting Princesses at Princess Fairytale Hall",
+   "times": [
+    "2026-11-22T09:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Frozen Holiday Surprise",
+   "times": [
+    "2026-11-22T18:15:00-05:00"
+   ]
+  },
+  {
+   "name": "Mickey's Magical Friendship Faire",
+   "times": [
+    "2026-11-22T10:00:00-05:00",
+    "2026-11-22T11:35:00-05:00",
+    "2026-11-22T12:45:00-05:00",
+    "2026-11-22T14:55:00-05:00",
+    "2026-11-22T16:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Casey's Corner Pianist",
+   "times": [
+    "2026-11-22T10:50:00-05:00",
+    "2026-11-22T12:00:00-05:00",
+    "2026-11-22T13:15:00-05:00",
+    "2026-11-22T14:35:00-05:00",
+    "2026-11-22T15:15:00-05:00",
+    "2026-11-22T16:35:00-05:00",
+    "2026-11-22T17:30:00-05:00"
+   ]
+  },
+  {
+   "name": "Meet Mickey at Town Square Theater",
+   "times": [
+    "2026-11-22T09:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Meet Dashing Disney Pals as Circus Stars at Pete's Silly Sideshow",
+   "times": [
+    "2026-11-22T10:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Meet Cinderella and Princess Tiana at Princess Fairytale Hall",
+   "times": [
+    "2026-11-22T09:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Disney Starlight: Dream the Night Away",
+   "times": [
+    "2026-11-22T18:45:00-05:00",
+    "2026-11-22T21:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Disney Festival of Fantasy Parade",
+   "times": [
+    "2026-11-22T14:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Disney Adventure Friends Cavalcade",
+   "times": [
+    "2026-11-22T11:05:00-05:00"
+   ]
+  }
+ ]
+}

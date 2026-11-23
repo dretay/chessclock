@@ -18,8 +18,8 @@ MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", 
 PAGE1_ROWS = [("Sail date", 78, [("sm", 100), ("sd", 80), ("sy", 106)]),
               ("Today", 236, [("tm", 100), ("td", 80), ("ty", 106), None, ("hh", 80), ("mi", 80), ("ap", 84)])]
 PAGE1_BUTTONS = {"cancel": (24, 404, 150, 458), "calibrate": (162, 412, 274, 450), "fireworks": (282, 412, 394, 450),
-                 "ship": (402, 412, 514, 450), "wifi": (522, 412, 634, 450), "save": (646, 404, 776, 458)}
-PAGE1_SPLITS = [(156, "cancel"), (278, "calibrate"), (398, "fireworks"), (518, "ship"), (640, "wifi"), (9999, "save")]   # bottom row, by x
+                 "theme": (402, 412, 514, 450), "wifi": (522, 412, 634, 450), "save": (646, 404, 776, 458)}
+PAGE1_SPLITS = [(156, "cancel"), (278, "calibrate"), (398, "fireworks"), (518, "theme"), (640, "wifi"), (9999, "save")]   # bottom row, by x
 
 # ---- page 2: fireworks
 SCHEDULES = [("random", "Random"), ("show", "Nightly show"), ("both", "Both"), ("off", "Off")]
@@ -30,10 +30,13 @@ CHIP_X0, CHIP_W, CHIP_H, CHIP_GAP = 190, 136, 48, 10
 PAGE2_ROW_B = ("Show time", 226, [("fh", 80), ("fm", 80), ("fa", 84)])
 PAGE2_BUTTONS = {"back": (36, 404, 236, 458), "demo": (300, 412, 500, 450), "save": (564, 404, 764, 458)}
 
-# ---- page 3: the ship the fleet map follows
-PAGE3_PANEL = (20, 74, 780, 250)
-PAGE3_CHIP_ROWS = [100, 172]                                    # two rows of four ships
-PAGE3_BUTTONS = {"back": (36, 404, 236, 458), "save": (564, 404, 764, 458)}
+# ---- page 3: the theme's settings (the active module's, from its module.json: the cruise's ship
+# to follow, the castle's rides to show): a label, then its options as chips, a page at a time
+PAGE3_PANEL = (20, 74, 780, 398)
+PAGE3_LABEL_Y = 108                                             # the setting's label, and its note
+PAGE3_GRID = (36, 122, 3, 6, 38, 8)                             # x0, y0, columns, rows, chip height, gap
+PAGE3_BUTTONS = {"back": (36, 404, 236, 458), "prev": (290, 412, 370, 450), "next": (430, 412, 510, 450),
+                 "save": (564, 404, 764, 458)}
 
 # ---- page 4: WiFi (networks in range), and page 5: a keyboard for the password
 WIFI_STATUS_Y = 104                                             # "Connected to ..." under the title
@@ -65,7 +68,7 @@ def columns(row_cols, top):
 
 # every fixed piece of text, by font (numbers are drawn digit by digit)
 STRINGS = {
-    "title": ["Settings", "Fireworks", "Touch calibration", "Ship map", "WiFi"],
+    "title": ["Settings", "Fireworks", "Touch calibration", "Theme settings", "WiFi"],
     "label": ["Sail date", "Today", "Schedule", "Random", "Show time", " days to go", " day to go",
               "Today's the day!", "Already sailed", "Saved", "No changes", "Calibrated",
               "Tap the centre of the cross (1 of 4)", "Tap the centre of the cross (2 of 4)",
@@ -73,13 +76,13 @@ STRINGS = {
               "That didn't look right: nothing changed"],
     "small": ["date & time", "bursts", "nightly show", "back to the countdown", "Calibrate touch", "Fireworks ›",
               "Demo show", "Demo show on exit", "fireworks!",
-              "Ship map ›", "The map centres on this ship and shows what it reports.", "the ship to follow",
+              "Theme ›", "Nothing to set for this theme",
               "WiFi ›", "Touch", "Rescan", "Forget network", "Scanning...", "Not connected", "Connecting to ",
               "Connected to ", "No WiFi hardware (is the ESP32 connected?)", "Tap a network to join it",
               "open", "shift", "del", "123", "abc", "space", "Join", "Password for ", "Joining...",
               "Couldn't connect: check the password", "Saved on the board", "No networks found",
               "WiFi isn't running yet"],
-    "button": ["Cancel", "Save", "‹ Back", "Join"],
+    "button": ["Cancel", "Save", "‹ Back", "Join", "‹", "›"],
     "chip": [t for _, t in SCHEDULES] + [t for _, t in RATES],
     "value": MONTHS + ["AM", "PM"],
 }
@@ -88,7 +91,7 @@ FLEET = ["Magic", "Wonder", "Dream", "Fantasy", "Wish", "Treasure", "Destiny", "
 STRINGS["ship"] = FLEET
 STRINGS["small"] += ["Positions from ", " min ago", " h ago", " days ago", "Positions just in", "Example positions",
                      "at sea", "No position reported yet", "Beyond the Caribbean map"] + ["Disney " + n for n in FLEET]
-STRINGS["label"] += ["Disney " + n for n in FLEET] + ["Follow"]
+STRINGS["label"] += ["Disney " + n for n in FLEET] + ["Follow", "Rides"]
 STRINGS["chip"] += FLEET
 STRINGS["tiny"] = ["Imagery: NASA Blue Marble", "Imagery: NASA Black Marble"]
 CHAR_FONTS = ["small", "label"]   # every printable character on its own too (AIS destinations, WiFi names, the keyboard)

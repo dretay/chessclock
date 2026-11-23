@@ -64,6 +64,9 @@ def lighting(hour):
     return night, dusk
 
 
+# the drawing library's scene effects (vfx_effects): theme.json lists the ones its scene has
+EFFECTS = {"water": 1, "wake": 2, "smoke": 4, "gulls": 8, "dolphins": 16, "raft": 32}
+
 FADE_SECS = 0.6                                     # countdown <-> a module's screen
 
 
@@ -92,6 +95,9 @@ class App:
         if self.fx.vfx_open(self.fb_path.encode(), self.theme_dir.encode()) != 0:
             sys.exit("vacation: couldn't start the display (see above)")
         s, c = self.scene, self.scene["cards"]
+        # the scene's own effects (theme.json "effects"; all of them when it doesn't say: the ship's)
+        if "effects" in s:
+            self.fx.vfx_effects(sum(EFFECTS.get(e, 0) for e in s["effects"]))
         self.fx.vfx_scene(s["horizon"], *s["stacks"][0], *s["stacks"][1], int(s["smoke_scale"] * 256), int(s["fireworks_scale"] * 256),
                           *s["bow"], *s["stern"], c["center_x"], c["top"], c["gap"], c["label_gap"])
         tube = [v for pt in s.get("tube", []) for v in pt]

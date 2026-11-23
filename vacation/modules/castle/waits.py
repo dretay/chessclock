@@ -1,0 +1,111 @@
+"""Live ride wait times for the castle's screen (board.py), from ThemeParks.wiki, into
+$MODULE_DATA/waits.json.
+
+The castle module's service (the app's own service starts it, on a kernel with WiFi): every few
+minutes the park's live data (each ride's status and standby wait, the shows' times), and every hour
+its schedule (opening hours). ThemeParks.wiki's API is free and needs no key. PARK in vacation.conf
+picks the park (an entity id; default Magic Kingdom).
+
+waits.json, written whole each time (the screen just rereads it):
+    {"park": "Magic Kingdom", "updated": unix time, "example": false,
+     "hours": ["2026-11-22T09:00:00-05:00", "2026-11-22T23:00:00-05:00"],
+     "rides": [{"name": ..., "status": "OPERATING" | "DOWN" | "CLOSED" | "REFURBISHMENT",
+                "wait": minutes or null, "updated": unix time}, ...],
+     "shows": [{"name": ..., "times": ["2026-11-22T20:00:00-05:00", ...]}, ...]}
+Standard library only (urllib over TLS).
+"""
+import datetime, json, os, random, ssl, sys, time, urllib.request
+
+APP_DATA = os.environ.get("APP_DATA", "/apps/data/vacation")
+DATA = os.environ.get("MODULE_DATA") or os.path.join(APP_DATA, "castle")
+OUT = os.path.join(DATA, "waits.json")
+CONF_FILE = os.path.join(APP_DATA, "vacation.conf")
+API = "https://api.themeparks.wiki/v1/entity/"
+MAGIC_KINGDOM = "75ea578a-adc8-4116-a54d-dccb60765ef9"
+CA_FILE = "/etc/ssl/certs/ca-certificates.crt"           # Buildroot's ca-certificates
+LIVE_EVERY, SCHEDULE_EVERY = 5 * 60, 60 * 60
+
+
+def log(*a): print("waits:", *a, flush=True)
+
+
+def read_conf():
+    conf = {}
+    try:
+        for line in open(CONF_FILE):
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1); conf[k.strip()] = v.strip()
+    except OSError: pass
+    return conf
+
+
+CTX = ssl.create_default_context(cafile=CA_FILE if os.path.exists(CA_FILE) else None)
+
+
+def get(path):
+    req = urllib.request.Request(API + path, headers={"User-Agent": "licheepi-vacation-countdown"})
+    with urllib.request.urlopen(req, timeout=30, context=CTX) as r:
+        return json.load(r)
+
+
+def iso_time(text):
+    """ThemeParks.wiki's times ("2026-11-23T03:52:00.123Z") as unix time; None if not that."""
+    try: return datetime.datetime.fromisoformat(str(text).replace("Z", "+00:00")).timestamp()
+    except ValueError: return None
+
+
+def today_hours(schedule):
+    """Today's opening hours (the park's own date: from its local times), as [open, close] ISO strings."""
+    days = [s for s in schedule.get("schedule", []) if s.get("type") == "OPERATING"]
+    today = datetime.date.today().isoformat()
+    for s in days:
+        if s.get("date") == today: return [s.get("openingTime"), s.get("closingTime")]
+    return None
+
+
+def snapshot(park, live, hours):
+    rides, shows = [], []
+    for x in live.get("liveData", []):
+        kind = x.get("entityType")
+        if kind == "ATTRACTION":
+            q = (x.get("queue") or {}).get("STANDBY") or {}
+            rides.append({"name": x.get("name", ""), "status": x.get("status", ""), "wait": q.get("waitTime"),
+                          "updated": iso_time(x.get("lastUpdated"))})
+        elif kind == "SHOW" and x.get("showtimes"):
+            shows.append({"name": x.get("name", ""), "times": [t.get("startTime") for t in x["showtimes"] if t.get("startTime")]})
+    rides.sort(key=lambda r: r["name"])
+    return {"park": live.get("name") or park, "updated": time.time(), "example": False, "hours": hours, "rides": rides, "shows": shows}
+
+
+def write(data):
+    os.makedirs(DATA, exist_ok=True)
+    tmp = OUT + ".tmp"
+    with open(tmp, "w") as f: json.dump(data, f, indent=0)
+    os.replace(tmp, OUT)
+
+
+def main():
+    park = read_conf().get("PARK") or MAGIC_KINGDOM
+    hours, next_schedule, wait, said = None, 0.0, 30, None
+    while True:
+        if time.time() < 1.7e9:                                    # before 2023: no network time yet (TLS needs it)
+            if said != "clock": log("waiting for the clock (network time)"); said = "clock"
+            time.sleep(10); continue
+        try:
+            if time.time() >= next_schedule:
+                hours = today_hours(get(park + "/schedule")); next_schedule = time.time() + SCHEDULE_EVERY
+            data = snapshot(park, get(park + "/live"), hours)
+            write(data)
+            up = sum(1 for r in data["rides"] if r["status"] == "OPERATING")
+            log("%s: %d rides open of %d" % (data["park"], up, len(data["rides"])))
+            said, wait = None, 30
+            time.sleep(LIVE_EVERY)
+        except (OSError, ValueError) as e:                         # (urllib's errors are OSErrors)
+            if said != str(e): log("can't fetch: %s" % e); said = str(e)
+            time.sleep(wait + random.uniform(0, wait / 2)); wait = min(wait * 2, 900)
+
+
+if __name__ == "__main__":
+    try: main()
+    except KeyboardInterrupt: sys.exit(0)

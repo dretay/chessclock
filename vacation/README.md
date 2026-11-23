@@ -74,8 +74,20 @@ What the countdown counts down to is a **module**: a whole trip, in a folder of 
 | **screens** | e.g. `map.py` | shown in turn with the countdown: a class taking the app, with `run(seconds)`; module.json names its file and class and the settings for its seconds and on/off |
 | a **service** | `service` | its background job, e.g. fetching data; run in the module's folder with `MODULE_DATA` set |
 | its **data** | `/apps/data/vacation/ID/` | whatever it fetches or saves (`MODULE_DATA`, or `app.module.data_dir` for a screen) |
+| **settings** | module.json `settings` | its page in Settings > Theme (below) |
 
 The service writes, the screen reads: a dead network shows as old data, never a frozen screen.
+
+**Settings > Theme** is the active module's page. Its first `settings` entry: `key` (the
+vacation.conf setting it writes), `label` and `note`, `type` `one` (pick one) or `many` (pick any;
+stored joined with `|`), and its options: listed (`options`, with `strip` taken off their front on the
+chips), or the `rides` names in a file the service writes (`options_from`; its `*_example` version
+beside the module until then). `short_names` in module.json: shorter names for long ones, on the chips
+and the module's screens. Text from data is drawn letter by letter (`vacation_text.py`).
+
+A scene's `theme.json` lists the drawing library's effects it has (`effects`: `water`, `wake`,
+`smoke`, `gulls`, `dolphins`, `raft`); without the list, all of them (the ship). Fireworks, the window
+light and the cards are every scene's.
 
 **The cruise** (`modules/cruise/`): the Disney Dream scene (`scenes/dream/`, plates, window light and
 cards made by `tools/themegen`; `scenes/dream-blender/` is the Blender-rendered version, not
@@ -85,9 +97,16 @@ installed), the fleet map (`map.py`, its Caribbean chart in `map/`, made by
 `/apps/data/vacation/cruise/ais.key`. Until it has them, the map shows `ships_example.csv`
 (`tools/send_ships.py` puts a file there over USB).
 
-Still in the host until a second module needs otherwise: the drawing library's scene is ship-shaped
-(`engine: ship`), and Settings' "Ship map" page and the cruise's pre-drawn text are in
-`vacation_settings.py` / `vacation_layout.py`.
+**The castle** (`modules/castle/`): Cinderella Castle at Magic Kingdom (`scenes/magic-kingdom/`,
+rendered from the user's model by `tools/themegen/castle/build_castle.sh`: day, dusk and night from
+one camera, a light AI detail pass over all but the castle, parchment cards, the windows' light),
+with no sea or smoke; the wait-times board (`board.py`); and ride waits, park hours and show times
+from ThemeParks.wiki (`waits.py`, free, no key) into `/apps/data/vacation/castle/waits.json`, else
+`waits_example.json`. Settings > Theme picks the rides the board shows (`RIDES`); `SHOW_NAME` the
+fireworks show it names (Happily Ever After); `PARK` another park's ThemeParks.wiki id.
+
+Still in the host: the cruise's pre-drawn text (ship names) in `vacation_layout.py`, and the countdown's
+date setting (Settings' "Sail date"), shared by every module.
 
 ## Putting it on the board
 

@@ -3,8 +3,39 @@
   "name": "Disney cruise",
   "version": "1.0.0",
   "api": 1,
-  "scene": {"engine": "ship", "dir": "scenes", "default": "dream"},
+  "scene": {
+    "engine": "ship",
+    "dir": "scenes",
+    "default": "dream"
+  },
   "screens": [
-    {"id": "map", "file": "map.py", "class": "MapScreen", "enabled": "MAP", "secs": "MAP_SECS"}
+    {
+      "id": "map",
+      "file": "map.py",
+      "class": "MapScreen",
+      "enabled": "MAP",
+      "secs": "MAP_SECS"
+    }
+  ],
+  "settings": [
+    {
+      "key": "MAP_SHIP",
+      "label": "Follow",
+      "note": "the ship the map centres on",
+      "type": "one",
+      "options": [
+        "Disney Magic",
+        "Disney Wonder",
+        "Disney Dream",
+        "Disney Fantasy",
+        "Disney Wish",
+        "Disney Treasure",
+        "Disney Destiny",
+        "Disney Adventure"
+      ],
+      "strip": "Disney ",
+      "fallback": "SHIP",
+      "default": "Disney Dream"
+    }
   ]
 }
