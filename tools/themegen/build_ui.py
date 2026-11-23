@@ -82,5 +82,5 @@ os.makedirs(os.path.dirname(OUT), exist_ok=True)
 blob = bytearray(b"VUI1") + struct.pack("<H", len(entries))
 for name, img, ox, oy, adv in entries:
     blob += name.encode().ljust(64, b"\0") + struct.pack("<HHhhh", img.width, img.height, ox, oy, adv) + img.tobytes()
-with gzip.open(OUT, "wb", 9) as f: f.write(bytes(blob))
+with gzip.GzipFile(OUT, "wb", 9, mtime=0) as f: f.write(bytes(blob))   # (no timestamp: same content, same file)
 print("ui: %d images, %d bytes -> %s" % (len(entries), len(blob), OUT))

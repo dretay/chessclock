@@ -5,8 +5,8 @@ comes back (logging in first if needed).
 usage: run_on_board.py [--wait SECONDS] COMMAND [COMMAND ...]
   --wait  how long to collect output after the last command (default 3)
 
-e.g.  tools/run_on_board.py "tail /apps/data/chess/chess.log"
-      tools/run_on_board.py --wait 20 "app restart"
+e.g.  tools/board/run_on_board.py "tail /apps/data/chess/chess.log"
+      tools/board/run_on_board.py --wait 20 "app restart"
 """
 import sys
 import time

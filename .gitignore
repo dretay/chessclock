@@ -11,6 +11,8 @@
 # secrets: the aisstream.io API key (it belongs on the board, /apps/data/vacation/cruise/ais.key; this
 # only guards against a copy landing in the tree)
 ais.key
+# module signing keys (tools/modules/pack.py --key): never in the repository
+*.pem
 
 # Python caches (e.g. from running clock/fbclock.py on a desktop)
 __pycache__/
@@ -37,6 +39,6 @@ sim-out/
 /tools/wifi/work/
 /tools/wifi/out/
 
-# app folders laid out by tools/deploy_app.py, and the vacation library built for a desktop
+# app folders laid out by tools/board/deploy_app.py, and the vacation library built for a desktop
 /build/
 /vacation/fx/libvacfx.*

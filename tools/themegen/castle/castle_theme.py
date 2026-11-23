@@ -8,7 +8,7 @@ Reads   THEME_WORK (default tools/themegen/work/castle): ai/{day,dusk,night}.png
         (the windows' glass, white), positions.json
 Writes  vacation/modules/castle/scenes/magic-kingdom/ (THEME_OUT), what the drawing library loads:
   day.rgb.gz, dusk.rgb.gz, night.rgb.gz   800x480 raw RGB plates (night with a few stars)
-  ship.raw.gz                             800x480 bytes, 255 = not sky (fireworks go behind it)
+  mask.raw.gz                             800x480 bytes, 255 = not sky (fireworks go behind it)
   lights.bin.gz                           the windows' light: which pixels, how much, which window
   cards.bin.gz                            parchment flip-clock cards, "Have a magical day!", the colon
   settings_bg.rgb.gz                      the Settings screen's background
@@ -24,11 +24,11 @@ OUT = os.environ.get("THEME_OUT", os.path.join(REPO, "vacation", "modules", "cas
 LINING = os.path.join(REPO, "assets", "fonts", "CormorantGaramond-SemiBold-Lining.ttf")
 W, H = 800, 480
 os.makedirs(OUT, exist_ok=True)
-sys.path.insert(0, os.path.join(HERE, "..", "dream")); import card_extras            # (the colon, and the glowing text)
+sys.path.insert(0, os.path.join(HERE, "..", "cruise")); import card_extras            # (the colon, and the glowing text)
 
 
 def save_gz(name, data):
-    with gzip.open(os.path.join(OUT, name), "wb", compresslevel=9) as f: f.write(data)
+    with gzip.GzipFile(os.path.join(OUT, name), "wb", compresslevel=9, mtime=0) as f: f.write(data)   # (no timestamp: same content, same file)
 
 
 def premultiplied(img):
@@ -45,7 +45,7 @@ HORIZON = int(round(pos["horizon"]))
 notsky = Image.open(os.path.join(WORK, "renders", "mask.png")).getchannel("A").resize((W, H), Image.LANCZOS)
 notsky = notsky.point(lambda v: 255 if v > 100 else 0)
 notsky.paste(255, (0, HORIZON, W, H))                    # (and everything below the horizon)
-save_gz("ship.raw.gz", notsky.tobytes())
+save_gz("mask.raw.gz", notsky.tobytes())
 
 # ---- a few stars in the night sky (not on the castle, the trees or the moon's glow)
 def add_stars(img, n=120):
@@ -162,15 +162,12 @@ for img in (banner(), card_extras.colon(CH)):
     blob += struct.pack("<HH", img.width, img.height) + premultiplied(img)
 save_gz("cards.bin.gz", bytes(blob))
 
-# ---- where things are, for the drawing library (vacation.py reads it): no sea, smoke or wake here, so
-# their places are just out of the way
+# ---- for the drawing library (vacation.py reads it): none of the ship's effects (no sea, smoke, wake...),
+# so none of the ship's places either; the horizon is where the fireworks go up from
 scene = {
-    "engine": "ship",
     "effects": [],
     "horizon": HORIZON,
-    "stacks": [[-50, -50], [-50, -50]], "smoke_scale": 0.8,
     "fireworks_scale": 0.85,
-    "bow": [W - 1, H - 1], "stern": [0, H - 1], "mast": [-1, 0], "ambient_scale": 1.0, "tube": [],
     "cards": {"center_x": 170, "top": 16, "gap": 12, "label_gap": -1},
 }
 json.dump(scene, open(os.path.join(OUT, "theme.json"), "w"), indent=1)

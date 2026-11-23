@@ -7,8 +7,8 @@ usage:
   send_ships.py --ship NAME LAT LON [HEADING [SPEED]]   one ship, stamped with the time now
   send_ships.py --clear                                 remove it (the map goes back to the example positions)
 
-e.g.  tools/send_ships.py vacation/modules/cruise/ships_example.csv
-      tools/send_ships.py --ship Dream 27.3 -79.1 125 18
+e.g.  vacation/modules/cruise/tools/send_ships.py vacation/modules/cruise/ships_example.csv
+      vacation/modules/cruise/tools/send_ships.py --ship Dream 27.3 -79.1 125 18
 
 Writes /apps/data/vacation/cruise/ships.csv (the cruise module's data folder). One line per ship; a later line for the same ship replaces an
 earlier one, so --ship just adds a line.
@@ -16,11 +16,12 @@ earlier one, so --ship just adds a line.
 import os, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+BOARD_TOOLS = os.path.join(HERE, "..", "..", "..", "..", "tools", "board")
 REMOTE = "/apps/data/vacation/cruise/ships.csv"
 
 
 def board(*commands):
-    subprocess.run([sys.executable, os.path.join(HERE, "run_on_board.py"), "--wait", "3", *commands], check=True)
+    subprocess.run([sys.executable, os.path.join(BOARD_TOOLS, "run_on_board.py"), "--wait", "3", *commands], check=True)
 
 
 args = sys.argv[1:]
@@ -40,5 +41,5 @@ elif args[0] == "--ship":
 else:
     path = args[0]
     lines = [l for l in open(path).read().splitlines() if l.strip()]
-    subprocess.run([sys.executable, os.path.join(HERE, "push_to_board.py"), path, REMOTE], check=True)
+    subprocess.run([sys.executable, os.path.join(BOARD_TOOLS, "push_to_board.py"), path, REMOTE], check=True)
     print("sent %d lines" % len(lines))

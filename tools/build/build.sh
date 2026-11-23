@@ -3,12 +3,12 @@
 # between builds instead of in image layers: ~7 GB of disk per kind of build rather than the
 # builder's 100+.
 #
-#   tools/build.sh [--wifi] [--app chess|vacation] [--fresh]
+#   tools/build/build.sh [--wifi] [--app chess|vacation] [--fresh]
 #     --wifi    the WiFi build (ESP32 over SPI, TLS for Python); its own build tree
 #     --app     the app that starts at first boot (default chess; `app NAME` switches later)
 #     --fresh   start this kind of build over from the base image (e.g. after Buildroot misbehaves)
 #
-# -> build/images[-wifi]/ (sdcard.img, boot.vfat, rootfs.ext4, ...): flash with tools/flash_sd.sh.
+# -> build/images[-wifi]/ (sdcard.img, boot.vfat, rootfs.ext4, ...): flash with tools/board/flash_sd.sh.
 #
 # Needs the base image, licheepi-nano-mybase (README, "Building"). The whole Buildroot tree (its
 # sources, .config, downloads and build output) lives in a container volume (licheepi-out,
@@ -19,10 +19,10 @@
 # seeds it from the base image.
 #
 # Buildroot rebuilds what changed by itself, except a few things whose changes it can't see (a
-# kernel patch, a config fragment): tools/buildroot-make.sh rebuilds those when their files change.
+# kernel patch, a config fragment): tools/build/buildroot-make.sh rebuilds those when their files change.
 # `container volume rm licheepi-out licheepi-out-wifi` takes it all away.
 set -e
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 REPO=$(pwd)
 WIFI=0 APP=chess FRESH=
 while [ $# -gt 0 ]; do
@@ -56,5 +56,5 @@ container run --rm --cpus "${BUILD_CPUS:-8}" --memory "${BUILD_MEMORY:-4g}" \
 	-v "$VOL:/root/buildroot" \
 	-v "$REPO:/root/licheepi-nano" -v "$REPO/$IMAGES:/images" \
 	-e WIFI="$WIFI" -e DEFAULT_APP="$APP" \
-	"$BASE" /bin/bash /root/licheepi-nano/tools/buildroot-make.sh
-echo "images in $IMAGES/ (flash: tools/flash_sd.sh $IMAGES)"
+	"$BASE" /bin/bash /root/licheepi-nano/tools/build/buildroot-make.sh
+echo "images in $IMAGES/ (flash: tools/board/flash_sd.sh $IMAGES)"

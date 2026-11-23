@@ -2,11 +2,11 @@
 """Copy files (or folders) to the board over the serial console, near line speed.
 
 usage: push_to_board.py [--keep-running] [--force] LOCAL REMOTE [LOCAL REMOTE ...]
-e.g.   tools/push_to_board.py clock/fbclock.py /apps/chess/fbclock.py
-       tools/push_to_board.py vacation/modules/cruise/map/tiles /apps/vacation/modules/cruise/map/tiles      (a folder)
-(To update a whole app, tools/deploy_app.py does this for you.)
+e.g.   tools/board/push_to_board.py clock/fbclock.py /apps/chess/fbclock.py
+       tools/board/push_to_board.py vacation/modules/cruise/map/tiles /apps/vacation/modules/cruise/map/tiles      (a folder)
+(To update a whole app, tools/board/deploy_app.py does this for you.)
 Fastest: the board's micro-USB port plugged into the Mac (used by itself when it's there, see
-boardlib.py). Over UART0: tools/fast_serial.py, then CLOCK_BAUD=1562500 (13x the usual 115200).
+boardlib.py). Over UART0: tools/board/fast_serial.py, then CLOCK_BAUD=1562500 (13x the usual 115200).
 
 Only what's changed is sent: files whose checksum already matches the board's are skipped
 (--force sends them anyway); for a folder, just its new or changed files go, packed into one tar.

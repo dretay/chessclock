@@ -9,7 +9,7 @@ usage: boot_time.py [--bench URL DEVICE CHANNEL] [--secs N]
            power-cycle the board yourself
   --secs   how long to record (default 30)
 
-e.g.  tools/boot_time.py --bench http://localhost:8000 dp832a 1
+e.g.  tools/board/boot_time.py --bench http://localhost:8000 dp832a 1
 
 U-Boot's lines come out as they happen. The kernel's own timestamps start
 when it has unpacked itself, and with `quiet` it prints little, so the

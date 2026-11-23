@@ -2,7 +2,7 @@
 # Lays out the vacation countdown as an app folder (see docs/apps.md): install.sh DEST
 # CC: the board's C compiler (arm-linux-gcc from the Buildroot build), for the drawing library.
 # THEMES: extra scenes to install (a module's default scene, from its module.json, always is).
-# Used by board/licheepi_nano/post-image.sh (the SD card image) and tools/deploy_app.py.
+# Used by board/licheepi_nano/post-image.sh (the SD card image) and tools/board/deploy_app.py.
 set -e
 [ -n "$1" ] || { echo "usage: $0 DEST" >&2; exit 1; }
 SRC=$(cd "$(dirname "$0")" && pwd)
@@ -22,7 +22,7 @@ for m in "$SRC"/modules/*/; do
 	mkdir -p "$DEST/modules/$name"
 	for f in "$m"/* "$m"/.[!.]*; do
 		[ -e "$f" ] || continue
-		case "$(basename "$f")" in scenes|__pycache__) continue ;; esac
+		case "$(basename "$f")" in scenes|tools|__pycache__) continue ;; esac      # (tools/: the module's desktop helpers)
 		cp -R "$f" "$DEST/modules/$name/"
 	done
 	if [ -d "$m/scenes" ]; then

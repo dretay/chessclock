@@ -98,8 +98,11 @@ class App:
         # the scene's own effects (theme.json "effects"; all of them when it doesn't say: the ship's)
         if "effects" in s:
             self.fx.vfx_effects(sum(EFFECTS.get(e, 0) for e in s["effects"]))
-        self.fx.vfx_scene(s["horizon"], *s["stacks"][0], *s["stacks"][1], int(s["smoke_scale"] * 256), int(s["fireworks_scale"] * 256),
-                          *s["bow"], *s["stern"], c["center_x"], c["top"], c["gap"], c["label_gap"])
+        # (the ship's own places: its funnels' tops for the smoke, its bow and stern for the wake; a scene
+        # without those effects leaves them out)
+        stacks = s.get("stacks", [[-50, -50], [-50, -50]])
+        self.fx.vfx_scene(s["horizon"], *stacks[0], *stacks[1], int(s.get("smoke_scale", 0.8) * 256), int(s.get("fireworks_scale", 0.85) * 256),
+                          *s.get("bow", [799, 479]), *s.get("stern", [0, 479]), c["center_x"], c["top"], c["gap"], c["label_gap"])
         tube = [v for pt in s.get("tube", []) for v in pt]
         mast = s.get("mast", [-1, 0])
         self.fx.vfx_ambient(mast[0], mast[1], int(s.get("ambient_scale", 1.0) * 256), len(tube) // 2, (ctypes.c_int * max(1, len(tube)))(*tube))
@@ -122,11 +125,15 @@ class App:
     def load_conf(self):
         """The settings that can change while running (Settings saves them)."""
         c = self.conf
-        try: self.sail = datetime.date.fromisoformat(c.get("SAIL_DATE", "2027-02-16"))
+        # the trip's day (TRIP_DATE; SAIL_DATE in settings from before modules) and the time it counts down to
+        # on its last day (TRIP_TIME, else the module's own: the ship sails at 4 PM, the park opens at 9)
+        trip = c.get("TRIP_DATE") or c.get("SAIL_DATE") or "2027-02-16"
+        try: self.sail = datetime.date.fromisoformat(trip)
         except ValueError:
-            print("vacation: SAIL_DATE should look like 2027-02-16; got", c.get("SAIL_DATE")); self.sail = datetime.date.today()
+            print("vacation: TRIP_DATE should look like 2027-02-16; got", trip); self.sail = datetime.date.today()
         # when the ship sails that day: the last 24 hours count down in hours and minutes
-        try: self.sail_time = datetime.time.fromisoformat(c.get("SAIL_TIME", "16:00") or "16:00")
+        at = c.get("TRIP_TIME") or c.get("SAIL_TIME") or self.module.meta.get("countdown", {}).get("time", "16:00")
+        try: self.sail_time = datetime.time.fromisoformat(at)
         except ValueError: self.sail_time = datetime.time(16, 0)
         self.departure = datetime.datetime.combine(self.sail, self.sail_time)
         self.fx.vfx_lights_rate(int(c.get("LIGHTS_PER_MIN", "90")))

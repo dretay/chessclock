@@ -1,6 +1,6 @@
 # Disney Dream theme (photo version): sources
 
-The files here are made by `tools/themegen/dream/photo_theme.py` (after
+The files here are made by `tools/themegen/cruise/photo_theme.py` (after
 `tools/themegen/mockup/photo_windows.py`) from:
 
 | Source | What it is | Licence |

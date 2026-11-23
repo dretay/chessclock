@@ -31,7 +31,7 @@ path), Python 3 with Pillow, and the source files in `assets/`, listed in
 
 ### How it works
 
-1. `dream/build_livery.py`: the side-profile photo is warped onto a side elevation of the
+1. `cruise/build_livery.py`: the side-profile photo is warped onto a side elevation of the
    model (metres along the ship by metres up), using a few matched stations: bow,
    funnels, stern. This gives the real paint, windows and balconies. On top of that:
    - the bow scrollwork and anchor ornament come from the high-resolution bow photo
@@ -39,7 +39,7 @@ path), Python 3 with Pillow, and the source files in `assets/`, listed in
    - a stray porthole is removed
    - `windows.png` marks the glass that lights at night: cabin decks only, no funnels,
      nothing forward of the round porthole cluster
-2. `dream/scene.py` (run by Blender):
+2. `cruise/scene.py` (run by Blender):
    - imports the STL and projects the elevation onto its side faces
    - paints the rest by position: navy hull, gold stripe, red boot band, funnels, front
      window strips and bridge glass, aft glass
@@ -56,7 +56,7 @@ camera, `--info` (positions only, no render), `--no-livery`.
 ### The device theme (photo version)
 
 The countdown on the board uses the photograph (the mockup's approach 1), not the Blender renders:
-`dream/photo_theme.py` turns it into `vacation/modules/cruise/scenes/dream/`:
+`cruise/photo_theme.py` turns it into `vacation/modules/cruise/scenes/dream/`:
 - day, dusk and night plates (graded from the photo; the night one has stars)
 - the ship mask
 - the window light: built from the photo's glass, with its glow baked in, grouped into windows

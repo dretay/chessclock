@@ -1,6 +1,6 @@
 #!/bin/sh
 # Lays out the chess clock as an app folder (see docs/apps.md): install.sh DEST
-# Used by board/licheepi_nano/post-image.sh (the SD card image) and tools/deploy_app.py.
+# Used by board/licheepi_nano/post-image.sh (the SD card image) and tools/board/deploy_app.py.
 set -e
 [ -n "$1" ] || { echo "usage: $0 DEST" >&2; exit 1; }
 SRC=$(cd "$(dirname "$0")" && pwd)

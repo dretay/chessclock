@@ -1,10 +1,10 @@
 #!/bin/bash
 # Rebuild the Disney Dream theme from its sources:
-#   1. the photo livery (dream/build_livery.py)       assets/dream  -> work/dream/livery
-#   2. the Blender plates, double size (dream/scene.py)                -> work/dream/renders
+#   1. the photo livery (cruise/build_livery.py)      assets/dream  -> work/dream/livery
+#   2. the Blender plates, double size (cruise/scene.py)               -> work/dream/renders
 #   3. the panel-A window mask, the Blender plates at 800x480, the mockup page and a preview sheet
 #                                                                      -> vacation/modules/cruise/scenes/dream-blender, work/dream/mockup
-#   4. the device theme from the photo (dream/photo_theme.py)          -> vacation/modules/cruise/scenes/dream
+#   4. the device theme from the photo (cruise/photo_theme.py)         -> vacation/modules/cruise/scenes/dream
 # Needs Blender (BLENDER=..., default the macOS app), Python 3 with Pillow, and the
 # source files in assets/ (see vacation/modules/cruise/scenes/dream/SOURCES.md). Takes ~15 min on an M2.
 #
@@ -28,12 +28,12 @@ mkdir -p "$REN"
 
 render() {   # render OUT_DIR LOOK [camera options...]
   local out="$1" look="$2"; shift 2
-  "$BLENDER" -b -P "$HERE/dream/scene.py" -- --out "$out" --look "$look" --samples $SAMPLES --res-scale $SCALE "$@" 2>&1 \
+  "$BLENDER" -b -P "$HERE/cruise/scene.py" -- --out "$out" --look "$look" --samples $SAMPLES --res-scale $SCALE "$@" 2>&1 \
     | grep -E "Error|Traceback" || true
   [ -f "$out/$look.png" ] || { echo "render failed: $look"; exit 1; }
 }
 
-echo "livery..."; python3 "$HERE/dream/build_livery.py" >/dev/null
+echo "livery..."; python3 "$HERE/cruise/build_livery.py" >/dev/null
 for L in day dusk night_dark night_lit mask; do echo "render $L..."; render "$REN" $L; done
 echo "close-ups..."
 render "$REN/bow" day --az 62 --el 8 --dist 330 --lens 50 --shift 0.05 && mv "$REN/bow/day.png" "$REN/closeup_bow.png"
@@ -42,4 +42,4 @@ echo "page..."
 python3 "$HERE/mockup/photo_windows.py"
 python3 "$HERE/mockup/build_page.py"
 echo "device theme (the photo version)..."
-python3 "$HERE/dream/photo_theme.py"
+python3 "$HERE/cruise/photo_theme.py"

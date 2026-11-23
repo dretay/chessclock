@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "api": 1,
   "scene": {
-    "engine": "ship",
+    "engine": "scene",
     "dir": "scenes",
     "default": "magic-kingdom"
   },
@@ -43,5 +43,10 @@
     "Walt Disney World Railroad - Frontierland": "Railroad: Frontierland",
     "Walt Disney World Railroad - Main Street, U.S.A.": "Railroad: Main Street",
     "Walt Disney World Railroad - Fantasyland": "Railroad: Fantasyland"
+  },
+  "countdown": {
+    "date_label": "Park day",
+    "after": "Already there",
+    "time": "09:00"
   }
 }

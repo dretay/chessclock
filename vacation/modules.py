@@ -2,12 +2,13 @@
 
 A module is a folder with a module.json:
     {"id": "cruise", "name": "Disney cruise", "version": "1.0.0", "api": 1,
-     "scene": {"engine": "ship", "dir": "scenes", "default": "dream"},
+     "scene": {"engine": "scene", "dir": "scenes", "default": "dream"},
      "screens": [{"id": "map", "file": "map.py", "class": "MapScreen", "enabled": "MAP", "secs": "MAP_SECS"}]}
 and, by convention, an executable `service` (its background job, run by the app's own service).
 
 - the scene: what's behind the countdown, a folder in scene.dir (vacation.conf's THEME picks one;
-  scene.default otherwise). engine "ship" is the only one the drawing library has so far.
+  scene.default otherwise). engine "scene": the drawing library's (vfx_*); its theme.json says which
+  of its effects the scene has ("effects"; all of them, the ship's, if it doesn't say).
 - screens: shown in turn with the countdown, each for its "secs" setting (seconds) while its
   "enabled" setting isn't 0. A screen is a class taking the App, with run(seconds) (see map.py).
 - data: the module keeps whatever it fetches or saves in its own folder, $APP_DATA/<id>

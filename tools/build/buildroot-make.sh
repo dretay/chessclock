@@ -1,13 +1,13 @@
 #!/bin/bash
-# Runs inside the build container for tools/build.sh (see there): the Dockerfile's fast build, done
+# Runs inside the build container for tools/build/build.sh (see there): the Dockerfile's fast build, done
 # incrementally in a Buildroot tree that persists (/root/buildroot, a volume). WIFI=0|1,
 # DEFAULT_APP; the repository at /root/licheepi-nano; the images go to /images.
 set -e
 BR=/root/buildroot; EXT=/root/licheepi-nano; OUT=$BR/output
 cd "$BR"
 
-# (tools/build.sh seeds the volume from the base image before the first build)
-[ -d "$OUT/build" ] || { echo "the build tree is empty: run tools/build.sh, which seeds it"; exit 1; }
+# (tools/build/build.sh seeds the volume from the base image before the first build)
+[ -d "$OUT/build" ] || { echo "the build tree is empty: run tools/build/build.sh, which seeds it"; exit 1; }
 
 BR2_EXTERNAL=$EXT make licheepi_nano_defconfig >/dev/null
 if [ "$WIFI" = 1 ]; then

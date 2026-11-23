@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+"""Check the vacation countdown and its modules on a desktop, with the device's own drawing code:
+
+    tools/test/check.py                 the checks below, and renders into build/test/now/
+    tools/test/check.py --save NAME     ... and keep those renders as the baseline NAME (build/test/NAME/)
+    tools/test/check.py --compare NAME  ... and compare them with the baseline NAME, pixel for pixel
+
+1. every module's module.json: parses, and the files it names are there (its screens, its default
+   scene with everything the drawing library loads, an executable service if it has one);
+2. every Python file of the app and its modules compiles; and each module's files as vacation/install.sh
+   lays them out are exactly what tools/modules/pack.py packs (one rule, two places);
+3. renders, per module: the countdown at noon and at 10 PM, and its screens (with their example data),
+   on the preview clock (VACATION_SIM_CLOCK: the same frames every run), as PNGs, with the frames'
+   SHA-256 in hashes.json. --compare reports which differ (and writes a diff image of each).
+
+Run it before and after a change that shouldn't change what's on screen (--save, then --compare).
+Needs a C compiler (cc), zlib and Pillow. Exits non-zero if a check fails or a render differs.
+"""
+import glob, hashlib, json, os, shutil, subprocess, sys, tempfile
+
+REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+APP = os.path.join(REPO, "vacation")
+OUT = os.path.join(REPO, "build", "test")
+W, H = 800, 480
+SCENE_FILES = ("day.rgb.gz", "dusk.rgb.gz", "night.rgb.gz", "lights.bin.gz", "cards.bin.gz", "theme.json")
+failures = []
+
+
+def fail(msg): failures.append(msg); print("FAIL", msg)
+
+
+def check_modules():
+    mods = sorted(glob.glob(os.path.join(APP, "modules", "*", "module.json")))
+    if not mods: fail("no modules")
+    for p in mods:
+        d = os.path.dirname(p); name = os.path.basename(d)
+        try: m = json.load(open(p))
+        except ValueError as e: fail("%s: module.json: %s" % (name, e)); continue
+        for k in ("id", "name", "version", "api", "scene"):
+            if k not in m: fail("%s: module.json has no %s" % (name, k))
+        if m.get("id") != name: fail("%s: id is %r, its folder %r" % (name, m.get("id"), name))
+        sc = m.get("scene", {}); scene = os.path.join(d, sc.get("dir", "scenes"), sc.get("default", ""))
+        for f in SCENE_FILES:
+            if not os.path.exists(os.path.join(scene, f)): fail("%s: scene %s has no %s" % (name, sc.get("default"), f))
+        if not (os.path.exists(os.path.join(scene, "mask.raw.gz")) or os.path.exists(os.path.join(scene, "ship.raw.gz"))):
+            fail("%s: scene %s has no mask.raw.gz" % (name, sc.get("default")))
+        for s in m.get("screens", []):
+            if not os.path.exists(os.path.join(d, s.get("file", ""))): fail("%s: screen %s: no %s" % (name, s.get("id"), s.get("file")))
+        svc = os.path.join(d, "service")
+        if os.path.exists(svc) and not os.access(svc, os.X_OK): fail("%s: service isn't executable" % name)
+        for st in m.get("settings", []):
+            if st.get("type") not in ("one", "many"): fail("%s: setting %s: type %r" % (name, st.get("key"), st.get("type")))
+            if "options" not in st and "options_from" not in st: fail("%s: setting %s has no options" % (name, st.get("key")))
+    return [os.path.basename(os.path.dirname(p)) for p in mods]
+
+
+def check_python():
+    for p in glob.glob(os.path.join(APP, "*.py")) + glob.glob(os.path.join(APP, "modules", "*", "*.py")):
+        try: compile(open(p).read(), p, "exec")
+        except SyntaxError as e: fail("compile %s: %s" % (os.path.relpath(p, REPO), e))
+
+
+def check_packing(mods):
+    sys.path.insert(0, os.path.join(REPO, "tools", "modules")); import pack
+    tmp = tempfile.mkdtemp(prefix="vacation-install-")
+    r = subprocess.run(["sh", os.path.join(APP, "install.sh"), os.path.join(tmp, "app")], env=dict(os.environ, CC="cc"),
+                       capture_output=True, text=True)
+    if r.returncode: fail("install.sh: %s" % r.stderr[-300:]); return
+    for mod in mods:
+        root = os.path.join(tmp, "app", "modules", mod); laid = set()
+        for d, _, fs in os.walk(root):
+            laid |= {os.path.relpath(os.path.join(d, f), root) for f in fs if not f.endswith(".pyc")}
+        packed = {rel for rel, _ in pack.files(mod)[0]}
+        if laid != packed: fail("%s: install.sh and pack.py differ: %s" % (mod, sorted(laid ^ packed)[:6]))
+        else: print("packing", mod, "matches install.sh (%d files)" % len(packed))
+    shutil.rmtree(tmp, ignore_errors=True)
+
+
+def render(mods, out):
+    from PIL import Image
+    os.makedirs(out, exist_ok=True)
+    tmp = tempfile.mkdtemp(prefix="vacation-check-")
+    lib = os.path.join(tmp, "libvacfx.so")
+    r = subprocess.run(["cc", "-O2", "-shared", "-fPIC", "-o", lib, os.path.join(APP, "fx", "vacfx.c"), "-lz"], capture_output=True, text=True)
+    if r.returncode: fail("compiling the drawing library: %s" % r.stderr[-400:]); return {}
+    F = W * H * 4; hashes = {}
+    for mod in mods:
+        data = os.path.join(tmp, mod); os.makedirs(data)
+        conf = os.path.join(data, "vacation.conf")
+        with open(conf, "w") as f: f.write(open(os.path.join(APP, "vacation.conf")).read() + "\nMODULE=%s\nTHEME=\n" % mod)
+        env = dict(os.environ, APP_DATA=data, VACATION_LIB=lib, VACATION_CONF=conf, VACATION_NOW="2026-11-22T12:00",
+                   VACATION_SIM_CLOCK="0", VACATION_FB=os.path.join(tmp, "fb.raw"))
+        shots = [("noon", {"VACATION_HOUR": "12", "VACATION_SIM_END": "2", "VACATION_MAP_AFTER": "99"}, -1),
+                 ("night", {"VACATION_HOUR": "22", "VACATION_SIM_END": "2", "VACATION_MAP_AFTER": "99"}, -1),
+                 ("screen", {"VACATION_HOUR": "12", "VACATION_SIM_END": "4", "VACATION_MAP_AFTER": "1"}, 0.5)]
+        for shot, extra, at in shots:
+            rec = os.path.join(tmp, "rec.raw")
+            if os.path.exists(rec): os.remove(rec)
+            r = subprocess.run([sys.executable, os.path.join(APP, "vacation.py")], env=dict(env, VACATION_RECORD=rec, **extra),
+                               capture_output=True, text=True, cwd=APP)
+            if r.returncode or not os.path.exists(rec): fail("%s %s: the app failed: %s" % (mod, shot, r.stderr[-400:])); continue
+            raw = open(rec, "rb").read(); n = len(raw) // F
+            frame = raw[(n - 1) * F:n * F] if at < 0 else raw[int(n * at) * F:(int(n * at) + 1) * F]
+            key = "%s-%s" % (mod, shot)
+            hashes[key] = hashlib.sha256(raw).hexdigest()                 # (every frame: the whole run must match)
+            Image.frombytes("RGB", (W, H), frame, "raw", "BGRX").save(os.path.join(out, key + ".png"))
+            print("rendered", key, "(%d frames)" % n)
+    json.dump(hashes, open(os.path.join(out, "hashes.json"), "w"), indent=1)
+    shutil.rmtree(tmp, ignore_errors=True)
+    return hashes
+
+
+def compare(now, name):
+    from PIL import Image, ImageChops
+    base = os.path.join(OUT, name)
+    try: old = json.load(open(os.path.join(base, "hashes.json")))
+    except OSError: fail("no baseline %s (make one with --save %s)" % (name, name)); return
+    for k in sorted(set(old) | set(now)):
+        if k not in now or k not in old: fail("%s: only in %s" % (k, "the baseline" if k in old else "this run")); continue
+        if old[k] == now[k]: print("same", k); continue
+        fail("%s differs from the baseline %s" % (k, name))
+        a, b = os.path.join(base, k + ".png"), os.path.join(OUT, "now", k + ".png")
+        if os.path.exists(a) and os.path.exists(b):
+            d = ImageChops.difference(Image.open(a).convert("RGB"), Image.open(b).convert("RGB")).point(lambda v: min(255, v * 8))
+            d.save(os.path.join(OUT, "now", k + ".diff.png")); print("    diff:", os.path.relpath(os.path.join(OUT, "now", k + ".diff.png"), REPO))
+
+
+def main():
+    args = sys.argv[1:]
+    mods = check_modules(); check_python(); check_packing(mods)
+    now = render(mods, os.path.join(OUT, "now"))
+    if "--save" in args:
+        name = args[args.index("--save") + 1]; dst = os.path.join(OUT, name)
+        shutil.rmtree(dst, ignore_errors=True); shutil.copytree(os.path.join(OUT, "now"), dst); print("baseline saved:", os.path.relpath(dst, REPO))
+    if "--compare" in args: compare(now, args[args.index("--compare") + 1])
+    print("%d problem(s)" % len(failures) if failures else "all good")
+    sys.exit(1 if failures else 0)
+
+
+if __name__ == "__main__":
+    main()

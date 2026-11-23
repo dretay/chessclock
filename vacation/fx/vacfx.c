@@ -16,7 +16,7 @@
  * particles and cards over them, and copies just those spans to the screen.
  *
  * Fixed-point throughout (the ARM926 has no FPU): positions in 1/256 px, levels 0..256.
- * Theme files: see tools/themegen/dream/photo_theme.py.
+ * Theme files: see tools/themegen/cruise/photo_theme.py.
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -718,7 +718,11 @@ int vfx_open(const char *fbdev, const char *theme) {
     /* images */
     const char *names[3] = {"day.rgb.gz", "dusk.rgb.gz", "night.rgb.gz"};
     for (int k = 0; k < 3; k++) { size_t n; plate[k] = gzload(theme, names[k], &n); if (!plate[k] || n != W * H * 3) { fprintf(stderr, "vacfx: bad %s\n", names[k]); return -1; } }
-    size_t n; uint8_t *m = gzload(theme, "ship.raw.gz", &n); if (!m || n != W * H) return -1;
+    /* the scene's mask: 1 where it isn't sky (the ship, the castle, trees...): no water there, and fireworks
+       go behind it (mask.raw.gz; ship.raw.gz in scenes made before the castle) */
+    char mp[600]; snprintf(mp, sizeof mp, "%s/mask.raw.gz", theme);
+    size_t n; uint8_t *m = gzload(theme, access(mp, F_OK) == 0 ? "mask.raw.gz" : "ship.raw.gz", &n);
+    if (!m || n != W * H) return -1;
     ship = m; for (int i = 0; i < W * H; i++) ship[i] = ship[i] > 127;
     uint8_t *lb = gzload(theme, "lights.bin.gz", &n);
     if (!lb || memcmp(lb, "VLT1", 4)) { fprintf(stderr, "vacfx: bad lights\n"); return -1; }

@@ -1,7 +1,9 @@
 # Chess Clock
 
-The application this image is built around: a full-screen clock for the
-Lichee Pi Nano's 5" 800x480 touch screen.
+One of the [apps](../docs/apps.md) (the first one: the project started as this clock): a
+full-screen clock for the Lichee Pi Nano's 5" 800x480 touch screen.
+
+![The chess clock](../docs/clock.png)
 
 * **Left:** a chessboard replaying famous games, one sliding move every 3
   seconds. Each game starts with its name and players in a caption.
@@ -33,6 +35,19 @@ pre-compiled, and by saving the drawn chess pieces and the Settings screen to
 the SD card (`/apps/data/chess/cache`) the first time they are drawn. The
 first start after flashing takes a few seconds longer while it fills the
 cache; the cache clears itself whenever the program changes.
+
+## First boot
+
+The image starts the chess clock unless it was built with `--app vacation` (`app chess` on the board
+switches to it). A chess knight splash appears within a few seconds, then the clock. **Set the
+time:** press and hold the screen until Settings opens (two seconds: the clock's plunger sinks as you
+hold, so a passing tap can't change anything; a quick tap shows the game's name instead), use the
+arrows, and press **Save**. Adjust the brightness there too (night runs 9 PM to 7 AM, with a gentle
+fade between them), or turn the display upside down. Settings are kept on the SD card, so they
+survive power cuts; the time itself doesn't (the board has no clock battery; a DS3231 module on the
+touch chip's I2C bus would fix that).
+
+![The settings screen](../docs/settings.png)
 
 ## Files
 
@@ -81,8 +96,8 @@ cd /apps/chess && python3 fbclock.py --touch-debug   # (stopped) print raw and s
 ```
 
 To try a changed `fbclock.py` on the board without reflashing,
-`tools/deploy_app.py chess` copies the changed files over the serial console
-and restarts the clock. `tools/simulate.py` checks the
+`tools/board/deploy_app.py chess` copies the changed files over the serial console
+and restarts the clock. `clock/tools/simulate.py` checks the
 animations and touch handling on a desktop first.
 
 To recalibrate the touch screen: stop the clock, run `--touch-debug`, tap near

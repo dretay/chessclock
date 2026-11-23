@@ -5,7 +5,7 @@
 # steps below force the kernel, BusyBox, U-Boot and the boot script to be
 # rebuilt. The apps are laid out afresh every time (board/licheepi_nano/post-image.sh).
 #
-# For tools/deploy_app.py, which compiles an app's C part, tag this build's toolchain too
+# For tools/board/deploy_app.py, which compiles an app's C part, tag this build's toolchain too
 # (instant once the build has run, as every step is cached):
 #   container build --build-arg BASE_IMAGE=licheepi-nano-mybase --target local -t licheepi-nano-dev .
 

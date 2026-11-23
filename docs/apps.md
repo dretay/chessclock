@@ -9,7 +9,7 @@ The SD card holds a **base system** and, separately, the **apps** that run on it
 | 3 (ext4, 128 MB) | `/apps` | the apps, and their settings and logs | `board/licheepi_nano/post-image.sh`, from `clock/` and `vacation/` |
 
 The base system knows nothing about any one app, so changing an app never means rebuilding the
-image: `tools/deploy_app.py` copies it over. The image comes with every app on it, and one starts
+image: `tools/board/deploy_app.py` copies it over. The image comes with every app on it, and one starts
 at boot.
 
 ## On the board
@@ -59,24 +59,24 @@ The base system provides Python 3.11 (with ctypes), Pillow, FreeType, the DejaVu
 an image rebuild once, for that.
 
 To add an app: give its folder an `install.sh` and a `run`, and add it to `APPS` in
-`board/licheepi_nano/post-image.sh` and `tools/deploy_app.py`.
+`board/licheepi_nano/post-image.sh` and `tools/board/deploy_app.py`.
 
 ## Changing an app
 
 ```sh
-tools/deploy_app.py vacation            # lay it out and copy the changed files to the board
-tools/deploy_app.py --use chess         # ... and make it the app that runs
+tools/board/deploy_app.py vacation            # lay it out and copy the changed files to the board
+tools/board/deploy_app.py --use chess         # ... and make it the app that runs
 ```
 
-It compiles in the build container, so tag the fast build's toolchain once (the Dockerfile's top
-comment has the command; it's instant after a build). Copying is fastest with the board's micro-USB
-port plugged into the Mac, which the tools use by themselves when it's there (see the README's
-*Development Tools*); over UART0, `tools/fast_serial.py` first, then `CLOCK_BAUD=1562500`. Files removed from an app aren't removed from the board.
+It compiles any C with the board's compiler, from `tools/build/build.sh`'s build tree (so build once
+first; with Docker instead, the Dockerfile's toolchain image: its top comment has the command). Copying is fastest with the board's micro-USB
+port plugged into the Mac, which the tools use by themselves when it's there (see
+[tools](tools.md)); over UART0, `tools/board/fast_serial.py` first, then `CLOCK_BAUD=1562500`. Files removed from an app aren't removed from the board.
 
 ## Changing the base system
 
-Rebuild the image (the README's *Building*), then write it to the card with
-`tools/flash_sd.sh DIST_DIR` (macOS). By default that writes just the first two partitions, the
+Rebuild the image ([building](building.md)), then write it to the card with
+`tools/board/flash_sd.sh build/images` (macOS). By default that writes just the first two partitions, the
 kernel and the base system, so the apps and their settings stay; `--uboot` adds U-Boot, and `--all`
 writes the whole `sdcard.img`, which resets the apps and their settings to the image's (needed the
 first time, or if the partition sizes ever change). It finds the card, shows it, and asks first.

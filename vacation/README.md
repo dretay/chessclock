@@ -64,72 +64,34 @@ the board, with the same folders as here. Its settings, saved time and log are i
 
 ## Modules
 
-What the countdown counts down to is a **module**: a whole trip, in a folder of its own in
-`modules/`. `vacation.conf`'s `MODULE` picks one (`cruise` by default); `modules.py` loads it.
-
-| A module has | | |
-|---|---|---|
-| `module.json` | | its id, name, version, the host `api` it was made for, its scene and its screens |
-| a **scene** | `scenes/NAME/` | what's behind the countdown (`THEME` picks one, else module.json's default) |
-| **screens** | e.g. `map.py` | shown in turn with the countdown: a class taking the app, with `run(seconds)`; module.json names its file and class and the settings for its seconds and on/off |
-| a **service** | `service` | its background job, e.g. fetching data; run in the module's folder with `MODULE_DATA` set |
-| its **data** | `/apps/data/vacation/ID/` | whatever it fetches or saves (`MODULE_DATA`, or `app.module.data_dir` for a screen) |
-| **settings** | module.json `settings` | its page in Settings > Theme (below) |
-
-The service writes, the screen reads: a dead network shows as old data, never a frozen screen.
-
-**Settings > Theme** is the active module's page. Its first `settings` entry: `key` (the
-vacation.conf setting it writes), `label` and `note`, `type` `one` (pick one) or `many` (pick any;
-stored joined with `|`), and its options: listed (`options`, with `strip` taken off their front on the
-chips), or the `rides` names in a file the service writes (`options_from`; its `*_example` version
-beside the module until then). `short_names` in module.json: shorter names for long ones, on the chips
-and the module's screens. Text from data is drawn letter by letter (`vacation_text.py`).
-
-A scene's `theme.json` lists the drawing library's effects it has (`effects`: `water`, `wake`,
-`smoke`, `gulls`, `dolphins`, `raft`); without the list, all of them (the ship). Fireworks, the window
-light and the cards are every scene's.
-
-**The cruise** (`modules/cruise/`): the Disney Dream scene (`scenes/dream/`, plates, window light and
-cards made by `tools/themegen`; `scenes/dream-blender/` is the Blender-rendered version, not
-installed), the fleet map (`map.py`, its Caribbean chart in `map/`, made by
-`tools/themegen/build_map.py`), and live ship positions from AIS (`ais.py`, aisstream.io) into
-`/apps/data/vacation/cruise/ships.csv`. AIS needs WiFi and an API key in
-`/apps/data/vacation/cruise/ais.key`. Until it has them, the map shows `ships_example.csv`
-(`tools/send_ships.py` puts a file there over USB).
-
-**The castle** (`modules/castle/`): Cinderella Castle at Magic Kingdom (`scenes/magic-kingdom/`,
-rendered from the user's model by `tools/themegen/castle/build_castle.sh`: day, dusk and night from
-one camera, a light AI detail pass over all but the castle, parchment cards, the windows' light),
-with no sea or smoke; the wait-times board (`board.py`); and ride waits, park hours and show times
-from ThemeParks.wiki (`waits.py`, free, no key) into `/apps/data/vacation/castle/waits.json`, else
-`waits_example.json`. Settings > Theme picks the rides the board shows (`RIDES`); `SHOW_NAME` the
-fireworks show it names (Happily Ever After); `PARK` another park's ThemeParks.wiki id.
-
-Still in the host: the cruise's pre-drawn text (ship names) in `vacation_layout.py`, and the countdown's
-date setting (Settings' "Sail date"), shared by every module.
+What it counts down to is a **module**, a whole trip in a folder of `modules/`: the cruise (the
+Disney Dream, the fleet map, live AIS positions) or the castle (Cinderella Castle, ride wait times).
+`MODULE` in vacation.conf picks one. The format, the two modules, packing and signing them:
+[docs/modules.md](../docs/modules.md).
 
 ## Putting it on the board
 
 Every image has it. To make it the one that starts at first boot, build with
 `--build-arg APP=vacation`; on the board, `app vacation` switches to it. To try a change without
-reflashing: `tools/deploy_app.py vacation`.
+reflashing: `tools/board/deploy_app.py vacation`.
 
 ## Settings
 
 **Press and hold** the picture for two seconds (a bar fills under the cards) for Settings.
-Page one: the sail date, and today's date and time (the board has no clock battery; the app also
+Page one: the trip's date (the module's name for it: "Sail date", "Park day"), and today's date and time (the board has no clock battery; the app also
 saves the time every five minutes and puts it back at start-up, so after a power cut it's only
 behind by however long the power was off), and Calibrate touch. **Fireworks ›** opens page two:
 when the fireworks go up (random, a nightly show, both, or off), how often the random ones do,
-and the show's time. Save or Cancel goes back to the countdown.
+and the show's time. **Theme ›**: the module's own setting (the ship the map follows, the rides the
+wait-times board shows). **WiFi ›**: the networks in range. Save or Cancel goes back to the countdown.
 
 `/apps/data/vacation/vacation.conf`, `KEY=VALUE` lines:
 
 | Key | Default | |
 |---|---|---|
-| `SAIL_DATE` | `2027-02-16` | the day it counts down to |
-| `MODULE` | `cruise` | the trip: a folder in `modules/` (see *Modules*) |
-| `THEME` | `dream` | the module's scene: a folder in its `scenes/` |
+| `TRIP_DATE` | `2027-02-16` | the day it counts down to (`SAIL_DATE` in older settings works too) |
+| `MODULE` | `cruise` | the trip: a folder in `modules/` ([modules](../docs/modules.md)) |
+| `THEME` | empty | the module's scene: a folder in its `scenes/` (empty: its default) |
 | `LIGHTS_PER_MIN` | `90` | cabin windows switching per minute |
 | `FIREWORKS_MODE` | `random` | `random` (a few rockets now and then through the night), `show` (a two-minute show every night at `FIREWORKS_SHOW_TIME`), `both`, or `off` |
 | `FIREWORKS_EVERY_MIN` | `15` | how often (on average) the random ones go up at night |

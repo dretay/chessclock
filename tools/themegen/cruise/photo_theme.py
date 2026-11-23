@@ -7,7 +7,7 @@ Writes  vacation/modules/cruise/scenes/dream/ (THEME_OUT), everything ready for 
         no image decoding beyond zlib:
   day.rgb.gz, dusk.rgb.gz, night.rgb.gz   800x480 raw RGB plates (dusk and night are graded
                                           from the day photo here, with the mockup's formula)
-  ship.raw.gz                             800x480 bytes, 255 = ship (water and fireworks stay off it)
+  mask.raw.gz                             800x480 bytes, 255 = ship (water and fireworks stay off it)
   lights.bin.gz                           the window light: which pixels, how much light, which window
   cards.bin.gz                            the flip-clock cards: each digit's top and bottom half, the
                                           card shadow, and the DAYS / DAY label, premultiplied RGBA
@@ -38,7 +38,7 @@ SCENE = {
 POLY = [(38,302),(40,272),(50,250),(62,212),(110,190),(120,166),(160,163),(163,138),(212,138),(214,158),(268,158),(270,136),(334,136),(336,163),(378,163),(381,130),(397,130),(402,158),(470,160),(485,153),(520,158),(560,178),(576,195),(593,224),(611,261),(719,261),(724,243),(736,254),(776,281),(742,310),(692,350),(642,372),(620,371),(500,362),(400,352),(300,341),(200,329),(100,315),(60,309)]
 
 def save_gz(name, data):
-    with gzip.open(os.path.join(OUT, name), "wb", compresslevel=9) as f: f.write(data)
+    with gzip.GzipFile(os.path.join(OUT, name), "wb", compresslevel=9, mtime=0) as f: f.write(data)   # (no timestamp: same content, same file)
 
 # The ship sits DY px lower than in the photo, for room above it for the flip clock: the sky band at the
 # top (SKY_BAND rows, nothing of the ship in it) is stretched taller and everything below moves down; a
@@ -120,7 +120,7 @@ for name, im in (("day", day), ("dusk", dusk), ("night", night)): save_gz(name +
 save_gz("settings_bg.rgb.gz", day.filter(ImageFilter.GaussianBlur(14)).point(lambda v: int(v * 0.55)).tobytes())
 
 ship = Image.new("L", (W, H), 0); ImageDraw.Draw(ship).polygon(POLY, fill=255)
-save_gz("ship.raw.gz", ship.tobytes())
+save_gz("mask.raw.gz", ship.tobytes())
 
 # ---- window light, with its glow baked in (the mockup blurs the lights layer live; the board can't)
 lit = lower(Image.open(os.path.join(WORK, "mockup", "litA.png")).convert("RGB"))

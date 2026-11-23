@@ -1,33 +1,7 @@
 {
- "engine": "ship",
  "effects": [],
  "horizon": 417,
- "stacks": [
-  [
-   -50,
-   -50
-  ],
-  [
-   -50,
-   -50
-  ]
- ],
- "smoke_scale": 0.8,
  "fireworks_scale": 0.85,
- "bow": [
-  799,
-  479
- ],
- "stern": [
-  0,
-  479
- ],
- "mast": [
-  -1,
-  0
- ],
- "ambient_scale": 1.0,
- "tube": [],
  "cards": {
   "center_x": 170,
   "top": 16,

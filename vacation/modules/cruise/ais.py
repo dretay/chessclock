@@ -12,7 +12,7 @@ goes quiet until it nears a coast again, and the map shows how old its position 
 
 Writing: a line per ship at most every TRAIL_EVERY seconds (and when its status changes), which
 makes the map's trail; the file is trimmed to the last day now and then. Lines anything else wrote
-(tools/send_ships.py) are kept the same way.
+(vacation/modules/cruise/tools/send_ships.py) are kept the same way.
 
 Standard library only: a small websocket client over ssl (no compression extension; with a
 handful of ships the traffic is tiny).

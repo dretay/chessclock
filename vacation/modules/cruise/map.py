@@ -14,7 +14,7 @@ Positions come from a file, one ship per line (see ships_example.csv):
     name, latitude, longitude, heading, speed (knots), when (unix time or YYYY-MM-DDTHH:MM),
     and optionally destination, ETA (MM-DD HH:MM, UTC as AIS sends it), status, MMSI
 the module's data folder's ships.csv (/apps/data/vacation/cruise/ships.csv) when it exists (kept up to date from
-AIS by ais.py, the module's service, over WiFi; or written over serial by tools/send_ships.py), otherwise the example. A later line for the same ship replaces an earlier one.
+AIS by ais.py, the module's service, over WiFi; or written over serial by vacation/modules/cruise/tools/send_ships.py), otherwise the example. A later line for the same ship replaces an earlier one.
 """
 import calendar, datetime, json, math, os, random, time
 

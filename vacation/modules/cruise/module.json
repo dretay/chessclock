@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "api": 1,
   "scene": {
-    "engine": "ship",
+    "engine": "scene",
     "dir": "scenes",
     "default": "dream"
   },
@@ -37,5 +37,10 @@
       "fallback": "SHIP",
       "default": "Disney Dream"
     }
-  ]
+  ],
+  "countdown": {
+    "date_label": "Sail date",
+    "after": "Already sailed",
+    "time": "16:00"
+  }
 }

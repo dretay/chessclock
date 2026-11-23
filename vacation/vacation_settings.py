@@ -1,6 +1,7 @@
 """The vacation countdown's Settings: opened by pressing and holding the picture for two seconds.
 
-  Page 1  the sail date, and today's date and time (the board has no clock battery)
+  Page 1  the trip's date (the module's label for it: "Sail date", "Park day"), and today's date and time
+          (the board has no clock battery)
   Page 2  fireworks: when (random through the night, a nightly show at a set time, both, or off),
           how often the random ones go up, and the show's time
   Page 3  the theme's own settings (the active module's, from its module.json "settings": the cruise's
@@ -45,7 +46,7 @@ class Settings:
     def __init__(self, app):
         self.app, self.fx = app, app.fx
         c = app.conf
-        try: sail = datetime.date.fromisoformat(c.get("SAIL_DATE", ""))
+        try: sail = datetime.date.fromisoformat(c.get("TRIP_DATE") or c.get("SAIL_DATE", ""))
         except ValueError: sail = datetime.date.today() + datetime.timedelta(days=100)
         now = datetime.datetime.now()
         try: sh, sm = (int(v) for v in c.get("FIREWORKS_SHOW_TIME", "21:00").split(":"))
@@ -58,6 +59,8 @@ class Settings:
         try: self.rate = int(c.get("FIREWORKS_EVERY_MIN", "15"))
         except ValueError: self.rate = 15
         self.load_theme_setting(app)
+        mod = getattr(app, "module", None)
+        self.countdown = (mod.meta.get("countdown") or {}) if mod else {}
         self.clock_changed = False
         self.demo = False                  # a fireworks show as soon as Settings closes (Fireworks page)
         self.page = 1; self.pressed = None
@@ -204,7 +207,9 @@ class Settings:
             sw = self.width("label", suffix)
             self.text("label", suffix, L.W - 36, 46, L.GOLD, "r"); self.text("label", str(n), L.W - 36 - sw, 46, L.GOLD, "r")
         else:
-            self.text("label", "Today's the day!" if n == 0 else "Already sailed", L.W - 36, 46, L.GOLD, "r")
+            after = self.countdown.get("after", "Already sailed")
+            if n == 0: self.text("label", "Today's the day!", L.W - 36, 46, L.GOLD, "r")
+            else: self.txt.draw("label", after, L.W - 36, 46, L.GOLD, "r")
 
     def draw_col(self, k, dim=False):
         cols = self.cols1 if self.page == 1 else self.cols2
@@ -261,8 +266,9 @@ class Settings:
         self.bg((0, 0, L.W, L.H))
         if self.page == 1:
             self.text("title", "Settings", 36, 58, L.IVORY)
-            for label, top, _ in L.PAGE1_ROWS:
-                self.panel((20, top, L.W - 20, top + 148)); self.text("label", label, 40, top + 84, L.IVORY)
+            for k, (label, top, _) in enumerate(L.PAGE1_ROWS):
+                if k == 0: label = self.countdown.get("date_label", label)        # the module's: "Sail date", "Park day"
+                self.panel((20, top, L.W - 20, top + 148)); self.txt.draw("label", label, 40, top + 84, L.IVORY)
             self.text("small", "date & time", 40, 345, L.DIM)
             for k in self.cols1: self.draw_col(k)
             for b in L.PAGE1_BUTTONS: self.draw_button(b)
@@ -683,7 +689,7 @@ class Settings:
     # ---------------------------------------------------------------- saving
     def save(self):
         v, path = self.v, self.app.conf_path
-        write_conf_value(path, "SAIL_DATE", "%04d-%02d-%02d" % (v["sy"], v["sm"], v["sd"]))
+        write_conf_value(path, "TRIP_DATE", "%04d-%02d-%02d" % (v["sy"], v["sm"], v["sd"]))
         write_conf_value(path, "FIREWORKS_MODE", self.mode)
         write_conf_value(path, "FIREWORKS_EVERY_MIN", self.rate)
         if self.theme and self.theme_opts:                         # the theme's setting (e.g. MAP_SHIP, RIDES)

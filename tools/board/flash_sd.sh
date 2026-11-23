@@ -1,7 +1,7 @@
 #!/bin/bash
 # Write a build to the SD card (macOS). See docs/apps.md.
 #
-# usage: tools/flash_sd.sh [--all] [--uboot] DIST_DIR [/dev/diskN]
+# usage: tools/board/flash_sd.sh [--all] [--uboot] DIST_DIR [/dev/diskN]
 #   DIST_DIR   the build's output (with sdcard.img, boot.vfat, rootfs.ext4, ...)
 #   (default)  the base system only: the kernel (partition 1) and the root filesystem (2), so the
 #              apps and their settings (partition 3) stay as they are
