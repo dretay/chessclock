@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """Send Disney ship positions to the board's fleet map over the serial console (for trying
-the map without WiFi; with it, vacation/ais.py keeps the file up to date from AIS). The map rereads the file whenever it next shows.
+the map without WiFi; with it, the cruise module's AIS service, vacation/modules/cruise/ais.py, keeps the file up to date). The map rereads the file whenever it next shows.
 
 usage:
-  send_ships.py FILE                                    the whole file (format: vacation/ships_example.csv)
+  send_ships.py FILE                                    the whole file (format: vacation/modules/cruise/ships_example.csv)
   send_ships.py --ship NAME LAT LON [HEADING [SPEED]]   one ship, stamped with the time now
   send_ships.py --clear                                 remove it (the map goes back to the example positions)
 
-e.g.  tools/send_ships.py vacation/ships_example.csv
+e.g.  tools/send_ships.py vacation/modules/cruise/ships_example.csv
       tools/send_ships.py --ship Dream 27.3 -79.1 125 18
 
-Writes /apps/data/vacation/ships.csv. One line per ship; a later line for the same ship replaces an
+Writes /apps/data/vacation/cruise/ships.csv (the cruise module's data folder). One line per ship; a later line for the same ship replaces an
 earlier one, so --ship just adds a line.
 """
 import os, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REMOTE = "/apps/data/vacation/ships.csv"
+REMOTE = "/apps/data/vacation/cruise/ships.csv"
 
 
 def board(*commands):

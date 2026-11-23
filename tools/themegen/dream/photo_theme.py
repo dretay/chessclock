@@ -3,7 +3,7 @@
 Reads   assets/dream/panel_photo.jpg, assets/fonts/CormorantGaramond[wght].ttf, and from
         THEME_WORK/mockup (photo_windows.py, run it first): litA.png (the window light, made
         from the photo's own glass) and cellsA.png (which pixels switch together)
-Writes  vacation/themes/dream/ (THEME_OUT), everything ready for the device to load with
+Writes  vacation/modules/cruise/scenes/dream/ (THEME_OUT), everything ready for the device to load with
         no image decoding beyond zlib:
   day.rgb.gz, dusk.rgb.gz, night.rgb.gz   800x480 raw RGB plates (dusk and night are graded
                                           from the day photo here, with the mockup's formula)
@@ -20,7 +20,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.normpath(os.path.join(HERE, "..", "..", ".."))
 ASSETS = os.environ.get("THEME_ASSETS", os.path.join(REPO, "assets", "dream"))
 WORK = os.environ.get("THEME_WORK", os.path.join(REPO, "tools", "themegen", "work", "dream"))
-OUT = os.environ.get("THEME_OUT", os.path.join(REPO, "vacation", "themes", "dream"))
+OUT = os.environ.get("THEME_OUT", os.path.join(REPO, "vacation", "modules", "cruise", "scenes", "dream"))
 os.makedirs(OUT, exist_ok=True)
 W, H = 800, 480
 

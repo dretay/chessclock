@@ -1,0 +1,10 @@
+{
+  "id": "cruise",
+  "name": "Disney cruise",
+  "version": "1.0.0",
+  "api": 1,
+  "scene": {"engine": "ship", "dir": "scenes", "default": "dream"},
+  "screens": [
+    {"id": "map", "file": "map.py", "class": "MapScreen", "enabled": "MAP", "secs": "MAP_SECS"}
+  ]
+}

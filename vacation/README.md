@@ -49,19 +49,45 @@ the board, with the same folders as here. Its settings, saved time and log are i
 | In this folder | | |
 |---|---|---|
 | `run` | | starts it (`/etc/init.d/S99app` runs it, and restarts it if it exits); log in `/apps/data/vacation/vacation.log` |
-| `vacation.py` | | the app |
+| `vacation.py` | | the app: the countdown, and the active module's screens in turn with it |
+| `modules.py` | | finds the active module and loads its scene and screens (see *Modules* below) |
 | `fx/vacfx.c` | `fx/libvacfx.so` | the drawing |
-| `themes/dream/` | | the Disney Dream theme: plates, window light, cards (made by `tools/themegen`) |
 | `vacation_settings.py` | | the Settings pages (drawn by the C library) |
 | `vacation_layout.py` | | where everything goes on them, and their text (shared with `tools/themegen/build_ui.py`) |
 | `ui/ui.bin.gz` | | their text and arrows, pre-drawn in Cormorant Garamond (SIL OFL, `fonts/OFL.txt`) |
 | `vacation_touch.py` | | the touchscreen (the NS2009 chip, as in the chess clock) |
-| `vacation_map.py`, `map/` | | the fleet map and its Caribbean chart |
 | `vacation_wifi.py` | | Settings > WiFi |
-| `ais.py`, `service` | `/apps/data/vacation/ships.csv` | the map's live ship positions from AIS (aisstream.io), run beside the countdown; needs WiFi and an API key in `/apps/data/vacation/ais.key` |
+| `service` | | starts the active module's `service` beside the countdown (when the kernel has WiFi) |
+| `modules/cruise/` | `/apps/data/vacation/cruise/` | the cruise module: the ship, the fleet map, live AIS positions (below) |
 | `vacation.conf` | `/apps/data/vacation/vacation.conf` | settings, and the touchscreen calibration (copied the first time it runs) |
 | `native/bench_water.c` | | the speed test the design came from (not installed) |
-| `themes/dream-blender/` | | the Blender-rendered version of the ship (not installed) |
+
+## Modules
+
+What the countdown counts down to is a **module**: a whole trip, in a folder of its own in
+`modules/`. `vacation.conf`'s `MODULE` picks one (`cruise` by default); `modules.py` loads it.
+
+| A module has | | |
+|---|---|---|
+| `module.json` | | its id, name, version, the host `api` it was made for, its scene and its screens |
+| a **scene** | `scenes/NAME/` | what's behind the countdown (`THEME` picks one, else module.json's default) |
+| **screens** | e.g. `map.py` | shown in turn with the countdown: a class taking the app, with `run(seconds)`; module.json names its file and class and the settings for its seconds and on/off |
+| a **service** | `service` | its background job, e.g. fetching data; run in the module's folder with `MODULE_DATA` set |
+| its **data** | `/apps/data/vacation/ID/` | whatever it fetches or saves (`MODULE_DATA`, or `app.module.data_dir` for a screen) |
+
+The service writes, the screen reads: a dead network shows as old data, never a frozen screen.
+
+**The cruise** (`modules/cruise/`): the Disney Dream scene (`scenes/dream/`, plates, window light and
+cards made by `tools/themegen`; `scenes/dream-blender/` is the Blender-rendered version, not
+installed), the fleet map (`map.py`, its Caribbean chart in `map/`, made by
+`tools/themegen/build_map.py`), and live ship positions from AIS (`ais.py`, aisstream.io) into
+`/apps/data/vacation/cruise/ships.csv`. AIS needs WiFi and an API key in
+`/apps/data/vacation/cruise/ais.key`. Until it has them, the map shows `ships_example.csv`
+(`tools/send_ships.py` puts a file there over USB).
+
+Still in the host until a second module needs otherwise: the drawing library's scene is ship-shaped
+(`engine: ship`), and Settings' "Ship map" page and the cruise's pre-drawn text are in
+`vacation_settings.py` / `vacation_layout.py`.
 
 ## Putting it on the board
 
@@ -83,7 +109,8 @@ and the show's time. Save or Cancel goes back to the countdown.
 | Key | Default | |
 |---|---|---|
 | `SAIL_DATE` | `2027-02-16` | the day it counts down to |
-| `THEME` | `dream` | a folder in `themes/` |
+| `MODULE` | `cruise` | the trip: a folder in `modules/` (see *Modules*) |
+| `THEME` | `dream` | the module's scene: a folder in its `scenes/` |
 | `LIGHTS_PER_MIN` | `90` | cabin windows switching per minute |
 | `FIREWORKS_MODE` | `random` | `random` (a few rockets now and then through the night), `show` (a two-minute show every night at `FIREWORKS_SHOW_TIME`), `both`, or `off` |
 | `FIREWORKS_EVERY_MIN` | `15` | how often (on average) the random ones go up at night |
@@ -100,7 +127,7 @@ The library builds on macOS or Linux and draws into a plain file instead of the 
 
 ```sh
 clang -O2 -shared -fPIC -o /tmp/libvacfx.dylib vacation/fx/vacfx.c -lz
-VACATION_LIB=/tmp/libvacfx.dylib VACATION_FB=/tmp/fb.raw VACATION_THEME_DIR=vacation/themes/dream \
+VACATION_LIB=/tmp/libvacfx.dylib VACATION_FB=/tmp/fb.raw APP_DATA=/tmp/vacation-data \
 VACATION_CONF=vacation/vacation.conf VACATION_HOUR=22 VACATION_FIREWORKS=1 VACATION_FRAMES=100 python3 vacation/vacation.py
 python3 -c "from PIL import Image; Image.frombytes('RGB',(800,480),open('/tmp/fb.raw','rb').read(),'raw','BGRX').save('/tmp/frame.png')"
 ```

@@ -1,9 +1,9 @@
 """Make the fleet map on a desktop: NASA satellite imagery of the Caribbean (Blue Marble by day,
 Black Marble's city lights at night) in Mercator, with the cruise ports marked, cut into tiles.
 The board loads the few tiles around the ship it's following and draws the ships on top
-(vacation_map.py).
+(vacation/modules/cruise/map.py).
 
-    python3 tools/themegen/build_map.py   -> vacation/map/tiles/{day,night}/X_Y.rgb.gz and vacation/map/map.json
+    python3 tools/themegen/build_map.py   -> vacation/modules/cruise/map/tiles/{day,night}/X_Y.rgb.gz and vacation/modules/cruise/map/map.json
     (the first run downloads about 20 pieces of imagery)
 
 Tiles are 256x256 RGB, gzipped, kept for REGION only (beyond it the board shows plain ocean);
@@ -23,7 +23,7 @@ REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
 ASSETS = os.path.join(REPO, "assets", "map")
 NASA = os.path.join(ASSETS, "nasa3857")
 FONT = os.path.join(REPO, "assets", "fonts", "CormorantGaramond-SemiBold-Lining.ttf")
-OUT = os.path.join(REPO, "vacation", "map")
+OUT = os.path.join(REPO, "vacation", "modules", "cruise", "map")
 
 # the world: Mercator, 22528 px around the equator (about 63 px a degree of longitude, 70 a degree
 # of latitude at Florida's: a screen is about 13 degrees across), from 72.5 N down to about 66 S, in

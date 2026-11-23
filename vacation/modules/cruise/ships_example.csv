@@ -1,5 +1,5 @@
 # EXAMPLE positions, made up for trying the fleet map (plausible for a late-November day, not real).
-# The live file is /apps/data/vacation/ships.csv: same format, kept up to date from AIS by ais.py (over
+# The live file is /apps/data/vacation/cruise/ships.csv: same format, kept up to date from AIS by ais.py (over
 # WiFi), or written over serial by tools/send_ships.py. One line per ship; a later line for the same ship replaces an earlier one,
 # so appending a line updates a ship.
 #

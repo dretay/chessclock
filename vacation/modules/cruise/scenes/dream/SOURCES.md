@@ -9,6 +9,6 @@ The files here are made by `tools/themegen/dream/photo_theme.py` (after
 | `assets/fonts/CormorantGaramond[wght].ttf` | Cormorant Garamond, Google Fonts (https://github.com/google/fonts/tree/main/ofl/cormorantgaramond) | SIL Open Font License 1.1 |
 | `assets/fonts/CormorantGaramond-SemiBold-Lining.ttf` | the same at SemiBold with lining figures, made by `tools/themegen/make_lining_font.py` | SIL Open Font License 1.1 |
 
-`assets/` is git-ignored (see `vacation/themes/dream-blender/SOURCES.md` for the
+`assets/` is git-ignored (see `vacation/modules/cruise/scenes/dream-blender/SOURCES.md` for the
 other Dream sources and where they came from). Disney, the Disney Dream and its
 livery are trademarks of Disney; this theme is for personal use.

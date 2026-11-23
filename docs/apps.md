@@ -43,7 +43,8 @@ its files and compiling any C with `$CC` (the board's compiler). From then on:
   started the same way (in the app's folder, with `APP_DATA`, started again if it exits) but on its
   own: restarting one doesn't restart the other. Its output goes to `APP_DATA/service.log` (the
   previous one as `service.log.1`). For work the screen shouldn't wait on, such as fetching data the
-  app then reads from `APP_DATA` (the vacation countdown's AIS ship positions, `vacation/ais.py`).
+  app then reads from `APP_DATA` (the vacation countdown's: whatever its active module fetches, such
+  as the cruise's AIS ship positions; see [vacation/README.md](../vacation/README.md#modules)).
 * **`splash.sh`**, if there is one, is *sourced* (not run, to save starting a shell) by
   `/etc/init.d/S00app`, the first thing at boot, in the app's folder with `APP_DATA` set. Keep it
   to shell built-ins: every program it starts delays the splash by tens of milliseconds.

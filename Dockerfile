@@ -19,7 +19,7 @@ FROM $BASE_IMAGE:$BASE_VERSION AS local
 # `app NAME` on the board switches later.
 ARG APP=chess
 # WiFi through an ESP32 on SPI1 (package/esp-hosted): 1 to include it, with TLS for Python (OpenSSL
-# and the CA certificates: the fleet map's AIS feed, vacation/ais.py, is over a secure websocket). It costs about 4 MB of the
+# and the CA certificates: the cruise module's AIS feed, vacation/modules/cruise/ais.py, is over a secure websocket). It costs about 4 MB of the
 # Nano's 32 MB, too much alongside the vacation countdown; meant for the F1C200s (64 MB).
 ARG WIFI=0
 

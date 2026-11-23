@@ -9,8 +9,9 @@ It deliberately doesn't import Pillow: on the 32 MB board every megabyte counts.
 
 An app (see docs/apps.md): its files are this folder's (/apps/vacation on the board), its settings
 and saved state in APP_DATA (/apps/data/vacation): vacation.conf (KEY=VALUE lines; the run script
-starts it from this folder's). For trying it out:
-  VACATION_CONF, VACATION_THEME_DIR, VACATION_LIB, VACATION_FB   other files than the usual ones
+starts it from this folder's). What it counts down to is a module (modules.py, modules/): the cruise
+by default, whose scene is the ship and whose screen is the fleet map. For trying it out:
+  VACATION_CONF, VACATION_THEME_DIR, VACATION_LIB, VACATION_FB, VACATION_MODULES   other files than the usual ones
   VACATION_HOUR=21.5        pretend it's always this time of day
   VACATION_DAYLAPSE=90      run a whole day in this many seconds
   VACATION_FRAMES=N         stop after N frames
@@ -24,13 +25,13 @@ starts it from this folder's). For trying it out:
   VACATION_SHOW=1           start the nightly fireworks show right away
   VACATION_UI_DIR           the Settings images (ui.bin.gz), if not the installed ones
   VACATION_MAP_DIR          the fleet map's chart (map.rgb.gz, map.json), if not the installed one
-  VACATION_SHIPS=FILE       ship positions from this file (see vacation_map.py)
-  VACATION_MAP_AFTER=5      show the fleet map first after this many seconds
+  VACATION_SHIPS=FILE       ship positions from this file (see modules/cruise/map.py)
+  VACATION_MAP_AFTER=5      show the module's first screen (the fleet map) after this many seconds
   VACATION_NOW=2026-12-16T15:58   pretend the date and time are this (try the last day and sailing)
 """
 import ctypes, datetime, json, math, os, random, signal, sys, time
 
-import vacation_map
+import modules
 import vacation_settings
 import vacation_touch as touch
 
@@ -63,7 +64,7 @@ def lighting(hour):
     return night, dusk
 
 
-FADE_SECS = 0.6                                     # countdown <-> map
+FADE_SECS = 0.6                                     # countdown <-> a module's screen
 
 
 # settings and saved state (S99app sets it to /apps/data/vacation on the board)
@@ -78,8 +79,9 @@ class App:
         here = os.path.dirname(os.path.abspath(__file__))
         self.conf_path = os.environ.get("VACATION_CONF", os.path.join(DATA, "vacation.conf"))
         self.conf = read_conf(self.conf_path)
-        theme = self.conf.get("THEME", "dream")
-        self.theme_dir = os.environ.get("VACATION_THEME_DIR", os.path.join(here, "themes", theme))
+        self.module = modules.active(self.conf, DATA)                   # the trip: its scene, screens and data
+        self.theme_dir = os.environ.get("VACATION_THEME_DIR") or self.module.scene_dir(self.conf)
+        self.screens = self.module.screens()
         self.ui_dir = os.environ.get("VACATION_UI_DIR", os.path.join(here, "ui"))
         self.scene = json.load(open(os.path.join(self.theme_dir, "theme.json")))
         lib = os.environ.get("VACATION_LIB", os.path.join(here, "fx", "libvacfx.so"))
@@ -128,10 +130,17 @@ class App:
         except ValueError: self.fw_every = 900
         try: h, m = (int(v) for v in c.get("FIREWORKS_SHOW_TIME", "21:00").split(":")); self.show_at = h + m / 60
         except ValueError: self.show_at = 21.0
-        # the fleet map, in turn with the countdown
-        self.map_on = c.get("MAP", "1") not in ("0", "")
-        try: self.countdown_secs, self.map_secs = float(c.get("COUNTDOWN_SECS", "60")), float(c.get("MAP_SECS", "60"))
-        except ValueError: self.countdown_secs, self.map_secs = 60.0, 60.0
+        # the module's screens (the cruise's fleet map), in turn with the countdown: each for its
+        # seconds setting, while its on/off setting isn't 0
+        try: self.countdown_secs = float(c.get("COUNTDOWN_SECS", "60"))
+        except ValueError: self.countdown_secs = 60.0
+        self.playlist = []
+        for spec, cls in self.screens:
+            if c.get(spec.get("enabled", ""), "1") in ("0", ""): continue
+            try: secs = float(c.get(spec.get("secs", ""), "60"))
+            except ValueError: secs = 60.0
+            self.playlist.append((cls, secs))
+        self.next_screen = 0
 
     # time: real, or a preview's frame-by-frame clock
     def now(self): return self.clock if self.sim else time.monotonic()
@@ -246,12 +255,13 @@ class App:
                         self.conf = read_conf(self.conf_path); self.load_conf(); days = cards = None; last_check = -1e9
                     if settings.demo: self.start_show(self.now() - (0 if self.sim else start) + 0.5)   # the demo show
                     continue
-            # the fleet map, every so often (not in the middle of a fireworks show, or a press)
-            if self.map_on and t >= next_map and not self.show and hold_start is None:
+            # the module's next screen, every so often (not in the middle of a fireworks show, or a press)
+            if self.playlist and t >= next_map and not self.show and hold_start is None:
                 clock0 = 0 if self.sim else start
                 def countdown_frame(): self.fx.vfx_frame(int((self.now() - clock0) * 1000) & 0x3fffffff)
+                cls, secs = self.playlist[self.next_screen % len(self.playlist)]; self.next_screen += 1
                 self.fade(0, countdown_frame)                      # the countdown fades out,
-                vacation_map.MapScreen(self).run(self.map_secs)    # the map fades in and out by itself,
+                cls(self).run(secs)                                # the screen fades in and out by itself,
                 self.fade(256, countdown_frame)                    # and the countdown comes back
                 next_map = self.now() - (0 if self.sim else start) + self.countdown_secs
                 frames = busy = 0; last_log = self.now()           # (the frame-rate log is about the countdown only)

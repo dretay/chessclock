@@ -83,7 +83,7 @@ STRINGS = {
     "chip": [t for _, t in SCHEDULES] + [t for _, t in RATES],
     "value": MONTHS + ["AM", "PM"],
 }
-# ---- the fleet map (vacation_map.py; the chart itself is tools/themegen/build_map.py)
+# ---- the cruise module's fleet map (modules/cruise/map.py; the chart itself is tools/themegen/build_map.py)
 FLEET = ["Magic", "Wonder", "Dream", "Fantasy", "Wish", "Treasure", "Destiny", "Adventure"]   # "Disney ..."
 STRINGS["ship"] = FLEET
 STRINGS["small"] += ["Positions from ", " min ago", " h ago", " days ago", "Positions just in", "Example positions",

@@ -1,0 +1,5 @@
+#!/bin/sh
+# The cruise module's background job: live ship positions from AIS (ais.py) into
+# $MODULE_DATA/ships.csv for the fleet map. The app's service starts it (in this folder, with
+# MODULE_DATA set). Needs an aisstream.io key in $MODULE_DATA/ais.key: until then it just waits.
+exec python3 -u ais.py

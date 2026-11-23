@@ -8,13 +8,13 @@ view is a small ship pointing its way, with its name on a tag (your own ship, SH
 status line says how old the positions are.
 
 The map comes in 256-px tiles made on a desktop (tools/themegen/build_map.py -> map/tiles/,
-map.json); only the dozen or so around the ship are loaded.
+map.json); only the dozen or so around the ship are loaded. The cruise module's screen (module.json).
 
 Positions come from a file, one ship per line (see ships_example.csv):
     name, latitude, longitude, heading, speed (knots), when (unix time or YYYY-MM-DDTHH:MM),
     and optionally destination, ETA (MM-DD HH:MM, UTC as AIS sends it), status, MMSI
-$APP_DATA/ships.csv (/apps/data/vacation/ships.csv) when it exists (kept up to date from AIS by ais.py, the app's
-service, over WiFi; or written over serial by tools/send_ships.py), otherwise the example. A later line for the same ship replaces an earlier one.
+the module's data folder's ships.csv (/apps/data/vacation/cruise/ships.csv) when it exists (kept up to date from
+AIS by ais.py, the module's service, over WiFi; or written over serial by tools/send_ships.py), otherwise the example. A later line for the same ship replaces an earlier one.
 """
 import calendar, datetime, json, math, os, random, time
 
@@ -397,7 +397,7 @@ class MapScreen:
     def run(self, seconds):
         """Show the map for this long, or until a tap; returns False if there's nothing to show."""
         app, fx = self.app, self.fx
-        live = app.conf.get("SHIPS_FILE") or os.path.join(os.environ.get("APP_DATA", "/apps/data/vacation"), "ships.csv")
+        live = app.conf.get("SHIPS_FILE") or os.path.join(app.module.data_dir, "ships.csv")
         path = os.environ.get("VACATION_SHIPS") or (live if os.path.exists(live) else os.path.join(os.path.dirname(self.map_dir), "ships_example.csv"))
         if not os.path.exists(path): path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ships_example.csv")
         self.ships, example = read_ships(path)
