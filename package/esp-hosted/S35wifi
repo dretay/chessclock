@@ -1,0 +1,45 @@
+#!/bin/sh
+#
+# WiFi through the ESP32 on SPI1: load the esp32_spi driver, then once wlan0
+# appears, wpa_supplicant (networks in /etc/wpa_supplicant.conf), DHCP and
+# network time, and the ssh server. All in the background, so a missing or
+# unplugged ESP32 doesn't hold up the boot.
+#
+
+LOG=/var/log/wifi.log
+
+start_wifi() {
+	modprobe esp32_spi || { echo "wifi: no esp32_spi driver"; return 1; }
+	n=0
+	while [ ! -d /sys/class/net/wlan0 ]; do      # the ESP boots and introduces itself
+		n=$((n + 1)); [ $n -gt 30 ] && { echo "wifi: no wlan0 (is the ESP32 connected and flashed?)"; return 1; }
+		sleep 1
+	done
+	ip link set wlan0 up
+	wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant.conf -P /var/run/wpa_supplicant.pid
+	udhcpc -b -i wlan0 -p /var/run/udhcpc.wlan0.pid -x hostname:licheepi-nano
+	ntpd -p pool.ntp.org                          # keeps the clock right once the network is up
+	echo "wifi: wlan0 up"
+}
+
+case "$1" in
+	start)
+		printf "Starting wifi: "
+		mkdir -p /var/log
+		( start_wifi ) >>$LOG 2>&1 &
+		echo "OK (in the background, see $LOG)"
+		;;
+	stop)
+		printf "Stopping wifi: "
+		killall ntpd udhcpc wpa_supplicant 2>/dev/null
+		ip link set wlan0 down 2>/dev/null
+		modprobe -r esp32_spi 2>/dev/null
+		echo "OK"
+		;;
+	restart)
+		"$0" stop; sleep 1; "$0" start
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}"; exit 1
+		;;
+esac

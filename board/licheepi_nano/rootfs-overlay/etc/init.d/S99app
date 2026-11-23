@@ -1,0 +1,63 @@
+#!/bin/sh
+#
+# Starts the app named in /apps/current (its /apps/NAME/run, in that folder), and starts it again if
+# it ever exits. Its settings and log live in /apps/data/NAME (APP_DATA), the log as NAME.log with
+# the previous run's in NAME.log.1. An app's optional /apps/NAME/service (a background job, such as
+# fetching data for it) runs beside it the same way, logging to service.log, and is restarted on its
+# own. `app` switches between apps; see docs/apps.md.
+#
+
+PIDFILE=/var/run/app.pid          # the restart loop
+APPPIDFILE=/var/run/app-run.pid   # the app itself
+SVCPIDFILE=/var/run/app-service.pid        # the service's restart loop
+SVCRUNPIDFILE=/var/run/app-service-run.pid # the service itself
+
+# loop PIDFILE RUNPIDFILE PROGRAM LOG: start PROGRAM in the background, again whenever it exits
+loop() {
+	start-stop-daemon -S -q -b -m -p "$1" -x /bin/sh -- -c "
+		cd /apps/$A
+		export APP_DATA=$DATA
+		while true; do
+			./$3 >>$4 2>&1 &
+			echo \$! > $2
+			wait \$!
+			echo \"$A $3: exited with status \$?, restarting\" >>$4
+			sleep 2
+		done"
+}
+
+start() {
+	A=
+	[ -r /apps/current ] && read -r A < /apps/current
+	printf "Starting %s: " "${A:-app}"
+	if [ -z "$A" ] || [ ! -x "/apps/$A/run" ]; then
+		echo "FAIL (no app: /apps/current names none that's installed)"
+		return 1
+	fi
+	DATA=/apps/data/$A
+	LOG=$DATA/$A.log
+	dmesg -n 1                         # keep kernel messages off the display
+	mkdir -p "$DATA"
+	[ -f "$LOG" ] && mv -f "$LOG" "$LOG.1"
+	if [ -x "/apps/$A/service" ]; then
+		[ -f "$DATA/service.log" ] && mv -f "$DATA/service.log" "$DATA/service.log.1"
+		loop "$SVCPIDFILE" "$SVCRUNPIDFILE" service "$DATA/service.log"
+	fi
+	loop "$PIDFILE" "$APPPIDFILE" run "$LOG" && echo "OK" || echo "FAIL"
+}
+
+stop() {
+	printf "Stopping app: "
+	start-stop-daemon -K -q -p "$SVCPIDFILE"
+	start-stop-daemon -K -q -p "$SVCRUNPIDFILE"
+	start-stop-daemon -K -q -p "$PIDFILE"
+	start-stop-daemon -K -q -p "$APPPIDFILE" && echo "OK" || echo "FAIL"
+	rm -f "$PIDFILE" "$APPPIDFILE" "$SVCPIDFILE" "$SVCRUNPIDFILE"
+}
+
+case "$1" in
+	start) start ;;
+	stop) stop ;;
+	restart|reload) stop; sleep 1; start ;;
+	*) echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

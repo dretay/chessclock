@@ -17,9 +17,9 @@ MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", 
 # ---- page 1: dates
 PAGE1_ROWS = [("Sail date", 78, [("sm", 100), ("sd", 80), ("sy", 106)]),
               ("Today", 236, [("tm", 100), ("td", 80), ("ty", 106), None, ("hh", 80), ("mi", 80), ("ap", 84)])]
-PAGE1_BUTTONS = {"cancel": (30, 404, 170, 458), "calibrate": (186, 412, 322, 450), "fireworks": (332, 412, 468, 450),
-                 "ship": (478, 412, 614, 450), "save": (630, 404, 770, 458)}
-PAGE1_SPLITS = [(178, "cancel"), (327, "calibrate"), (473, "fireworks"), (622, "ship"), (9999, "save")]   # bottom row, by x
+PAGE1_BUTTONS = {"cancel": (24, 404, 150, 458), "calibrate": (162, 412, 274, 450), "fireworks": (282, 412, 394, 450),
+                 "ship": (402, 412, 514, 450), "wifi": (522, 412, 634, 450), "save": (646, 404, 776, 458)}
+PAGE1_SPLITS = [(156, "cancel"), (278, "calibrate"), (398, "fireworks"), (518, "ship"), (640, "wifi"), (9999, "save")]   # bottom row, by x
 
 # ---- page 2: fireworks
 SCHEDULES = [("random", "Random"), ("show", "Nightly show"), ("both", "Both"), ("off", "Off")]
@@ -35,6 +35,22 @@ PAGE3_PANEL = (20, 74, 780, 250)
 PAGE3_CHIP_ROWS = [100, 172]                                    # two rows of four ships
 PAGE3_BUTTONS = {"back": (36, 404, 236, 458), "save": (564, 404, 764, 458)}
 
+# ---- page 4: WiFi (networks in range), and page 5: a keyboard for the password
+WIFI_STATUS_Y = 104                                             # "Connected to ..." under the title
+WIFI_PANEL = (20, 124, 780, 392)                                # the networks, a row each
+WIFI_ROW_H, WIFI_ROWS = 52, 5
+WIFI_BUTTONS = {"back": (36, 404, 236, 458), "rescan": (300, 412, 500, 450), "forget": (564, 412, 764, 450)}
+KB_FIELD = (20, 70, 780, 128)                                   # the password as typed
+KB_TOP, KB_KEY_H, KB_GAP, KB_X0, KB_X1 = 140, 56, 8, 20, 780
+KB_BUTTONS = {"kb_cancel": (36, 410, 236, 464), "kb_join": (564, 410, 764, 464)}
+# the keys: rows of (label, what it types / does, width in key units)
+KB_LETTERS = [[(c, c, 1) for c in "qwertyuiop"], [(c, c, 1) for c in "asdfghjkl"],
+              [("shift", "shift", 1.5)] + [(c, c, 1) for c in "zxcvbnm"] + [("del", "del", 1.5)],
+              [("123", "symbols", 1.5), ("space", " ", 5), (".", ".", 1), ("-", "-", 1), ("_", "_", 1)]]
+KB_SYMBOLS = [[(c, c, 1) for c in "1234567890"], [(c, c, 1) for c in "!@#$%^&*()"],
+              [("=", "=", 1), ("+", "+", 1), ("/", "/", 1), ("?", "?", 1), (":", ":", 1), (";", ";", 1), ("'", "'", 1), ('"', '"', 1), ("del", "del", 1.5)],
+              [("abc", "letters", 1.5), ("space", " ", 5), (",", ",", 1), ("~", "~", 1), ("<", "<", 1), (">", ">", 1)]]
+
 COL_X0, COL_GAP, SPLIT_GAP, COL_H = 182, 8, 22, 128
 
 
@@ -49,7 +65,7 @@ def columns(row_cols, top):
 
 # every fixed piece of text, by font (numbers are drawn digit by digit)
 STRINGS = {
-    "title": ["Settings", "Fireworks", "Touch calibration", "Ship map"],
+    "title": ["Settings", "Fireworks", "Touch calibration", "Ship map", "WiFi"],
     "label": ["Sail date", "Today", "Schedule", "Random", "Show time", " days to go", " day to go",
               "Today's the day!", "Already sailed", "Saved", "No changes", "Calibrated",
               "Tap the centre of the cross (1 of 4)", "Tap the centre of the cross (2 of 4)",
@@ -57,8 +73,13 @@ STRINGS = {
               "That didn't look right: nothing changed"],
     "small": ["date & time", "bursts", "nightly show", "back to the countdown", "Calibrate touch", "Fireworks ›",
               "Demo show", "Demo show on exit", "fireworks!",
-              "Ship map ›", "The map centres on this ship and shows what it reports.", "the ship to follow"],
-    "button": ["Cancel", "Save", "‹ Back"],
+              "Ship map ›", "The map centres on this ship and shows what it reports.", "the ship to follow",
+              "WiFi ›", "Touch", "Rescan", "Forget network", "Scanning...", "Not connected", "Connecting to ",
+              "Connected to ", "No WiFi hardware (is the ESP32 connected?)", "Tap a network to join it",
+              "open", "shift", "del", "123", "abc", "space", "Join", "Password for ", "Joining...",
+              "Couldn't connect: check the password", "Saved on the board", "No networks found",
+              "WiFi isn't running yet"],
+    "button": ["Cancel", "Save", "‹ Back", "Join"],
     "chip": [t for _, t in SCHEDULES] + [t for _, t in RATES],
     "value": MONTHS + ["AM", "PM"],
 }
@@ -70,7 +91,7 @@ STRINGS["small"] += ["Positions from ", " min ago", " h ago", " days ago", "Posi
 STRINGS["label"] += ["Disney " + n for n in FLEET] + ["Follow"]
 STRINGS["chip"] += FLEET
 STRINGS["tiny"] = ["Imagery: NASA Blue Marble", "Imagery: NASA Black Marble"]
-CHAR_FONTS = ["small"]     # every printable character on its own too (AIS destinations are free text)
+CHAR_FONTS = ["small", "label"]   # every printable character on its own too (AIS destinations, WiFi names, the keyboard)
 EXTRA_CHARS = "\u00b0\u2032\u00b7"    # degree, minute, middle dot
 
 DIGIT_FONTS = ["value", "label", "small"]    # these get 0-9 as single glyphs too

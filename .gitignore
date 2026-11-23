@@ -2,9 +2,15 @@
 /.vagrant
 /*console.log
 
-# output folder from Docker command
+# output folder from Docker command (and side-by-side builds: dist-wifi, dist-nowifi...)
 /dist
 /dist.tar
+/dist-*/
+/dist-*.tar
+
+# secrets: the aisstream.io API key (it belongs on the board, /apps/data/vacation/ais.key; this
+# only guards against a copy landing in the tree)
+ais.key
 
 # Python caches (e.g. from running clock/fbclock.py on a desktop)
 __pycache__/
@@ -16,8 +22,6 @@ sim-out/
 # and the theme generator's intermediate files; see vacation/themes/*/SOURCES.md
 /assets/
 /tools/themegen/work/
-/dist-vacation
-/dist-vacation.tar
 
 # macOS folder metadata
 .DS_Store
@@ -28,3 +32,11 @@ sim-out/
 
 # the fleet map builder's previews (tools/themegen/build_map.py): for looking at on a desktop, not installed
 /vacation/map/preview_*.png
+
+# the ESP32 WiFi firmware build (tools/wifi/build_esp_firmware.sh)
+/tools/wifi/work/
+/tools/wifi/out/
+
+# app folders laid out by tools/deploy_app.py, and the vacation library built for a desktop
+/build/
+/vacation/fx/libvacfx.*

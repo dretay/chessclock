@@ -84,12 +84,18 @@ BR2_TARGET_ROOTFS_EXT2_SIZE="64M"
 # BR2_TARGET_ROOTFS_TAR is not set
 
 #
-# The chess clock application (source in clock/, packaged in package/fbclock;
-# it pulls in Pillow, FreeType and the DejaVu fonts)
+# What the apps need (they aren't packages: post-image.sh puts them on the SD card's
+# apps partition, see docs/apps.md): Python, with Pillow, FreeType and the DejaVu
+# fonts for the chess clock, and zlib and ctypes (libffi) for the vacation
+# countdown's drawing library
 #
 BR2_PACKAGE_PYTHON3=y
 BR2_PACKAGE_PYTHON3_PYC_ONLY=y
-BR2_PACKAGE_FBCLOCK=y
+BR2_PACKAGE_PYTHON_PILLOW=y
+BR2_PACKAGE_FREETYPE=y
+BR2_PACKAGE_DEJAVU=y
+BR2_PACKAGE_ZLIB=y
+BR2_PACKAGE_LIBFFI=y
 # the kernel has no networking, so no network startup script
 # BR2_PACKAGE_IFUPDOWN_SCRIPTS is not set
 # only DejaVu Sans is used
@@ -101,6 +107,8 @@ BR2_PACKAGE_FBCLOCK=y
 #
 # Package up the images for deployment to board
 #
+# (a login prompt on the USB serial port too)
+BR2_ROOTFS_POST_BUILD_SCRIPT="$(BR2_EXTERNAL_LICHEEPI_NANO_PATH)/board/licheepi_nano/post-build.sh"
 BR2_ROOTFS_POST_IMAGE_SCRIPT="$(BR2_EXTERNAL_LICHEEPI_NANO_PATH)/board/licheepi_nano/post-image.sh"
 
 #
@@ -143,3 +151,13 @@ BR2_PACKAGE_HOST_MTOOLS=y
 # Preload Linux firmware source repo for dev
 #
 BR2_PACKAGE_LINUX_FIRMWARE=y
+
+#
+# WiFi through an ESP32 on SPI1 is a separate build (Dockerfile --build-arg WIFI=1 adds
+# package/esp-hosted and board/licheepi_nano/linux/wifi.fragment): it costs about 4 MB.
+#
+BR2_PACKAGE_BUSYBOX_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_LICHEEPI_NANO_PATH)/board/licheepi_nano/busybox.fragment"
+# the time zone, so network time (UTC) shows as local time
+BR2_TARGET_TZ_INFO=y
+BR2_TARGET_TZ_ZONELIST="northamerica"
+BR2_TARGET_LOCALTIME="America/New_York"

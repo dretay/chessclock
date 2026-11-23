@@ -1,0 +1,47 @@
+From: licheepi-nano-buildroot
+Subject: [PATCH] host: accept and ignore scan IEs
+
+The wiphy advertised max_scan_ie_len = 0, so cfg80211 refused every scan
+wpa_supplicant asked for (nl80211 trigger scan: -EINVAL), since it always
+adds an Extended Capabilities IE; and cmd_scan_request() refused any IEs.
+The ESP builds its own probe requests, so accept the IEs and drop them.
+---
+diff --git host/esp_cfg80211.c host/esp_cfg80211.c
+index 5042b29..eae36dc 100644
+--- a/host/esp_cfg80211.c
++++ b/host/esp_cfg80211.c
+@@ -2853,10 +2853,13 @@ int esp_add_wiphy(struct esp_adapter *adapter)
+ 		wiphy->n_cipher_suites = ARRAY_SIZE(esp_cipher_suites);
+ 	}
+ 
+-	/* ESP scan supports at most 1 SSID, no probe request IEs, and no scheduled scans */
++	/* ESP scan supports at most 1 SSID and no scheduled scans. It builds its own
++	 * probe requests, so extra IEs are accepted and dropped (cmd_scan_request):
++	 * advertising 0 made cfg80211 refuse every wpa_supplicant scan with -EINVAL,
++	 * as wpa_supplicant always adds some (Extended Capabilities). */
+ 	wiphy->max_scan_ssids = 1;
+ 	/*	wiphy->max_match_sets = 10;*/
+-	wiphy->max_scan_ie_len = 0;
++	wiphy->max_scan_ie_len = 256;
+ 	wiphy->max_sched_scan_ssids = 0;
+ 	wiphy->signal_type = CFG80211_SIGNAL_TYPE_MBM;
+ #ifdef CONFIG_PM
+diff --git host/esp_cmd.c host/esp_cmd.c
+index 1b6d9b6..4d5125f 100644
+--- a/host/esp_cmd.c
++++ b/host/esp_cmd.c
+@@ -3394,10 +3394,10 @@ int cmd_scan_request(struct esp_wifi_device *priv, struct cfg80211_scan_request
+ 		return -EOPNOTSUPP;
+ 	}
+ 
+-	if (request->ie && request->ie_len) {
+-		esp_err("Scan IEs not supported\n");
+-		return -EOPNOTSUPP;
+-	}
++	/* The ESP builds its own probe requests: extra IEs are dropped (see
++	 * max_scan_ie_len in esp_cfg80211.c) rather than failing the scan. */
++	if (request->ie && request->ie_len)
++		esp_dbg("Ignoring %zu bytes of scan IEs\n", (size_t)request->ie_len);
+ 
+ 	if (request->n_channels > 1) {
+ 		if (priv->adapter->wiphy) {

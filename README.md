@@ -21,7 +21,7 @@ Everything runs on a single-core 400MHz ARM9 with 32MB of RAM: a minimal Linux b
 |---|---|
 | [Lichee Pi Nano](https://wiki.sipeed.com/soft/Lichee/zh/Nano-Doc-Backup/get_started/first_eye.html) | Allwinner F1C100s, 32MB RAM, boots from microSD |
 | 5" 800x480 40-pin RGB TFT with 4-wire resistive touch | e.g. the F50GLQ24E22. Its ribbon plugs straight into the Nano; the touch film's 4-wire tail goes to the ribbon's last four pins, which the Nano routes to its on-board touch chip |
-| microSD card | any size; the image is about 75MB |
+| microSD card | any size; the image is about 200MB |
 | 5V USB power supply and micro-USB cable | a right-angle plug fits the enclosure best |
 | *Optional:* the [3D-printed enclosure](enclosure) | picture frame, back cover and desk cradle; 4x M3 x 6mm self-tapping screws and some thin foam |
 | *Optional:* a 3.3V USB-serial adapter | for the console, on the Nano's UART0 at 115200 baud (login `root` / `root`) |
@@ -72,13 +72,16 @@ docker build --build-arg BASE_IMAGE=licheepi-nano-mybase --output type=tar,dest=
 
 ### Choosing the app
 
-The image starts one full-screen app at boot: the chess clock (the default) or the
-[vacation countdown](vacation/README.md). Pick it in the fast build with `--build-arg APP=vacation`
-(or `APP=chess`).
+The image is a base system plus, on a partition of their own, the apps: the chess clock and the
+[vacation countdown](vacation/README.md). One starts at boot: the chess clock, or pick it in the
+fast build with `--build-arg APP=vacation`. On the board, `app vacation` (or `app chess`) switches.
+
+Changing an app doesn't need a new image: `tools/deploy_app.py vacation` copies it to the board.
+How apps work, and how to update the base system without losing them: [docs/apps.md](docs/apps.md).
 
 ### What the fast build rebuilds
 
-It copies `board/`, `configs/`, `package/` and `clock/` into the base image and runs Buildroot again, always rebuilding the kernel (so kernel config and patch changes take effect), the clock, U-Boot and the boot script. Other changes don't always trigger a rebuild in Buildroot - see its manual on [when a full rebuild is necessary](https://buildroot.org/downloads/manual/manual.html#full-rebuild) - so when in doubt, rebuild the base image. To look around inside the build (or run `make menuconfig`): `container run -it licheepi-nano-mybase /bin/bash`.
+It copies `board/`, `configs/`, `package/`, `clock/` and `vacation/` into the base image and runs Buildroot again, always rebuilding the kernel (so kernel config and patch changes take effect), BusyBox, U-Boot and the boot script, and laying out the apps partition afresh. Other changes don't always trigger a rebuild in Buildroot - see its manual on [when a full rebuild is necessary](https://buildroot.org/downloads/manual/manual.html#full-rebuild) - so when in doubt, rebuild the base image. To look around inside the build (or run `make menuconfig`): `container run -it licheepi-nano-mybase /bin/bash`.
 
 ## Repository Layout
 
@@ -86,13 +89,13 @@ It copies `board/`, `configs/`, `package/` and `clock/` into the base image and 
 |---|---|
 | [`clock/`](clock) | the clock application, with [its own README](clock/README.md): settings, logs, touch calibration, trying it on a desktop |
 | [`enclosure/`](enclosure) | the 3D-printable enclosure, with [its own README](enclosure/README.md): parts, printing, assembly |
-| [`package/fbclock/`](package/fbclock) | the Buildroot package that installs the clock |
 | [`vacation/`](vacation) | the vacation countdown, [its own README](vacation/README.md): a C drawing library and a Python app |
-| [`package/fbvacation/`](package/fbvacation) | the Buildroot package that installs it (`APP=vacation`) |
+| [`docs/apps.md`](docs/apps.md) | how the apps sit on the SD card beside the base system, and how to update either |
+| [`package/esp-hosted/`](package/esp-hosted) | WiFi through an ESP32 on SPI (`--build-arg WIFI=1`) |
 | [`tools/themegen/`](tools/themegen) | makes a vacation theme's artwork on a desktop (Blender, Pillow), [README](tools/themegen/README.md) |
 | [`configs/licheepi_nano_defconfig`](configs/licheepi_nano_defconfig) | the Buildroot configuration: packages, kernel, U-Boot, SD card image |
 | [`board/licheepi_nano/linux/`](board/licheepi_nano/linux) | kernel config, device tree and display patch |
-| [`board/licheepi_nano/`](board/licheepi_nano) | boot script, SD card layout, and a root filesystem overlay for small system tweaks |
+| [`board/licheepi_nano/`](board/licheepi_nano) | boot script, SD card layout (with the apps partition), and a root filesystem overlay: the app launcher (`S00app`, `S99app`, `app`) and `setcpu` |
 | `Dockerfile.base`, `Dockerfile` | the base image and fast build |
 | [`tools/`](tools) | development tools: talk to the board over serial, time its boot, simulate the clock on a desktop, check the games (see [below](#development-tools)) |
 | [`docs/`](docs) | screenshots |
@@ -111,16 +114,20 @@ The Buildroot customisation is a `BR2_EXTERNAL` extension, so Buildroot itself i
 * a dimmable backlight - the backlight driver's enable pin (PE6) driven by PWM at 500Hz;
 * the I2C bus to the Nano's on-board NS2009 resistive-touch chip (PE11/PE12), with the pins' internal pull-ups enabled, since the board has none and the bus doesn't work without them.
 
-**Boot.** U-Boot is [a v2021.01 fork](https://github.com/unframework/u-boot/commits/2021.01-f1c100s) with F1C100s support, set up ([`uboot.fragment`](board/licheepi_nano/uboot.fragment)) to boot without its usual 2-second countdown or a USB scan; holding a key on the serial console while powering on still stops at its prompt. The kernel is LZ4-compressed, which unpacks faster than gzip on this CPU, and boots `quiet` so it doesn't spend time printing every message over the serial line. The screen shows nothing until the first startup script puts up the splash image, ready-made in the screen's own pixel format; that script uses only shell built-ins, as starting other programs is slow on this CPU.
+**Boot.** U-Boot is [a v2021.01 fork](https://github.com/unframework/u-boot/commits/2021.01-f1c100s) with F1C100s support, set up ([`uboot.fragment`](board/licheepi_nano/uboot.fragment)) to boot without its usual 2-second countdown or a USB scan, and without checking for a key press on the serial console (a serial adapter left wired to the board but unplugged makes noise that reads as one, and the board stopped at U-Boot's prompt with a white screen). The kernel is LZ4-compressed, which unpacks faster than gzip on this CPU, and boots `quiet` so it doesn't spend time printing every message over the serial line. The screen shows nothing until the first startup script puts up the splash image, ready-made in the screen's own pixel format; that script uses only shell built-ins, as starting other programs is slow on this CPU.
 
 ## Development Tools
 
-The [`tools/`](tools) folder holds what this project was developed with (`pip install -r tools/requirements.txt` for pyserial and Pillow). The board ones use a USB-serial adapter on the Nano's UART0; set `CLOCK_SERIAL` if yours isn't `/dev/cu.usbserial-0001`.
+The [`tools/`](tools) folder holds what this project was developed with (`pip install -r tools/requirements.txt` for pyserial and Pillow). The board ones talk to its shell over a serial line: the board's own micro-USB port plugged into the Mac when it is (it shows up as a USB serial port with a login prompt; much the fastest, and used by itself), otherwise a USB-serial adapter on the Nano's UART0. Set `CLOCK_SERIAL` to pick a port (e.g. if your adapter isn't `/dev/cu.usbserial-0001`).
+
+If the board is powered from elsewhere (a bench supply), the Mac's USB also powers it while plugged in, so switching that supply off no longer resets the board; a USB cable or adapter without the 5V wire avoids this.
 
 | Tool | |
 |---|---|
 | `run_on_board.py "COMMAND" ...` | run shell commands on the board and print the output (logs in as root first if needed) |
-| `push_to_board.py LOCAL REMOTE` | copy a file to the board over serial (~10KB/s), checksum-verified - e.g. a changed `clock/fbclock.py` to `/usr/lib/python3.11/site-packages/`, then restart the clock, to try a change without reflashing |
+| `deploy_app.py NAME` | put an app (`chess`, `vacation`) on the board without reflashing: lays it out in the build container and copies the changed files |
+| `push_to_board.py LOCAL REMOTE` | copy files or folders to the board over serial, checksum-verified, skipping unchanged ones, the app stopped meanwhile |
+| `fast_serial.py` | switch the console to 1562500 baud until the next reboot (then `CLOCK_BAUD=1562500`): about 13x faster copying |
 | `boot_time.py [--bench URL DEVICE CH]` | time a boot from power-on, stage by stage; `--bench` switches the power through a lab-bench server's API, otherwise you power-cycle it yourself |
 | `simulate.py FONT_DIR [OUT_DIR]` | run the clock's animations and touch handling on a desktop against an in-memory screen, save frames as PNGs, and check the results |
 | `check_games.py [PGN]` | check every game in `clock/games.pgn` replays correctly - run it after adding a game |

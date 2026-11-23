@@ -75,6 +75,7 @@ COPY board/ board/
 COPY configs/ configs/
 COPY package/ package/
 COPY clock/ clock/
+COPY vacation/ vacation/
 COPY \
     Config.in \
     external.desc \

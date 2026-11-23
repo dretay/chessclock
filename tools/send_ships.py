@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Send Disney ship positions to the board's fleet map over the serial console (until the ESP32
-fetches them from AIS itself). The map rereads the file whenever it next shows.
+"""Send Disney ship positions to the board's fleet map over the serial console (for trying
+the map without WiFi; with it, vacation/ais.py keeps the file up to date from AIS). The map rereads the file whenever it next shows.
 
 usage:
   send_ships.py FILE                                    the whole file (format: vacation/ships_example.csv)
@@ -10,13 +10,13 @@ usage:
 e.g.  tools/send_ships.py vacation/ships_example.csv
       tools/send_ships.py --ship Dream 27.3 -79.1 125 18
 
-Writes /var/lib/vacation/ships.csv. One line per ship; a later line for the same ship replaces an
+Writes /apps/data/vacation/ships.csv. One line per ship; a later line for the same ship replaces an
 earlier one, so --ship just adds a line.
 """
 import os, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-REMOTE = "/var/lib/vacation/ships.csv"
+REMOTE = "/apps/data/vacation/ships.csv"
 
 
 def board(*commands):

@@ -3,7 +3,7 @@
 // Lichee Pi Nano with the 5" 800x480 resistive-touch panel, for mainline
 // Linux (6.18). Built on the mainline board file, which already has the SD
 // card, SPI flash, USB, serial console and audio codec; this adds what the
-// chess clock needs on top.
+// chess clock needs on top (and SPI WiFi through an ESP32).
 //
 // The display pipeline (frontend -> backend -> TCON -> panel) is not in
 // mainline: the nodes below are carried over from the 5.11 kernel fork this
@@ -12,6 +12,7 @@
 
 /dts-v1/;
 #include "allwinner/suniv-f1c100s-licheepi-nano.dts"
+#include <dt-bindings/gpio/gpio.h>
 
 / {
 	model = "Lichee Pi Nano (Custom)";
@@ -180,6 +181,56 @@
 		pins = "PE6";
 		function = "pwm1";
 	};
+
+	// SPI1 on the top header's A0-A3 pins, to an ESP32 for WiFi (below)
+	spi1_pa_pins: spi1-pa-pins {
+		pins = "PA1", "PA2", "PA3";		// MOSI, CLK, MISO
+		function = "spi1";
+	};
+
+	// CS, with the pin's own pull-up (about 100k) so it stays high (the ESP32 not selected) while
+	// nothing drives it, e.g. before Linux sets the pins up. An external 10k to 3.3V is better.
+	spi1_cs_pin: spi1-cs-pin {
+		pins = "PA0";
+		function = "spi1";
+		bias-pull-up;
+	};
+};
+
+// WiFi from an ESP32 running Espressif's ESP-Hosted firmware: Linux sees it
+// as wlan0 (driver: esp32_spi.ko, package/esp-hosted). Wiring, Nano header ->
+// ESP32 (an MH-ET LIVE MiniKit while testing; the protoboard's ESP32-C3 uses
+// the same Nano-side pins):
+//   A0 PA0 SPI1 CS (10k pull-up to 3.3V, or just the internal one) -> IO15     A1 PA1 MOSI -> IO13
+//   A2 PA2 SPI1 CLK -> IO14                          A3 PA3 MISO <- IO12
+//   D6 PE9 <- IO2 handshake    D7 PE10 <- IO4 data ready    PCLK PE2 -> EN
+// SPI mode 2. The driver starts at 1 MHz and moves to the speed the firmware
+// asks for, capped here: jumper wires don't like much more.
+&spi1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&spi1_pa_pins>, <&spi1_cs_pin>;
+	status = "okay";
+
+	wifi@0 {
+		compatible = "espressif,esp32-spi";
+		reg = <0>;
+		spi-max-frequency = <10000000>;
+		spi-cpol;
+		reset-gpios = <&pio 4 2 GPIO_ACTIVE_LOW>;		// PE2 -> ESP EN
+		handshake-gpios = <&pio 4 9 GPIO_ACTIVE_HIGH>;		// PE9 <- ESP IO2
+		data-ready-gpios = <&pio 4 10 GPIO_ACTIVE_HIGH>;	// PE10 <- ESP IO4
+	};
+};
+
+// The micro-USB port as a USB device only (a serial port for the Mac, see linux_defconfig): no
+// host mode, so no need to sense the cable's ID pin, which mainline reads on PE2. That leaves PE2
+// free (for the ESP32's reset, above).
+&usb_otg {
+	dr_mode = "peripheral";
+};
+
+&usbphy {
+	/delete-property/ usb0_id_det-gpios;
 };
 
 &i2c0 {

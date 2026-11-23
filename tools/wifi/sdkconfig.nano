@@ -1,0 +1,16 @@
+# ESP-Hosted firmware for the Lichee Nano's WiFi: SPI to the Nano (its SPI1), WiFi only.
+# Added after the project's own sdkconfig.defaults (see build_esp_firmware.sh).
+CONFIG_ESP_SPI_HOST_INTERFACE=y
+CONFIG_ESP_SDIO_HOST_INTERFACE=n
+# SPI mode 2, as the Nano's device tree says (spi-cpol)
+CONFIG_ESP_SPI_MODE=2
+# Handshake and data ready, to the Nano's PE9 and PE10 (the ESP32 project defaults; for the ESP32-C3: 3 and 4)
+CONFIG_ESP_SPI_GPIO_HANDSHAKE=2
+CONFIG_ESP_SPI_GPIO_DATA_READY=4
+# Wait for chip select to go high before arming the next transaction. The ESP ends a transaction
+# once the last byte is clocked, and the Nano can take 50 us to milliseconds more to release CS;
+# without this, an ESP that armed its next reply meanwhile counts that late CS edge as a finished
+# (empty) transaction, and the reply is lost (commands time out).
+CONFIG_ESP_SPI_DEASSERT_HS_ON_CS=y
+# no Bluetooth: it isn't wired up, and it saves memory on both sides
+CONFIG_BT_ENABLED=n

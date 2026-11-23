@@ -1,0 +1,8 @@
+#!/bin/sh
+# Starts the chess clock; /etc/init.d/S99app runs this (in this folder, with APP_DATA set to where
+# its settings, drawings cache and log live) and starts it again if it exits.
+[ -f "$APP_DATA/fbclock.conf" ] || cp fbclock.conf "$APP_DATA/fbclock.conf"
+exec python3 -u -c '
+import sys, fbclock
+try: fbclock.main()
+except KeyboardInterrupt: sys.exit(0)'

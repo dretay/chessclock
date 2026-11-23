@@ -30,28 +30,28 @@ frames a second.
 
 Starting up is kept short (about 5 seconds) by installing the program
 pre-compiled, and by saving the drawn chess pieces and the Settings screen to
-the SD card (`/var/lib/fbclock/cache`) the first time they are drawn. The
+the SD card (`/apps/data/chess/cache`) the first time they are drawn. The
 first start after flashing takes a few seconds longer while it fills the
 cache; the cache clears itself whenever the program changes.
 
 ## Files
 
-| In this folder | Installed as | |
-|---|---|---|
-| `fbclock.py` | `/usr/lib/python3.11/site-packages/fbclock.pyc` | the clock, installed as a pre-compiled module |
-| `fbclock` | `/usr/bin/fbclock` | starts it |
-| `games.pgn` | `/usr/share/fbclock/games.pgn` | the games it replays (standard PGN; add your own) |
-| `splash/*.raw.gz` | `/usr/share/fbclock/` | boot splash, ready-made in the screen's pixel format, one per orientation |
-| `fbclock.conf` | `/etc/fbclock.conf` | default settings and touch calibration |
-| `init.d/S00splash` | `/etc/init.d/S00splash` | shows the splash early in boot, at a dimmed brightness |
-| `init.d/S99fbclock` | `/etc/init.d/S99fbclock` | starts the clock and restarts it if it ever exits |
+The clock is an app ([docs/apps.md](../docs/apps.md)) called `chess`:
+`install.sh` lays it out in `/apps/chess` on the board, and its settings,
+cache and log are in `/apps/data/chess`.
 
-The Buildroot package in [`package/fbclock`](../package/fbclock) installs
-these; `BR2_PACKAGE_FBCLOCK=y` in the defconfigs enables it.
+| In this folder | | |
+|---|---|---|
+| `fbclock.py` | | the clock (pre-compiled when the image is built) |
+| `run` | | starts it (`/etc/init.d/S99app` runs it, and restarts it if it ever exits) |
+| `games.pgn` | | the games it replays (standard PGN; add your own) |
+| `splash/*.raw.gz` | | boot splash, ready-made in the screen's pixel format, one per orientation |
+| `splash.sh` | | shows the splash early in boot, at a dimmed brightness |
+| `fbclock.conf` | `/apps/data/chess/fbclock.conf` | default settings and touch calibration (copied the first time it runs) |
 
 ## Settings
 
-Settings live in `/etc/fbclock.conf` as `KEY=VALUE` lines. The Settings screen
+Settings live in `/apps/data/chess/fbclock.conf` as `KEY=VALUE` lines. The Settings screen
 writes `ROTATE`, `DAY_BRIGHTNESS` and `NIGHT_BRIGHTNESS` there itself (safely:
 a power cut mid-save can't corrupt it); the rest can be edited by hand.
 
@@ -70,20 +70,19 @@ power-up (and counts as night) until it is set in Settings.
 
 ## Logs and troubleshooting
 
-The clock logs to `/var/lib/fbclock/fbclock.log` on the SD card, with the
-previous run's log in `fbclock.log.1`. Every accepted touch is logged with its
+The clock logs to `/apps/data/chess/chess.log` on the SD card, with the
+previous run's log in `chess.log.1`. Every accepted touch is logged with its
 screen position, every rejected one (noise) with its readings, and if the
 clock ever exits the log says so before it is restarted.
 
 ```sh
-/etc/init.d/S99fbclock stop|start|restart
-fbclock --touch-debug                         # print raw and screen touch positions
+app stop|start|restart
+cd /apps/chess && python3 fbclock.py --touch-debug   # (stopped) print raw and screen touch positions
 ```
 
-To try a changed `fbclock.py` on the board without reflashing, copy it to
-`/usr/lib/python3.11/site-packages/` (next to `fbclock.pyc`, which it then
-takes precedence over) and restart the clock; `tools/push_to_board.py` does
-the copying over the serial console. `tools/simulate.py` checks the
+To try a changed `fbclock.py` on the board without reflashing,
+`tools/deploy_app.py chess` copies the changed files over the serial console
+and restarts the clock. `tools/simulate.py` checks the
 animations and touch handling on a desktop first.
 
 To recalibrate the touch screen: stop the clock, run `--touch-debug`, tap near

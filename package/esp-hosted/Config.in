@@ -1,0 +1,15 @@
+config BR2_PACKAGE_ESP_HOSTED
+	bool "esp-hosted (WiFi through an ESP32 on SPI)"
+	depends on BR2_LINUX_KERNEL
+	select BR2_PACKAGE_WPA_SUPPLICANT
+	select BR2_PACKAGE_WPA_SUPPLICANT_NL80211
+	select BR2_PACKAGE_WPA_SUPPLICANT_CLI       # wpa_cli: Settings scans and joins networks with it
+	select BR2_PACKAGE_DROPBEAR                 # ssh and scp to the board
+	help
+	  WiFi for the Lichee Nano from an ESP32 running Espressif's
+	  ESP-Hosted firmware, wired to SPI1 (see the board's device tree).
+	  Builds the esp32_spi kernel module from esp-hosted-linux and
+	  starts wlan0 at boot: wpa_supplicant (networks in
+	  /etc/wpa_supplicant.conf), DHCP and network time.
+
+	  https://github.com/espressif/esp-hosted-linux

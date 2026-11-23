@@ -7,8 +7,10 @@ The drawing is all done by the C library vacfx (fx/vacfx.c), which owns the imag
 screen; this program decides what to show: the number, the time of day, when fireworks go off.
 It deliberately doesn't import Pillow: on the 32 MB board every megabyte counts.
 
-Settings: /etc/vacation.conf (KEY=VALUE lines, see vacation.conf). For trying it out:
-  VACATION_CONF, VACATION_THEME_DIR, VACATION_LIB, VACATION_FB   other files than the installed ones
+An app (see docs/apps.md): its files are this folder's (/apps/vacation on the board), its settings
+and saved state in APP_DATA (/apps/data/vacation): vacation.conf (KEY=VALUE lines; the run script
+starts it from this folder's). For trying it out:
+  VACATION_CONF, VACATION_THEME_DIR, VACATION_LIB, VACATION_FB   other files than the usual ones
   VACATION_HOUR=21.5        pretend it's always this time of day
   VACATION_DAYLAPSE=90      run a whole day in this many seconds
   VACATION_FRAMES=N         stop after N frames
@@ -64,6 +66,9 @@ def lighting(hour):
 FADE_SECS = 0.6                                     # countdown <-> map
 
 
+# settings and saved state (S99app sets it to /apps/data/vacation on the board)
+DATA = os.environ.get("APP_DATA", "/apps/data/vacation")
+
 def days_left(sail, today):
     return max(0, (sail - today).days)
 
@@ -71,15 +76,13 @@ def days_left(sail, today):
 class App:
     def __init__(self):
         here = os.path.dirname(os.path.abspath(__file__))
-        self.conf_path = os.environ.get("VACATION_CONF", "/etc/vacation.conf")
+        self.conf_path = os.environ.get("VACATION_CONF", os.path.join(DATA, "vacation.conf"))
         self.conf = read_conf(self.conf_path)
         theme = self.conf.get("THEME", "dream")
-        self.theme_dir = os.environ.get("VACATION_THEME_DIR", os.path.join("/usr/share/vacation/themes", theme))
-        self.ui_dir = os.environ.get("VACATION_UI_DIR", "/usr/share/vacation/ui")
-        if not os.path.isdir(self.ui_dir): self.ui_dir = os.path.join(here, "ui")
+        self.theme_dir = os.environ.get("VACATION_THEME_DIR", os.path.join(here, "themes", theme))
+        self.ui_dir = os.environ.get("VACATION_UI_DIR", os.path.join(here, "ui"))
         self.scene = json.load(open(os.path.join(self.theme_dir, "theme.json")))
-        lib = os.environ.get("VACATION_LIB", "/usr/lib/libvacfx.so")
-        if not os.path.exists(lib): lib = os.path.join(here, "fx", "libvacfx.so")
+        lib = os.environ.get("VACATION_LIB", os.path.join(here, "fx", "libvacfx.so"))
         self.fx = ctypes.CDLL(lib)
         self.fx.vfx_selftest.restype = ctypes.c_uint
         self.fx.vfx_stats.restype = ctypes.c_char_p
@@ -271,7 +274,7 @@ class App:
         self.fx.vfx_close()
 
 
-CLOCK_FILE = "/var/lib/vacation/clock"
+CLOCK_FILE = os.path.join(DATA, "clock")
 
 
 def save_clock():

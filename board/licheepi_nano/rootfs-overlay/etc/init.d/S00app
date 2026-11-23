@@ -1,0 +1,23 @@
+#!/bin/sh
+#
+# Mounts the apps partition (the SD card's third, at /apps; see docs/apps.md) and shows the boot
+# splash of the app that's chosen to start, if it has one (/apps/NAME/splash.sh), as early as possible.
+#
+
+case "$1" in
+	start)
+		mount -t ext4 -o noatime /dev/mmcblk0p3 /apps 2>/dev/null
+		A=
+		[ -r /apps/current ] && read -r A < /apps/current
+		if [ -n "$A" ] && [ -f "/apps/$A/splash.sh" ]; then
+			# (sourced in a subshell rather than run: starting a program is slow on this CPU)
+			( cd "/apps/$A" && APP_DATA=/apps/data/$A && . ./splash.sh )
+		fi
+		;;
+	stop|restart|reload)
+		;;
+	*)
+		echo "Usage: $0 {start}"
+		exit 1
+		;;
+esac

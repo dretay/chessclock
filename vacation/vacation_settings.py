@@ -4,16 +4,19 @@
   Page 2  fireworks: when (random through the night, a nightly show at a set time, both, or off),
           how often the random ones go up, and the show's time
   Page 3  the ship the fleet map follows
+  Page 4  WiFi: the networks in range, and which one the board is on (vacation_wifi.py); tapping one
+          opens page 5, a keyboard for its password. Joining saves it on the board straight away.
   and a touch calibration screen.
 
 It runs inside the countdown program, drawing with the C library (vacfx.c's vfx_ui_*) from text
 pre-drawn on a desktop (tools/themegen/build_ui.py; layout in vacation_layout.py): no Pillow, so
-it opens at once. Save writes /etc/vacation.conf (and sets the clock if today's date or time were
+it opens at once. Save writes vacation.conf (and sets the clock if today's date or time were
 changed); Cancel, or a minute and a half untouched, leaves everything as it was.
 """
-import calendar, datetime, os
+import calendar, datetime, os, threading, time
 
 import vacation_layout as L
+import vacation_wifi as wifi
 
 IDLE_SECS = 90
 REPEAT_DELAY, REPEAT_EVERY = 0.5, 0.12
@@ -57,6 +60,11 @@ class Settings:
         self.clock_changed = False
         self.demo = False                  # a fireworks show as soon as Settings closes (Fireworks page)
         self.page = 1; self.pressed = None
+        # WiFi (pages 4 and 5)
+        self.wpa = None; self.nets = []; self.job = None; self.scanning = False
+        self.wifi_state = ("off", ""); self.wifi_msg = ""; self.next_status = 0.0
+        self.joining = None                # (ssid, give up at) while connecting
+        self.join_ssid = ""; self.typed = ""; self.kb_layer = "letters"; self.kb_shift = False; self.keys = []
         self.cols1 = {}
         for _, top, cols in L.PAGE1_ROWS: self.cols1.update(L.columns(cols, top))
         self.cols2 = L.columns(L.PAGE2_ROW_B[2], L.PAGE2_ROW_B[1])
@@ -141,20 +149,23 @@ class Settings:
         self.text("value", self.text_of(k), cx, top + 79, L.IVORY, "m", a)
 
     def draw_button(self, name):
-        x0, y0, x1, y1 = box = {1: L.PAGE1_BUTTONS, 2: L.PAGE2_BUTTONS, 3: L.PAGE3_BUTTONS}[self.page][name]
+        x0, y0, x1, y1 = box = {1: L.PAGE1_BUTTONS, 2: L.PAGE2_BUTTONS, 3: L.PAGE3_BUTTONS, 4: L.WIFI_BUTTONS, 5: L.KB_BUTTONS}[self.page][name]
         self.bg((x0 - 2, y0 - 2, x1 + 2, y1 + 2)); hot = self.pressed == name; cx = (x0 + x1) // 2
-        if name == "save":
+        if name in ("save", "kb_join"):
             self.round(box, 14, (238, 206, 138) if hot else L.GOLD, 255)
-            self.text("button", "Save", cx, y0 + 38, L.DARK, "m")
-        elif name in ("cancel", "back"):
+            self.text("button", "Save" if name == "save" else "Join", cx, y0 + 38, L.DARK, "m")
+        elif name in ("cancel", "back", "kb_cancel"):
             self.round(box, 14, (255, 255, 255), 60 if hot else 22, (255, 255, 255), 120)
-            self.text("button", "Cancel" if name == "cancel" else "‹ Back", cx, y0 + 38, L.IVORY, "m")
+            self.text("button", "‹ Back" if name == "back" else "Cancel", cx, y0 + 38, L.IVORY, "m")
+        elif name == "forget" and self.wifi_state[0] == "off":
+            pass                                            # (nothing to forget)
         elif name == "demo" and self.demo:                  # armed
             self.round(box, 12, (238, 206, 138) if hot else L.GOLD, 255)
             self.text("small", "Demo show on exit", cx, y0 + 25, L.DARK, "m")
         else:
             self.round(box, 12, (255, 255, 255), 40 if hot else 0, (255, 255, 255), 70)
-            label = {"calibrate": "Calibrate touch", "fireworks": "Fireworks ›", "ship": "Ship map ›", "demo": "Demo show"}[name]
+            label = {"calibrate": "Touch", "fireworks": "Fireworks ›", "ship": "Ship map ›", "wifi": "WiFi ›", "demo": "Demo show",
+                     "rescan": "Rescan", "forget": "Forget network"}[name]
             self.text("small", label, cx, y0 + 25, L.DIM, "m")
 
     def chip_box(self, row, i):
@@ -195,6 +206,10 @@ class Settings:
             self.text("small", "date & time", 40, 345, L.DIM)
             for k in self.cols1: self.draw_col(k)
             for b in L.PAGE1_BUTTONS: self.draw_button(b)
+        elif self.page == 4:
+            self.draw_wifi_page()
+        elif self.page == 5:
+            self.draw_keyboard_page()
         elif self.page == 3:
             self.text("title", "Ship map", 36, 58, L.IVORY)
             self.panel(L.PAGE3_PANEL)
@@ -229,6 +244,8 @@ class Settings:
                         if c and self.cols1[c[0]][0] - 6 <= x < self.cols1[c[0]][2] + 6:
                             return ("up", c[0]) if y < top + 74 else ("down", c[0])
             return None
+        if self.page == 4: return self.hit_wifi(x, y)
+        if self.page == 5: return self.hit_keyboard(x, y)
         if self.page == 3:
             if y >= 382: return "back" if x < 400 else "save"
             x0, y0, x1, y1 = L.PAGE3_PANEL
@@ -261,6 +278,8 @@ class Settings:
             self.draw_header()
         elif isinstance(target, tuple) and target[0] == "chip": self.draw_chip(target[1], target[2])
         elif isinstance(target, tuple) and target[0] == "ship": self.draw_ship_chip(target[1])
+        elif isinstance(target, tuple) and target[0] == "net": self.draw_net_row(target[1])
+        elif isinstance(target, tuple) and target[0] == "key": self.draw_key(target[1])
         elif target: self.draw_button(target)
 
     def release(self, target, x, y):
@@ -268,6 +287,12 @@ class Settings:
         again = self.hit(x, y) == target
         if self.is_arrow(target):
             self.draw_col(target[1], self.page == 2 and self.show_dim()); return None
+        if isinstance(target, tuple) and target[0] == "key":       # a key types as it's let go (wherever the finger drifted)
+            self.type_key(target[1]); return None
+        if isinstance(target, tuple) and target[0] == "net":
+            self.draw_net_row(target[1])
+            if again and target[1] < len(self.nets): self.pick_network(self.nets[target[1]])
+            return None
         if isinstance(target, tuple) and target[0] == "ship":
             if again: self.map_ship = L.FLEET[target[1]]
             for i in range(len(L.FLEET)): self.draw_ship_chip(i)
@@ -288,6 +313,11 @@ class Settings:
         if target == "demo": self.demo = not self.demo; self.draw_button("demo"); return None
         if target == "fireworks": self.page = 2; self.draw_page()
         elif target == "ship": self.page = 3; self.draw_page()
+        elif target == "wifi": self.page = 4; self.draw_page(); self.start_scan()
+        elif target == "rescan": self.start_scan()
+        elif target == "forget" and self.wifi_state[0] != "off": self.start_job("forget", lambda w: w.forget())
+        elif target == "kb_cancel": self.page = 4; self.draw_page()
+        elif target == "kb_join": self.join(self.join_ssid, self.typed)
         elif target == "back": self.page = 1; self.draw_page()
         elif target == "calibrate": self.calibrate(); self.draw_page()
         return None
@@ -309,17 +339,22 @@ class Settings:
                 last_touch = now
                 if ev == "down":
                     self.pressed = self.hit(x, y)
-                    print("settings: press at (%d, %d): %s" % (x, y, self.pressed), flush=True)
+                    # (never log the keyboard's keys, or where they are: that would put a typed
+                    # WiFi password in the log)
+                    if not (isinstance(self.pressed, tuple) and self.pressed[:1] == ("key",)):
+                        print("settings: press at (%d, %d): %s" % (x, y, self.pressed), flush=True)
                     self.press(self.pressed)
                     repeat_at = now + REPEAT_DELAY if self.is_arrow(self.pressed) else None
                 elif ev == "up":
                     was, self.pressed, repeat_at = self.pressed, None, None
                     result = self.release(was, x, y)
+            if self.page in (4, 5): self.wifi_tick(now)
             if repeat_at and now >= repeat_at and self.pressed:
                 repeat_at = now + REPEAT_EVERY; self.press(self.pressed)
             fx.vfx_ui_flush()
             if now - last_touch > IDLE_SECS: result = "cancel"
             app.tick()
+        if self.wpa: self.wpa.close()
         if result == "save": self.save()
         self.closing(result == "save")
         fx.vfx_ui_close()
@@ -334,6 +369,199 @@ class Settings:
         self.fx.vfx_ui_flush()
         until = self.app.now() + 0.7
         while self.app.now() < until: self.app.tick()
+
+    # ---------------------------------------------------------------- WiFi (pages 4 and 5)
+    def start_job(self, kind, fn):
+        """Run fn(wpa) in the background (scans take seconds; the page keeps answering meanwhile)."""
+        if self.job and self.job["thread"].is_alive(): return
+        if not wifi.present(): self.wifi_msg = "No WiFi hardware (is the ESP32 connected?)"; self.draw_wifi_status(); return
+        if self.wpa is None: self.wpa = wifi.connect()
+        job = {"kind": kind, "result": None, "error": None}
+        def work():
+            try: job["result"] = fn(self.wpa)
+            except (wifi.WifiError, OSError) as e: job["error"] = e
+        job["thread"] = threading.Thread(target=work, daemon=True); self.job = job; job["thread"].start()
+
+    def start_scan(self):
+        if not wifi.present(): self.wifi_msg = "No WiFi hardware (is the ESP32 connected?)"; self.draw_wifi_status(); return
+        self.scanning = True; self.wifi_msg = ""; self.draw_wifi_status()
+        self.start_job("scan", lambda w: w.scan())
+
+    def wifi_tick(self, now):
+        """A finished background job, and what wpa_supplicant says now (once a second)."""
+        job = self.job
+        if job and not job["thread"].is_alive():
+            self.job = None
+            if job["error"] is not None:
+                print("settings: wifi %s: %s" % (job["kind"], job["error"]), flush=True)
+                self.wifi_msg = "WiFi isn't running yet" if "running" in str(job["error"]) else \
+                                "Couldn't connect: check the password" if job["kind"] == "join" else str(job["error"])[:60]
+                self.scanning = False; self.joining = None
+            elif job["kind"] == "scan":
+                self.scanning = False; self.nets = job["result"] or []
+            elif job["kind"] == "forget":
+                self.wifi_state = ("off", "")
+            if self.page == 4: self.draw_page()
+            else: self.fx.vfx_ui_flush()
+        if now >= self.next_status and wifi.present() and not (self.job and self.job["kind"] in ("join", "forget")):
+            self.next_status = now + 1.0
+            try:
+                if self.wpa is None: self.wpa = wifi.connect()
+                state = self.wpa.status()
+            except (wifi.WifiError, OSError):
+                state = ("off", "")
+            if self.joining:
+                if state[0] == "connected": self.joining = None; self.wifi_msg = "Saved on the board"
+                elif now > self.joining[1]: self.joining = None; self.wifi_msg = "Couldn't connect: check the password"
+            if state != self.wifi_state or self.page == 4:
+                changed = state != self.wifi_state; self.wifi_state = state
+                if self.page == 4:
+                    self.draw_wifi_status()
+                    if changed: self.draw_wifi_buttons(); [self.draw_net_row(i) for i in range(min(len(self.nets), L.WIFI_ROWS))]
+
+    def pick_network(self, net):
+        ssid, bars, secured = net
+        if not secured: self.join(ssid, None); return
+        self.join_ssid = ssid; self.typed = ""; self.kb_layer = "letters"; self.kb_shift = False
+        self.page = 5; self.draw_page()
+
+    def join(self, ssid, password):
+        if password is not None and len(password) < 8:            # (WPA passwords are 8 to 63 characters)
+            self.flash_field(); return
+        self.joining = (ssid, self.app.now() + 25); self.wifi_msg = ""
+        self.start_job("join", lambda w: w.join(ssid, password))
+        self.page = 4; self.draw_page()
+
+    def wifi_status_text(self):
+        state, ssid = self.wifi_state
+        if not wifi.present(): return "No WiFi hardware (is the ESP32 connected?)", L.DIM
+        if self.joining: return "Connecting to " + self.joining[0] + "...", L.IVORY
+        if self.wifi_msg and self.wifi_msg != "Saved on the board": return self.wifi_msg, L.GOLD
+        if state == "connected":
+            ip = wifi.ip_address() or wifi.fake_ip()
+            return "Connected to " + ssid + (" · " + ip if ip else "") + ("   (saved on the board)" if self.wifi_msg else ""), L.GOLD
+        if state == "connecting": return "Connecting to " + ssid + "...", L.IVORY
+        if self.scanning: return "Scanning...", L.DIM
+        return "Not connected · Tap a network to join it", L.DIM
+
+    def draw_wifi_status(self):
+        if self.page != 4: return
+        box = (30, L.WIFI_STATUS_Y - 22, L.W - 20, L.WIFI_STATUS_Y + 10); self.bg(box)
+        t, col = self.wifi_status_text()
+        self.text("small", t, 40, L.WIFI_STATUS_Y, col)
+        self.draw_header()
+
+    def fit(self, font, s, w):
+        """s, shortened with "..." to fit w pixels."""
+        if self.width(font, s) <= w: return s
+        while s and self.width(font, s + "...") > w: s = s[:-1]
+        return s + "..."
+
+    def net_row_box(self, i):
+        x0, y0, x1, y1 = L.WIFI_PANEL; top = y0 + 3 + i * L.WIFI_ROW_H
+        return (x0 + 8, top, x1 - 8, top + L.WIFI_ROW_H - 2)
+
+    def draw_net_row(self, i):
+        if self.page != 4 or i >= len(self.nets) or i >= L.WIFI_ROWS: return
+        ssid, bars, secured = self.nets[i]; box = self.net_row_box(i)
+        self.under_panel(box)
+        here = self.wifi_state[0] == "connected" and self.wifi_state[1] == ssid
+        if self.pressed == ("net", i): self.round(box, 10, L.GOLD, 70)
+        elif here: self.round(box, 10, L.GOLD, 34)
+        self.text("label", self.fit("label", ssid, 520), box[0] + 20, box[1] + 35, L.GOLD if here else L.IVORY)
+        if not secured: self.text("small", "open", box[2] - 150, box[1] + 32, L.DIM)
+        for b in range(4):                                  # signal: four bars
+            h = 8 + b * 6; bx = box[2] - 70 + b * 13; by = box[1] + 38
+            self.round((bx, by - h, bx + 9, by), 2, L.IVORY if b < bars else (255, 255, 255), 230 if b < bars else 40)
+
+    def draw_wifi_buttons(self):
+        for b in L.WIFI_BUTTONS:
+            x0, y0, x1, y1 = L.WIFI_BUTTONS[b]; self.bg((x0 - 2, y0 - 2, x1 + 2, y1 + 2)); self.draw_button(b)
+
+    def draw_wifi_page(self):
+        self.text("title", "WiFi", 36, 58, L.IVORY)
+        self.panel(L.WIFI_PANEL)
+        for i in range(min(len(self.nets), L.WIFI_ROWS)): self.draw_net_row(i)
+        if not self.nets and not self.scanning and wifi.present():
+            self.text("small", "No networks found", L.W // 2, (L.WIFI_PANEL[1] + L.WIFI_PANEL[3]) // 2, L.DIM, "m")
+        self.draw_wifi_buttons()
+        self.draw_wifi_status()
+
+    def hit_wifi(self, x, y):
+        if y >= 396: return "back" if x < 268 else "rescan" if x < 532 else "forget"
+        x0, y0, x1, y1 = L.WIFI_PANEL
+        if y0 <= y < y1:
+            i = (y - y0 - 3) // L.WIFI_ROW_H
+            if 0 <= i < min(len(self.nets), L.WIFI_ROWS): return ("net", i)
+        return None
+
+    # ---- page 5: the keyboard
+    def layout_keys(self):
+        """[(box, label, what it does)] for the keyboard's current layer."""
+        rows = L.KB_LETTERS if self.kb_layer == "letters" else L.KB_SYMBOLS
+        unit = (L.KB_X1 - L.KB_X0 - 9 * L.KB_GAP) / 10.0
+        keys = []
+        for r, row in enumerate(rows):
+            w_row = sum(u * unit for _, _, u in row) + (len(row) - 1) * L.KB_GAP
+            x = L.KB_X0 + (L.KB_X1 - L.KB_X0 - w_row) / 2; y = L.KB_TOP + r * (L.KB_KEY_H + L.KB_GAP)
+            for label, does, u in row:
+                w = u * unit
+                if self.kb_shift and len(label) == 1 and label.isalpha(): label, does = label.upper(), does.upper()
+                keys.append(((int(x), y, int(x + w), y + L.KB_KEY_H), label, does)); x += w + L.KB_GAP
+        self.keys = keys
+
+    def draw_key(self, i):
+        box, label, does = self.keys[i]
+        self.bg((box[0] - 1, box[1] - 1, box[2] + 1, box[3] + 1))
+        hot = self.pressed == ("key", i); on = does == "shift" and self.kb_shift
+        if on: self.round(box, 9, L.GOLD, 255)
+        else: self.round(box, 9, L.GOLD if hot else (255, 255, 255), 150 if hot else 30, (255, 255, 255), 70)
+        cx = (box[0] + box[2]) // 2
+        if len(label) == 1: self.text("label", label, cx, box[1] + 38, L.DARK if on else L.IVORY, "m")
+        else: self.text("small", label, cx, box[1] + 35, L.DARK if on else L.DIM, "m")
+
+    def draw_field(self, flash=False):
+        x0, y0, x1, y1 = L.KB_FIELD
+        self.bg((x0 - 1, y0 - 1, x1 + 1, y1 + 1))
+        self.round(L.KB_FIELD, 12, L.PANEL_FILL, 200, L.GOLD if flash else (255, 255, 255), 200 if flash else 60)
+        shown = self.typed
+        while shown and self.width("label", shown) > x1 - x0 - 50: shown = shown[1:]   # (the end, if it's long)
+        self.text("label", shown, x0 + 20, y0 + 40, L.IVORY)
+        cx = x0 + 22 + self.width("label", shown)
+        self.round((cx, y0 + 14, cx + 2, y1 - 12), 0, L.GOLD, 230)           # the caret
+        if flash: self.text("small", "8 characters at least", x1 - 20, y0 + 37, L.GOLD, "r")
+
+    def flash_field(self):
+        self.draw_field(flash=True); self.fx.vfx_ui_flush()
+
+    def draw_keyboard_page(self):
+        self.text("label", self.fit("label", "Password for " + self.join_ssid, 380), 36, 50, L.IVORY)
+        self.draw_field()
+        self.layout_keys()
+        for i in range(len(self.keys)): self.draw_key(i)
+        for b in L.KB_BUTTONS: self.draw_button(b)
+        self.draw_header()
+
+    def hit_keyboard(self, x, y):
+        if y >= 404: return "kb_cancel" if x < 400 else "kb_join"
+        g = L.KB_GAP // 2 + 1
+        for i, (box, label, does) in enumerate(self.keys):
+            if box[0] - g <= x < box[2] + g and box[1] - g <= y < box[3] + g: return ("key", i)
+        return None
+
+    def type_key(self, i):
+        box, label, does = self.keys[i]
+        if does == "shift": self.kb_shift = not self.kb_shift; self.layout_keys(); self.draw_keyboard_keys(); return
+        if does in ("symbols", "letters"): self.kb_layer = does; self.kb_shift = False; self.layout_keys(); self.draw_keyboard_keys(); return
+        if does == "del": self.typed = self.typed[:-1]
+        elif len(self.typed) < 63: self.typed += does
+        self.draw_key(i); self.draw_field()
+        if self.kb_shift and does.isalpha():                 # (shift is for one letter)
+            self.kb_shift = False; self.layout_keys(); self.draw_keyboard_keys()
+
+    def draw_keyboard_keys(self):
+        x0 = L.KB_X0 - 4; self.bg((x0, L.KB_TOP - 4, L.KB_X1 + 4, L.KB_TOP + 4 * (L.KB_KEY_H + L.KB_GAP)))
+        for i in range(len(self.keys)): self.draw_key(i)
 
     # ---------------------------------------------------------------- touch calibration
     TARGETS = [(60, 60), (740, 60), (740, 420), (60, 420)]

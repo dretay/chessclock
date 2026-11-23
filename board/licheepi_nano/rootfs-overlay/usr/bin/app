@@ -1,0 +1,32 @@
+#!/bin/sh
+# The full-screen apps in /apps (see docs/apps.md):
+#   app                      which one starts at boot, and which are installed
+#   app NAME                 switch to NAME: start it now, and at every boot
+#   app start|stop|restart   the current one
+#   app log                  follow its log
+A=
+[ -r /apps/current ] && read -r A < /apps/current
+case "$1" in
+	"")
+		echo "current: ${A:-none}"
+		for d in /apps/*/; do
+			n=$(basename "$d")
+			[ -x "$d/run" ] && echo "installed: $n"
+		done
+		;;
+	start|stop|restart)
+		exec /etc/init.d/S99app "$1"
+		;;
+	log)
+		exec tail -f "/apps/data/$A/$A.log"
+		;;
+	-*|help)
+		sed -n '2,6p' "$0"
+		;;
+	*)
+		[ -x "/apps/$1/run" ] || { echo "no app called $1 in /apps"; exit 1; }
+		/etc/init.d/S99app stop
+		echo "$1" > /apps/current.tmp && mv /apps/current.tmp /apps/current && sync
+		exec /etc/init.d/S99app start
+		;;
+esac

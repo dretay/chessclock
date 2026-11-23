@@ -9,7 +9,7 @@ In2 signals + +3V3 pour / B.Cu signals + GND pour.
 | `protoboard.kicad_pro` | project, design rules (0.127 mm clearance, 0.1 mm min track for the router's neck-downs at the QFN, 0.2 mm drill) and netclasses (Default, Power, HighCurrent, USB) |
 | `protoboard.kicad_sch` | root sheet, with sub-sheets `power`, `soc`, `display`, `storage`, `wifi`, `audio`, `io` |
 | `protoboard.kicad_pcb` | placed and fully autorouted (0 unconnected), pours filled, ESP antenna keep-out |
-| `lib/` | custom symbols (F1C200s, SY8089, PT4103, NS2009, ESP32-C3 SuperMini) and footprints (SuperMini, F1C QFN-88 with 0.22 mm pads, prototyping grid, rail strips) |
+| `lib/` | custom symbols (F1C200s, SY8089, PT4103, NS2009, ESP32-C3 SuperMini) and footprints (SuperMini for headers or flat soldering, F1C QFN-88 with 0.22 mm pads, prototyping grid, rail strips) |
 | `gen/` | the generator |
 
 ## Generated, not hand-drawn

@@ -5,8 +5,8 @@ comes back (logging in first if needed).
 usage: run_on_board.py [--wait SECONDS] COMMAND [COMMAND ...]
   --wait  how long to collect output after the last command (default 3)
 
-e.g.  tools/run_on_board.py "tail /var/lib/fbclock/fbclock.log"
-      tools/run_on_board.py --wait 20 "/etc/init.d/S99fbclock restart"
+e.g.  tools/run_on_board.py "tail /apps/data/chess/chess.log"
+      tools/run_on_board.py --wait 20 "app restart"
 """
 import sys
 import time

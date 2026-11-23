@@ -274,6 +274,14 @@ From the middle of the board down:
   reset the ESP by power-cycling it through the load switch.
 * SuperMini pinout and 15.24 mm row spacing in the custom footprint
   *(verify against the module)*.
+* The SuperMini can go on headers or be soldered flat: its F.Cu pads are
+  2.7 x 1.7 mm ovals running 0.5 mm past the module edge (an iron landing
+  and fillet; inner layers and B.Cu keep 1.7 mm round pads), and the holes
+  stay for headers or for feeding solder through the module's plated holes.
+  The module has full holes 1.4 mm in from its edge, not castellations: if
+  yours has half-holes at the edge, the rows are ~18 mm apart and the
+  footprint is wrong. Flat, its underside rests on tented F.Cu tracks and
+  vias: check the module's back for exposed copper (Kapton under it if so).
 * FPC pin 1 ends up on the right of the connector (seen from the component
   side); check with the mock-up that the folded ribbon's pin 1 lands there.
 * F1C200s footprint: the stock QFN-88 10x10 with pads narrowed to 0.22 mm

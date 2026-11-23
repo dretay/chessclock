@@ -1,14 +1,32 @@
 """Shared helpers for talking to the board over its serial console.
 
-The port defaults to the CP2102 adapter's name on macOS; set CLOCK_SERIAL to
-use another (e.g. /dev/ttyUSB0 on Linux)."""
+The board's own USB serial port (its micro-USB port plugged into the Mac: Linux's USB serial
+gadget, 0525:a4a7) is used when it's there: about 7x faster than UART0 at its fastest. Otherwise the CP2102 adapter on UART0. CLOCK_SERIAL picks a port by name instead (e.g.
+/dev/ttyUSB0 on Linux)."""
 import os
 import time
 
 import serial
 
-PORT = os.environ.get("CLOCK_SERIAL", "/dev/cu.usbserial-0001")
-BAUD = int(os.environ.get("CLOCK_BAUD", "115200"))   # the console's own is 115200 (see fast_serial.py)
+UART = "/dev/cu.usbserial-0001"
+GADGET = (0x0525, 0xA4A7)                 # Linux's USB serial gadget (g_serial, CDC ACM)
+
+
+def board_usb_port():
+    """The board's USB serial port, if it's plugged in (the /dev/cu. name, on macOS)."""
+    try:
+        from serial.tools import list_ports
+    except ImportError:
+        return None
+    ports = sorted((p.device for p in list_ports.comports() if (p.vid, p.pid) == GADGET),
+                   key=lambda d: "/cu." not in d)
+    return ports[0] if ports else None
+
+
+USB_PORT = board_usb_port()
+PORT = os.environ.get("CLOCK_SERIAL") or USB_PORT or UART
+USB = PORT == USB_PORT
+BAUD = int(os.environ.get("CLOCK_BAUD", "115200"))   # UART0's own is 115200 (see fast_serial.py); USB ignores it
 
 
 def open_port(timeout=0.05):

@@ -2,7 +2,7 @@
 
 Touch: the board's NS2009 resistive touch chip, polled over I2C (the same chip and the same
 tested reading sequence as the chess clock's, clock/fbclock.py). Calibration comes from the
-TOUCH_* keys in /etc/vacation.conf.
+TOUCH_* keys in vacation.conf.
 
 ScriptTouch: for previews on a desktop. Reads presses from a file, one per line:
     START_SECONDS X Y HOLD_SECONDS

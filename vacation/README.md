@@ -42,33 +42,32 @@ pattern, so still areas stay still). It costs about 1% of the CPU.
 
 ## Files
 
-| In this folder | Installed as | |
+This is an app ([docs/apps.md](../docs/apps.md)): `install.sh` lays it out in `/apps/vacation` on
+the board, with the same folders as here. Its settings, saved time and log are in
+`/apps/data/vacation`.
+
+| In this folder | | |
 |---|---|---|
-| `vacation.py` | `/usr/lib/python3.11/site-packages/vacation.pyc` | the app |
-| `vacation` | `/usr/bin/vacation` | starts it |
-| `fx/vacfx.c` | `/usr/lib/libvacfx.so` | the drawing |
-| `themes/dream/` | `/usr/share/vacation/themes/dream/` | the Disney Dream theme: plates, window light, cards (made by `tools/themegen`) |
-| `vacation_settings.py` | `.../site-packages/vacation_settings.pyc` | the Settings pages (drawn by the C library) |
-| `vacation_layout.py` | `.../site-packages/vacation_layout.pyc` | where everything goes on them, and their text (shared with `tools/themegen/build_ui.py`) |
-| `ui/ui.bin.gz` | `/usr/share/vacation/ui/` | their text and arrows, pre-drawn in Cormorant Garamond (SIL OFL, `fonts/OFL.txt`) |
-| `vacation_touch.py` | `.../site-packages/vacation_touch.pyc` | the touchscreen (the NS2009 chip, as in the chess clock) |
-| `vacation.conf` | `/etc/vacation.conf` | settings, and the touchscreen calibration |
-| `native/setcpu.sh` | `/usr/sbin/setcpu` | sets the CPU clock (see `CPU_MHZ`) |
-| `init.d/S99vacation` | `/etc/init.d/S99vacation` | starts the app and restarts it if it exits; log in `/var/lib/vacation/vacation.log` |
-| `native/bench_water.c` | | the speed test the design came from |
+| `run` | | starts it (`/etc/init.d/S99app` runs it, and restarts it if it exits); log in `/apps/data/vacation/vacation.log` |
+| `vacation.py` | | the app |
+| `fx/vacfx.c` | `fx/libvacfx.so` | the drawing |
+| `themes/dream/` | | the Disney Dream theme: plates, window light, cards (made by `tools/themegen`) |
+| `vacation_settings.py` | | the Settings pages (drawn by the C library) |
+| `vacation_layout.py` | | where everything goes on them, and their text (shared with `tools/themegen/build_ui.py`) |
+| `ui/ui.bin.gz` | | their text and arrows, pre-drawn in Cormorant Garamond (SIL OFL, `fonts/OFL.txt`) |
+| `vacation_touch.py` | | the touchscreen (the NS2009 chip, as in the chess clock) |
+| `vacation_map.py`, `map/` | | the fleet map and its Caribbean chart |
+| `vacation_wifi.py` | | Settings > WiFi |
+| `ais.py`, `service` | `/apps/data/vacation/ships.csv` | the map's live ship positions from AIS (aisstream.io), run beside the countdown; needs WiFi and an API key in `/apps/data/vacation/ais.key` |
+| `vacation.conf` | `/apps/data/vacation/vacation.conf` | settings, and the touchscreen calibration (copied the first time it runs) |
+| `native/bench_water.c` | | the speed test the design came from (not installed) |
 | `themes/dream-blender/` | | the Blender-rendered version of the ship (not installed) |
 
-## Building it in
+## Putting it on the board
 
-The image holds one app. The chess clock is the default; for this one:
-
-```sh
-container build --memory 4g --cpus 8 --build-arg BASE_IMAGE=licheepi-nano-mybase --build-arg APP=vacation \
-    -o type=tar,dest=dist.tar . \
-  && mkdir -p dist && tar -xf dist.tar -C dist --strip-components=1 && rm dist.tar
-```
-
-(`docker build --build-arg APP=vacation ...` likewise.)
+Every image has it. To make it the one that starts at first boot, build with
+`--build-arg APP=vacation`; on the board, `app vacation` switches to it. To try a change without
+reflashing: `tools/deploy_app.py vacation`.
 
 ## Settings
 
@@ -79,12 +78,12 @@ behind by however long the power was off), and Calibrate touch. **Fireworks ›*
 when the fireworks go up (random, a nightly show, both, or off), how often the random ones do,
 and the show's time. Save or Cancel goes back to the countdown.
 
-`/etc/vacation.conf`, `KEY=VALUE` lines:
+`/apps/data/vacation/vacation.conf`, `KEY=VALUE` lines:
 
 | Key | Default | |
 |---|---|---|
 | `SAIL_DATE` | `2027-02-16` | the day it counts down to |
-| `THEME` | `dream` | a folder in `/usr/share/vacation/themes` |
+| `THEME` | `dream` | a folder in `themes/` |
 | `LIGHTS_PER_MIN` | `90` | cabin windows switching per minute |
 | `FIREWORKS_MODE` | `random` | `random` (a few rockets now and then through the night), `show` (a two-minute show every night at `FIREWORKS_SHOW_TIME`), `both`, or `off` |
 | `FIREWORKS_EVERY_MIN` | `15` | how often (on average) the random ones go up at night |

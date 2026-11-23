@@ -2,7 +2,8 @@
 
 The Caribbean from space, NASA's Blue Marble by day and Black Marble (city lights) at night, centred on
 the ship picked in Settings (MAP_SHIP): it gets a pulsing ring and a card with what its AIS reports
-(position, speed and course, status, destination and ETA, when it last reported). Any other ship in
+(position, speed and course, status, destination, distance and time to go, its ETA and whether it's
+running early or late, and how far it's come today). Any other ship in
 view is a small ship pointing its way, with its name on a tag (your own ship, SHIP, has its name in gold on the card when it's the one followed). The
 status line says how old the positions are.
 
@@ -11,11 +12,11 @@ map.json); only the dozen or so around the ship are loaded.
 
 Positions come from a file, one ship per line (see ships_example.csv):
     name, latitude, longitude, heading, speed (knots), when (unix time or YYYY-MM-DDTHH:MM),
-    and optionally destination, ETA (MM-DD HH:MM), status, MMSI
-/var/lib/vacation/ships.csv when it exists (written over serial for now; by the ESP32 from AIS
-later), otherwise the example. A later line for the same ship replaces an earlier one.
+    and optionally destination, ETA (MM-DD HH:MM, UTC as AIS sends it), status, MMSI
+$APP_DATA/ships.csv (/apps/data/vacation/ships.csv) when it exists (kept up to date from AIS by ais.py, the app's
+service, over WiFi; or written over serial by tools/send_ships.py), otherwise the example. A later line for the same ship replaces an earlier one.
 """
-import datetime, json, math, os, random, time
+import calendar, datetime, json, math, os, random, time
 
 import vacation_layout as L
 
@@ -66,9 +67,45 @@ def read_ships(path):
         elif old:                                                          # (an older report, out of order)
             old.trail = sorted(old.trail + [(s.lat, s.lon, s.when)], key=lambda p: p[2] or 0); continue
         ships[name] = s
-    for s in ships.values():                                               # the last day of it, at most 30 points
-        s.trail = [p for p in s.trail if not (s.when and p[2] and s.when - p[2] > 24 * 3600)][-30:]
+    for s in ships.values():                     # the last day of it: all of it for the day's distance, 30 points to draw
+        s.day = [p for p in s.trail if not (s.when and p[2] and s.when - p[2] > 24 * 3600)]
+        s.trail = thin(s.day, 30)
     return ships, example
+
+
+def thin(points, n):
+    """At most n of the points, evenly spread, keeping the first and last."""
+    if len(points) <= n: return list(points)
+    return [points[round(i * (len(points) - 1) / (n - 1))] for i in range(n)]
+
+
+def nm(lat1, lon1, lat2, lon2):
+    """Great-circle distance in nautical miles."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
+    return 2 * 3440.065 * math.asin(min(1.0, math.sqrt(a)))
+
+
+def eta_time(eta, ref):
+    """An AIS ETA ("MM-DD HH:MM", UTC as AIS sends it, no year) as unix time: the year that puts it nearest ref."""
+    try:
+        mo, rest = eta.split("-", 1); day, hm = rest.split(); h, m = (int(v) for v in hm.split(":"))
+        year = time.gmtime(ref).tm_year
+        times = []
+        for y in (year - 1, year, year + 1):
+            try: times.append(calendar.timegm((y, int(mo), int(day), h, m, 0)))
+            except ValueError: pass
+        return min(times, key=lambda t: abs(t - ref)) if times else None
+    except (ValueError, IndexError, AttributeError):
+        return None
+
+
+def span(hours):
+    """6 h 20 min, 40 min, 2 days 3 h."""
+    mins = int(round(hours * 60))
+    if mins < 60: return "%d min" % max(mins, 1)
+    if mins < 48 * 60: return "%d h" % (mins // 60) + (" %d min" % (mins % 60) if mins % 60 and mins < 10 * 60 else "")
+    return "%d days %d h" % (mins // 1440, mins % 1440 // 60)
 
 
 def merc(lat): return math.log(math.tan(math.pi / 4 + math.radians(max(-85.0, min(85.0, lat))) / 2))
@@ -87,7 +124,7 @@ class MapScreen:
     def __init__(self, app):
         self.app, self.fx = app, app.fx
         here = os.path.dirname(os.path.abspath(__file__))
-        self.map_dir = os.environ.get("VACATION_MAP_DIR", "/usr/share/vacation/map")
+        self.map_dir = os.environ.get("VACATION_MAP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "map"))
         if not os.path.isdir(self.map_dir): self.map_dir = os.path.join(here, "map")
         self.meta = json.load(open(os.path.join(self.map_dir, "map.json")))
         m = self.meta; self.T = m["tile"]; self.WW, self.WH = self.T * m["cols"], self.T * m["rows"]
@@ -211,18 +248,31 @@ class MapScreen:
             lines.append(("Under way" + (", near " + place if place else ", at sea"), L.IVORY))
         if s.dest:
             dest = s.dest.title() if s.dest.isupper() else s.dest
-            eta = ""
-            try:
-                mo, rest = s.eta.split("-", 1); day, hm = rest.split(); h, m = (int(v) for v in hm.split(":"))
-                eta = "Due %d %s %d:%02d %s" % (int(day), MONTHS[int(mo) - 1], h % 12 or 12, m, "PM" if h >= 12 else "AM")
-            except (ValueError, IndexError): pass
+            now = s.when or time.time()
+            due = eta_time(s.eta, now)
             lines.append((("Bound for " if s.speed > 0.5 else "Destination ") + dest, L.DIM))
-            if eta: lines.append((eta, L.DIM))                                # "Due 22 Nov 8:00 AM"
-        if s.when:
-            age = max(0, time.time() - s.when) / 60
-            lines.append(("Reported just now" if age < 2 else "Reported %d min ago" % age if age < 120 else "Reported %d h ago" % (age / 60), L.DIM))
-        if s.mmsi: lines.append(("MMSI " + s.mmsi, L.DIM))
-        return lines
+            # how far, and how long at this speed (straight there: a little short of the real route)
+            port = self.port_named(s.dest)
+            arrive = None
+            if port and s.speed > 3:
+                d = nm(s.lat, s.lon, port[1], port[2])
+                if d > 2:
+                    hours = d / s.speed; arrive = now + hours * 3600
+                    lines.append(("%.0f nm to go, about %s" % (d, span(hours)), L.DIM))     # "112 nm to go, about 6 h 20 min"
+            if due:
+                t = time.localtime(due)                                        # (the board's own time zone)
+                eta = "Due %d %s %d:%02d %s" % (t.tm_mday, MONTHS[t.tm_mon - 1], t.tm_hour % 12 or 12, t.tm_min, "PM" if t.tm_hour >= 12 else "AM")
+                if arrive and due > now:                                       # early or late, at this speed
+                    late = (arrive - due) / 3600
+                    off = span(abs(late)) if abs(late) < 2 else "%d h" % round(abs(late))   # (whole hours from 2 h: the card is narrow)
+                    eta += " · on time" if abs(late) < 0.25 else " · %s %s" % (off, "late" if late > 0 else "early")
+                lines.append((eta, L.DIM))                                     # "Due 22 Nov 8:00 AM · 40 min late"
+        # how far it's come since midnight (the board's), along its trail
+        midnight = time.mktime(datetime.date.today().timetuple())
+        today = [p for p in getattr(s, "day", []) if p[2] and p[2] >= midnight] + [(s.lat, s.lon, s.when)]
+        run = sum(nm(a[0], a[1], b[0], b[1]) for a, b in zip(today, today[1:]))
+        if run >= 1: lines.append(("%.0f nm today" % run, L.DIM))
+        return lines                         # (how old the positions are: the status line, bottom left)
 
     def draw_card(self):
         fx = self.fx; lines = self.card_lines(self.ships.get(self.follow))
@@ -347,7 +397,7 @@ class MapScreen:
     def run(self, seconds):
         """Show the map for this long, or until a tap; returns False if there's nothing to show."""
         app, fx = self.app, self.fx
-        live = app.conf.get("SHIPS_FILE", "/var/lib/vacation/ships.csv")
+        live = app.conf.get("SHIPS_FILE") or os.path.join(os.environ.get("APP_DATA", "/apps/data/vacation"), "ships.csv")
         path = os.environ.get("VACATION_SHIPS") or (live if os.path.exists(live) else os.path.join(os.path.dirname(self.map_dir), "ships_example.csv"))
         if not os.path.exists(path): path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ships_example.csv")
         self.ships, example = read_ships(path)

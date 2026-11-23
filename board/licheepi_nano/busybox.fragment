@@ -1,0 +1,2 @@
+# network time, for the WiFi (package/esp-hosted's S35wifi starts it): the board has no clock battery
+CONFIG_NTPD=y

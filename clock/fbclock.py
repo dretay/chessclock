@@ -18,25 +18,26 @@ separately.
 See clock/README.md in the repository for the settings file, logs, command
 line options and how to try it on a desktop. In short:
 
-Settings (/etc/fbclock.conf, KEY=VALUE): TOUCH_X_MIN, TOUCH_X_MAX,
+Settings (fbclock.conf in APP_DATA, /apps/data/chess on the board; KEY=VALUE): TOUCH_X_MIN, TOUCH_X_MAX,
 TOUCH_Y_MIN, TOUCH_Y_MAX, TOUCH_SWAP_XY (touch calibration); ROTATE;
 DAY_BRIGHTNESS, NIGHT_BRIGHTNESS (percent); NIGHT_START, NIGHT_END (HH:MM).
 
 Environment overrides:
   FBCLOCK_DEVICE    framebuffer device (default /dev/fb0)
   FBCLOCK_TOUCH_BUS I2C bus with the NS2009 touch chip (default /dev/i2c-0)
-  FBCLOCK_GAMES     PGN file (default /usr/share/fbclock/games.pgn)
+  FBCLOCK_GAMES     PGN file (default games.pgn in this folder)
   FBCLOCK_FONTS     extra directory to search for DejaVu fonts
-  FBCLOCK_CACHE     where to keep drawings between runs (default /var/lib/fbclock/cache)
+  FBCLOCK_CONF      the settings file (default $APP_DATA/fbclock.conf)
+  FBCLOCK_CACHE     where to keep drawings between runs (default $APP_DATA/cache)
   FBCLOCK_MOVE_SECS seconds between moves (default 3)
   FBCLOCK_PREVIEW   render one frame to this PNG and exit (for development),
                     sized FBCLOCK_SIZE (default 800x480), after FBCLOCK_PLY moves
   FBCLOCK_PREVIEW_SETTER  if set, preview the settings screen instead
 
-On the board this is installed as the (pre-compiled) fbclock module, started
-by /usr/bin/fbclock. Command line:
-  fbclock --touch-debug                       print raw/screen touch positions
-  fbclock --make-splash DIR WxHxBPP           write the boot splash images
+On the board this is an app (see docs/apps.md) in /apps/chess, started by its run
+script. Command line (in that folder, after `app stop`):
+  python3 fbclock.py --touch-debug            print raw/screen touch positions
+  python3 fbclock.py --make-splash DIR WxHxBPP  write the boot splash images
 """
 
 import fcntl
@@ -57,13 +58,16 @@ from PIL import Image, ImageChops, ImageDraw, ImageFont  # noqa: E402
 
 # ---------------------------------------------------------------- settings
 
-GAMES_FILE = os.environ.get("FBCLOCK_GAMES", "/usr/share/fbclock/games.pgn")
-SPLASH_DIR = "/usr/share/fbclock"   # boot splash images, see splash_name()
-CONFIG_FILE = "/etc/fbclock.conf"
+HERE = os.path.dirname(os.path.abspath(__file__))
+# settings and the drawings cache (S99app sets it to /apps/data/chess on the board)
+DATA = os.environ.get("APP_DATA", "/apps/data/chess")
+GAMES_FILE = os.environ.get("FBCLOCK_GAMES", os.path.join(HERE, "games.pgn"))
+SPLASH_DIR = os.path.join(HERE, "splash")   # boot splash images, see splash_name()
+CONFIG_FILE = os.environ.get("FBCLOCK_CONF", os.path.join(DATA, "fbclock.conf"))
 # drawings kept on the SD card so later starts are quicker (pieces, the
 # settings screen); not used for desktop previews
 CACHE_DIR = os.environ.get("FBCLOCK_CACHE", "" if os.environ.get("FBCLOCK_PREVIEW")
-                           else "/var/lib/fbclock/cache")
+                           else os.path.join(DATA, "cache"))
 MOVE_SECS = float(os.environ.get("FBCLOCK_MOVE_SECS", "3"))
 SLIDE_SECS = 0.8          # how long a piece takes to glide to its new square
 FRAME_SECS = 1 / 30       # animations run at most 30 frames a second
@@ -1191,7 +1195,7 @@ def render_splash(width, height):
 
 def splash_name(width, height, bpp, rotated):
     """Splash files are named for the screen they suit; the boot script
-    (S00splash) only uses one whose name matches the screen it finds."""
+    (splash.sh) only uses one whose name matches the screen it finds."""
     return "splash-%dx%dx%d-%d.raw.gz" % (width, height, bpp, 1 if rotated else 0)
 
 

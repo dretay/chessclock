@@ -1,0 +1,11 @@
+#!/bin/sh
+# Starts the vacation countdown; /etc/init.d/S99app runs this (in this folder, with APP_DATA set to
+# where its settings and log live) and starts it again if it exits.
+[ -f "$APP_DATA/vacation.conf" ] || cp vacation.conf "$APP_DATA/vacation.conf"
+# the CPU clock from the settings (CPU_MHZ=600, say); nothing if it's empty
+MHZ=$(sed -n 's/^CPU_MHZ=\([0-9]*\).*/\1/p' "$APP_DATA/vacation.conf")
+[ -n "$MHZ" ] && setcpu "$MHZ"
+exec python3 -u -c '
+import sys, vacation
+try: vacation.main()
+except KeyboardInterrupt: sys.exit(0)'

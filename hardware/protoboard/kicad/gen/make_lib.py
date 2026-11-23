@@ -169,19 +169,39 @@ def tht_pad(num, x, y, shape="circle", d=1.7, drill=1.0):
         q(num), shape, fmt(x), fmt(y), fmt(d), fmt(d), fmt(drill))
 
 
+def flat_pad(num, x, y, out, shape="oval", d=1.7, ext=1.0, drill=1.0):
+    # through-hole pad, F.Cu elongated outward by `ext` (past the module edge, so a flat-soldered
+    # module gets a fillet and an iron landing); inner layers and B.Cu stay a plain d x d pad
+    inner = "rect" if shape == "rect" else "circle"
+    return ('\t(pad %s thru_hole %s (at %s %s) (size %s %s) (drill %s (offset %s 0)) (layers "*.Cu" "*.Mask")'
+            ' (padstack (mode front_inner_back) (layer "Inner" (shape %s) (size %s %s))'
+            ' (layer "B.Cu" (shape %s) (size %s %s))))') % (
+        q(num), shape, fmt(x), fmt(y), fmt(d + ext), fmt(d), fmt(drill), fmt(out * ext / 2),
+        inner, fmt(d), fmt(d), inner, fmt(d), fmt(d))
+
+
+def line(layer, x0, y0, x1, y1, w=0.12):
+    return '\t(fp_line (start %s %s) (end %s %s) (stroke (width %s) (type solid)) (layer %s))' % (
+        fmt(x0), fmt(y0), fmt(x1), fmt(y1), fmt(w), q(layer))
+
+
 def esp_supermini():
     # Drawn USB-end up. Rows 15.24 mm apart (module 18 x 22.5 mm). Pin 1 = 5V top-left.
     L = fp_header("ESP32-C3_SuperMini", "ESP32-C3 SuperMini, 2x8 2.54 mm through-holes, rows 15.24 mm apart; "
-                  "solder flat with short pins or on headers (verify row spacing against the module)")
+                  "on headers or soldered flat (F.Cu pads run 0.5 mm past the module edge) "
+                  "(verify row spacing against the module)")
     xl, xr = -7.62, 7.62
     for i in range(8):
         y = -8.89 + i * G
-        L.append(tht_pad(str(i + 1), xl, y, "rect" if i == 0 else "circle"))
-        L.append(tht_pad(str(16 - i), xr, y))
-    # outline: 18 x 22.5, USB end at top (y=-11.25 .. +11.25)
+        L.append(flat_pad(str(i + 1), xl, y, -1, "rect" if i == 0 else "oval"))
+        L.append(flat_pad(str(16 - i), xr, y, 1))
+    # outline: 18 x 22.5, USB end at top (y=-11.25 .. +11.25); silk sides broken where the pads run out
     L.append(rect("F.Fab", -9, -11.25, 9, 11.25, 0.1))
-    L.append(rect("F.SilkS", -9.12, -11.37, 9.12, 11.37))
-    L.append(rect("F.CrtYd", -9.5, -12.5, 9.5, 11.75, 0.05))   # USB plug overhang
+    for sy in (-1, 1):
+        L.append(line("F.SilkS", -9.12, sy * 11.37, 9.12, sy * 11.37))
+        for sx in (-1, 1):
+            L.append(line("F.SilkS", sx * 9.12, sy * 11.37, sx * 9.12, sy * 10.1))
+    L.append(rect("F.CrtYd", -9.75, -12.5, 9.75, 11.75, 0.05))   # USB plug overhang, flat pads
     L.append(rect("F.Fab", -4.5, -12.5, 4.5, -7.5, 0.1))
     L.append(text("F.Fab", "USB", 0, -10))
     L.append(text("F.SilkS", "ANT", 0, 9.6, 0.8))

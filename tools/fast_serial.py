@@ -25,6 +25,8 @@ import boardlib
 
 BOARD_RATE = {1562500: 1500000}            # what to ask the board for, to get this speed
 
+if boardlib.USB:
+    sys.exit("using the board's USB serial port (%s), which has no speed to set" % boardlib.PORT)
 mac = int(sys.argv[1]) if len(sys.argv) > 1 else 1562500
 ask = BOARD_RATE.get(mac, mac)
 

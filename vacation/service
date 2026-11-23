@@ -1,0 +1,5 @@
+#!/bin/sh
+# The fleet map's live ship positions from AIS (ais.py), beside the countdown; /etc/init.d/S99app
+# runs this (in this folder, with APP_DATA set) and starts it again if it exits. Needs WiFi and an
+# aisstream.io key in $APP_DATA/ais.key: until then it just waits.
+exec python3 -u ais.py

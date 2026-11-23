@@ -1,0 +1,37 @@
+From: licheepi-nano-buildroot
+Subject: [PATCH] spi: sun6i: use normal sample mode at low clock rates
+
+On controllers with the CLK_CTL divider (has_clk_ctl), the sample mode
+bits (SDM/SDC) were never set and stayed at their reset default, the
+delay half-cycle mode meant for 24-40 MHz. At slower clocks MISO is then
+sampled half a clock late, and everything received is shifted by one bit:
+an ESP32 running ESP-Hosted in SPI mode 2 at 1-10 MHz on the F1C100s sent
+a header of len=49 offset=12 that arrived as len=98 offset=280 (confirmed
+on a logic analyzer). Pick the mode from the effective clock rate, as the
+other branch already does.
+---
+--- a/drivers/spi/spi-sun6i.c	2026-11-22 19:40:18
++++ b/drivers/spi/spi-sun6i.c	2026-11-22 19:40:18
+@@ -404,6 +404,22 @@
+ 		}
+ 
+ 		sun6i_spi_write(sspi, SUN6I_CLK_CTL_REG, reg);
++
++		/*
++		 * The sample timing (work mode, below) applies to these
++		 * controllers too, and its reset default is the delay
++		 * half-cycle mode meant for 24-40 MHz. Left there at slower
++		 * clocks, MISO is read half a clock late, on the edge where the
++		 * device shifts out its next bit: everything received is one
++		 * bit early (seen on the F1C100s with an ESP32 in SPI mode 2).
++		 */
++		reg = sun6i_spi_read(sspi, SUN6I_TFR_CTL_REG);
++		reg &= ~(SUN6I_TFR_CTL_SDM | SUN6I_TFR_CTL_SDC);
++		if (tfr->effective_speed_hz <= 24000000)
++			reg |= SUN6I_TFR_CTL_SDM;
++		else if (tfr->effective_speed_hz >= 80000000)
++			reg |= SUN6I_TFR_CTL_SDC;
++		sun6i_spi_write(sspi, SUN6I_TFR_CTL_REG, reg);
+ 	} else {
+ 		clk_set_rate(sspi->mclk, tfr->speed_hz);
+ 		tfr->effective_speed_hz = clk_get_rate(sspi->mclk);
