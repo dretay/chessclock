@@ -1,8 +1,9 @@
-"""Live ship positions for the fleet map, from AIS (aisstream.io), into $APP_DATA/ships.csv.
+"""Live ship positions for the fleet map, from AIS (aisstream.io), into $MODULE_DATA/ships.csv.
 
-Runs as the vacation app's service (see docs/apps.md): beside the countdown, not inside it, so the
-map just rereads the file whenever it next shows. Needs WiFi, and an aisstream.io API key (free;
-sign up at aisstream.io) in $APP_DATA/ais.key, on a line of its own. It waits for the key, the
+The cruise module's service (module.json; the app's own service starts it): beside the countdown,
+not inside it, so the map just rereads the file whenever it next shows. Its folder, MODULE_DATA, is
+/apps/data/vacation/cruise on the board. Needs WiFi, and an aisstream.io API key (free; sign up at
+aisstream.io) in $MODULE_DATA/ais.key, on a line of its own. It waits for the key, the
 network and the clock (TLS needs the right date) by itself, and reconnects when the link drops.
 
 The ships are the Disney fleet below, by MMSI; AIS_SHIPS in vacation.conf replaces the list
@@ -18,11 +19,12 @@ handful of ships the traffic is tiny).
 """
 import base64, datetime, json, os, random, socket, ssl, struct, sys, time
 
-DATA = os.environ.get("APP_DATA", "/apps/data/vacation")
+APP_DATA = os.environ.get("APP_DATA", "/apps/data/vacation")
+DATA = os.environ.get("MODULE_DATA") or os.path.join(APP_DATA, "cruise")
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHIPS_FILE = os.path.join(DATA, "ships.csv")
 KEY_FILE = os.path.join(DATA, "ais.key")
-CONF_FILE = os.path.join(DATA, "vacation.conf")
+CONF_FILE = os.path.join(APP_DATA, "vacation.conf")        # the app's settings (AIS_SHIPS)
 HOST, PATH = "stream.aisstream.io", "/v0/stream"
 CA_FILE = "/etc/ssl/certs/ca-certificates.crt"           # Buildroot's ca-certificates
 
