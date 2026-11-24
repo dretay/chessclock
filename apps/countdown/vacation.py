@@ -31,10 +31,9 @@ For trying it out:
   VACATION_MAP_AFTER=5      show the module's first screen (the fleet map) after this many seconds
   VACATION_NOW=2026-12-16T15:58   pretend the date and time are this (try the last day and sailing)
 """
-import ctypes, datetime, json, math, os, random, shutil, signal, sys, time
+import ctypes, datetime, json, math, os, random, signal, sys, time
 
 import apps
-import vacation_settings
 import vacation_touch as touch
 
 FPS = 25
@@ -108,7 +107,7 @@ class App:
         self.device_path = None if os.environ.get("VACATION_CONF") else apps.ensure_device(self.module, self.conf_path)
         self.conf = apps.read_settings(self.conf_path, self.device_path)
         mhz = self.conf.get("CPU_MHZ", "").strip()                      # (the CPU clock: CPU_MHZ=600, say)
-        if mhz.isdigit() and not os.environ.get("VACATION_SIM_CLOCK") and shutil.which("setcpu"): os.system("setcpu %s" % mhz)
+        if mhz.isdigit() and not os.environ.get("VACATION_SIM_CLOCK") and os.path.exists("/usr/sbin/setcpu"): os.system("setcpu %s" % mhz)
         self.theme_dir = os.environ.get("VACATION_THEME_DIR") or self.module.scene_dir(self.conf)
         self.screens = self.module.screens()
         self.ui_dir = os.environ.get("VACATION_UI_DIR", os.path.join(apps.SYSTEM, "ui"))     # (the system package's)
@@ -340,6 +339,7 @@ class App:
                     self.want_settings = True
             if self.want_settings:                                     # (held on the countdown, or on a screen)
                 self.want_settings = False
+                import vacation_settings                          # (only now: it's a second of loading, and memory)
                 settings = vacation_settings.Settings(self)
                 if settings.run():                                         # saved: pick up the new settings
                     self.conf = apps.read_settings(self.conf_path, self.device_path); self.load_conf(); days = cards = None; last_check = -1e9

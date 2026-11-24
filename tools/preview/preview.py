@@ -38,6 +38,7 @@ LIB = os.path.join(STATE, "libvacfx.dylib")
 FONTS = os.environ.get("FBCLOCK_FONTS") or os.path.join(STATE, "fonts")
 PICK_REQUEST = os.path.join(STATE, "pick-request")
 DEVICE_REQUEST = os.path.join(STATE, "device-request")
+SWITCH_REQUEST = os.path.join(STATE, "switch-request")
 VIEWER_SRC = os.path.join(HERE, "viewer.swift")
 VIEWER = os.path.join(STATE, "App Preview")
 W, H = 800, 480
@@ -113,7 +114,8 @@ class Preview:
     # ---------------------------------------------------------------- running
     def env(self, app):
         e = dict(os.environ, APP_DATA=os.path.join(STATE, "data", app), APP_PICKER=os.path.join(HERE, "pick"),
-                 APP_DEVICE=os.path.join(HERE, "device"),
+                 APP_DEVICE=os.path.join(HERE, "device"), APP_SWITCH=os.path.join(HERE, "switch"),
+                 PICKER_APPS=APPS, PICKER_DATA=os.path.join(STATE, "data"), PICKER_CURRENT=app,
                  PREVIEW_DIR=STATE, PYTHONUNBUFFERED="1")
         os.makedirs(e["APP_DATA"], exist_ok=True)
         return e
@@ -209,6 +211,9 @@ class Preview:
             time.sleep(0.5)
             if os.path.exists(PICK_REQUEST):
                 os.remove(PICK_REQUEST); threading.Thread(target=self.pick, daemon=True).start(); continue
+            if os.path.exists(SWITCH_REQUEST):                       # (the in-app picker: another app)
+                app = open(SWITCH_REQUEST).read().strip(); os.remove(SWITCH_REQUEST)
+                if app in dict(apps()): threading.Thread(target=self.start, args=(app,), daemon=True).start(); continue
             if os.path.exists(DEVICE_REQUEST):
                 os.remove(DEVICE_REQUEST); threading.Thread(target=self.device, daemon=True).start(); continue
             if self.picking: continue

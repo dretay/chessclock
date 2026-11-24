@@ -1,0 +1,4 @@
+#!/bin/sh
+# `app NAME`'s stand-in in the desktop previewer (tools/preview/preview.py): a countdown app's in-app
+# picker runs this (APP_SWITCH) to switch to another app, and the previewer starts that one.
+echo "$1" > "${PREVIEW_DIR:?}/switch-request"

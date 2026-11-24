@@ -7,7 +7,7 @@
 [ -d /sys/class/ieee80211 ] || [ -n "$APP_NETWORK" ] || exec sleep 2147483647   # (no WiFi: nothing to fetch with; APP_NETWORK: the previewer)
 retry=60
 while true; do
-	python3 -u waits.py --once
+	python3 -S -OO -u waits.py --once
 	case $? in
 		0) retry=60; sleep 300 ;;
 		2) sleep 10 ;;

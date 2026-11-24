@@ -1,18 +1,28 @@
 #!/bin/sh
 #
-# Swap: a 32 MB file on the apps partition (/apps/swapfile), made the first time. The countdown and
-# WiFi together need more than the Nano's 32 MB, though much of the countdown's memory is Python
-# loaded once and seldom touched again: the kernel moves that out to the SD card under pressure, and
-# the WiFi and the module's fetcher fit. Nothing is written while there's no pressure.
-# In the background, so the boot isn't held up (making the file takes a few seconds, once).
+# Swap, for the countdown and WiFi together (they need more than the Nano's 32 MB; much of the
+# countdown's memory is Python loaded once and seldom touched again):
+# 1. compressed memory (zram, LZ4): idle memory compresses about 3:1 and comes back far faster than from
+#    the SD card. Up to ZRAM_MB of it (uncompressed), in at most ZRAM_MEM_MB of real memory.
+# 2. a 32 MB file on the apps partition (/apps/swapfile), made the first time: only when the compressed
+#    swap is full (Linux uses the swap turned on first, first). In the background, so the boot isn't
+#    held up (making the file takes a few seconds, once).
 #
 
 F=/apps/swapfile
 MB=32
+ZRAM_MB=24
+ZRAM_MEM_MB=6
 
 case "$1" in
 	start)
 		[ -e /proc/swaps ] || exit 0                    # (a kernel without swap)
+		if [ -e /sys/block/zram0/disksize ]; then
+			echo lz4 > /sys/block/zram0/comp_algorithm 2>/dev/null
+			echo ${ZRAM_MEM_MB}M > /sys/block/zram0/mem_limit
+			echo ${ZRAM_MB}M > /sys/block/zram0/disksize
+			mkswap /dev/zram0 >/dev/null && swapon /dev/zram0
+		fi
 		grep -q " /apps " /proc/mounts || exit 0
 		(
 			if [ ! -f "$F" ] || [ "$(wc -c < "$F")" -ne $((MB * 1048576)) ]; then
@@ -25,6 +35,7 @@ case "$1" in
 		;;
 	stop)
 		swapoff "$F" 2>/dev/null
+		swapoff /dev/zram0 2>/dev/null
 		;;
 	restart|reload)
 		;;

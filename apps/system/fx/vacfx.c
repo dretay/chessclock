@@ -56,7 +56,10 @@ static int zlib_ready(void) { return 1; }
 #define MAXP 1400                      /* particles */
 
 /* ------------------------------------------------------------------ state */
-static uint8_t *plate[3];             /* day, dusk, night: RGB888 */
+static uint8_t *plate[3];             /* day, dusk, night: RGB888; only the ones the time of day is using
+                                         (one, or two while it changes): the others are loaded when needed */
+static char plate_dir[512];
+static const char *plate_names[3] = {"day.rgb.gz", "dusk.rgb.gz", "night.rgb.gz"};
 static uint32_t *base;                /* blended plates + window light, XRGB */
 static uint32_t *out;                 /* the frame being built, XRGB */
 static uint32_t *fb; static size_t fb_len; static int fb_stride = W; static int fb_fd = -1;
@@ -183,13 +186,29 @@ static void rect_add(int16_t *lo, int16_t *hi, int x0, int y0, int x1, int y1) {
 
 /* ------------------------------------------------------------------ base: plates + window light */
 static inline uint32_t blend_px(int i) {
-    const uint8_t *a = plate[0] + i * 3, *b = plate[1] + i * 3, *c = plate[2] + i * 3;
     const int w0 = wgt[0], w1 = wgt[1], w2 = wgt[2];
     uint32_t r, g, bl;
-    if (w0 == 256) { r = a[0]; g = a[1]; bl = a[2]; }
-    else if (w2 == 256) { r = c[0]; g = c[1]; bl = c[2]; }
-    else { r = (a[0] * w0 + b[0] * w1 + c[0] * w2) >> 8; g = (a[1] * w0 + b[1] * w1 + c[1] * w2) >> 8; bl = (a[2] * w0 + b[2] * w1 + c[2] * w2) >> 8; }
+    if (w0 == 256) { const uint8_t *a = plate[0] + i * 3; r = a[0]; g = a[1]; bl = a[2]; }
+    else if (w2 == 256) { const uint8_t *c = plate[2] + i * 3; r = c[0]; g = c[1]; bl = c[2]; }
+    else {                                    /* (only the plates in use: the others may not be loaded) */
+        uint32_t sr = 0, sg = 0, sb = 0;
+        if (w0) { const uint8_t *a = plate[0] + i * 3; sr += a[0] * w0; sg += a[1] * w0; sb += a[2] * w0; }
+        if (w1) { const uint8_t *b = plate[1] + i * 3; sr += b[0] * w1; sg += b[1] * w1; sb += b[2] * w1; }
+        if (w2) { const uint8_t *c = plate[2] + i * 3; sr += c[0] * w2; sg += c[1] * w2; sb += c[2] * w2; }
+        r = sr >> 8; g = sg >> 8; bl = sb >> 8;
+    }
     return r << 16 | g << 8 | bl;
+}
+/* the plates the weights use loaded, the others freed (most of the day that's one plate: 1.1 MB instead of
+   3.4); a load takes a moment, at the start of each change of light. -1 if one couldn't be loaded */
+static int plates_for_weights(void) {
+    for (int k = 0; k < 3; k++) {
+        if (wgt[k] && !plate[k]) {
+            size_t n; plate[k] = gzload(plate_dir, plate_names[k], &n);
+            if (!plate[k] || n != W * H * 3) { fprintf(stderr, "vacfx: bad %s\n", plate_names[k]); free(plate[k]); plate[k] = NULL; return -1; }
+        } else if (!wgt[k] && plate[k]) { free(plate[k]); plate[k] = NULL; }
+    }
+    return 0;
 }
 static inline uint32_t lit_px(uint32_t p, int k) {    /* add window light k at its window's level */
     const int lv = (cell_lvl[lcell[k]] * lights_lvl) >> 8;
@@ -728,8 +747,12 @@ int vfx_open(const char *fbdev, const char *theme) {
         prof_lin[q] = (uint8_t)(r >= 256 ? 0 : (256 - r) * 255 / 256);
     }
     /* images */
-    const char *names[3] = {"day.rgb.gz", "dusk.rgb.gz", "night.rgb.gz"};
-    for (int k = 0; k < 3; k++) { size_t n; plate[k] = gzload(theme, names[k], &n); if (!plate[k] || n != W * H * 3) { fprintf(stderr, "vacfx: bad %s\n", names[k]); return -1; } }
+    snprintf(plate_dir, sizeof plate_dir, "%s", theme);
+    for (int k = 0; k < 3; k++) {                       /* (each must be there and whole: checked now, kept if in use) */
+        size_t n; uint8_t *p = gzload(theme, plate_names[k], &n);
+        if (!p || n != W * H * 3) { fprintf(stderr, "vacfx: bad %s\n", plate_names[k]); free(p); return -1; }
+        if (wgt[k]) plate[k] = p; else free(p);
+    }
     /* the scene's mask: 1 where it isn't sky (the ship, the castle, trees...): no water there, and fireworks
        go behind it (mask.raw.gz; ship.raw.gz in scenes made before the castle) */
     char mp[600]; snprintf(mp, sizeof mp, "%s/mask.raw.gz", theme);
@@ -815,7 +838,9 @@ void vfx_light(int wday, int wdusk, int wnight, int lights, int night, int dusk)
     lights = clampi(lights, 0, 256);
     if (wday == wgt[0] && wdusk == wgt[1] && wnight == wgt[2] && lights == lights_lvl && night == night_lvl && dusk == dusk_lvl) return;
     const int relight = wday != wgt[0] || wdusk != wgt[1] || wnight != wgt[2] || lights != lights_lvl;
+    const int old[3] = {wgt[0], wgt[1], wgt[2]};
     wgt[0] = wday; wgt[1] = wdusk; wgt[2] = wnight; lights_lvl = lights; night_lvl = night; dusk_lvl = dusk;
+    if (plates_for_weights()) { wgt[0] = old[0]; wgt[1] = old[1]; wgt[2] = old[2]; plates_for_weights(); }   /* (keep the light as it was) */
     if (relight) reblend_row = 0;              /* spread over the next frames */
     cards_dirty = 1;
 }
@@ -1161,7 +1186,7 @@ const char *vfx_stats(void) {
 unsigned vfx_selftest(void) {
     uint32_t sum = 0;
     for (int i = 0; i < W * H; i += 7) {
-        const uint8_t *p = plate[0] + i * 3;
+        const uint8_t p[3] = {(uint8_t)(i * 7), (uint8_t)(i >> 3), (uint8_t)(i * 13 >> 2)};   /* (fixed data: the plates come and go) */
         const uint32_t v = (uint32_t)(p[0] * sin_lut[(i + p[1]) & (LUT - 1)] + p[2] * prof_puff[p[1]]) ^ (uint32_t)(i * 2654435761u);
         sum = (sum * 31 + v) ^ (sum >> 7);
     }

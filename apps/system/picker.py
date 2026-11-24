@@ -193,6 +193,61 @@ def get_apps(fx, t, tp, start, scene, ui_dir):
                 break
 
 
+def choose(fx, t, tp, scene, ui_dir, cur):
+    """The grid until an app is picked: its id, or "" (‹ Back, or a minute untouched)."""
+    start = time.monotonic()
+    while True:
+        found = installed_apps()
+        cards = draw_grid(fx, t, scene, ui_dir, found, cur)
+        again = False
+        for tap in taps(tp, start, TIMEOUT):
+            if tap is None: return ""
+            x, y = tap
+            if BACK[0] - 10 <= x < BACK[2] + 10 and y < BACK[3] + 16: return ""
+            if network() and GET[0] - 10 <= x < GET[2] + 10 and y < GET[3] + 16:
+                get_apps(fx, t, tp, start, scene, ui_dir); again = True; break   # (then the grid again: there may be more)
+            hit = next((aid for (aid, _, _), (bx, by) in zip(found, cards)
+                        if bx - GAP // 2 <= x < bx + ICON_W + GAP // 2 and by - 12 <= y < by + ROW_H - 12), None)
+            if hit: return hit
+        if not again: return ""
+
+
+def starting(fx, t, name):
+    """"Starting <app>", with the pulsing dots after it, left on the screen until that app draws (it takes
+    a few seconds to start)."""
+    box = (L.W // 2 - 230, L.H // 2 - 50, L.W // 2 + 230, L.H // 2 + 50)
+    fx.vfx_ui_round(*box, 18, rgb((8, 14, 30)), 240, rgb(L.GOLD), 160)
+    msg = t.fit("label", "Starting %s" % name, box[2] - box[0] - 80)
+    left = L.W // 2 - (t.width("label", msg) + 10 + 30) // 2; base = box[1] + 58
+    t.draw("label", msg, left, base, L.IVORY)
+    fx.vfx_ui_flush()
+    anim = os.path.join(HERE, "splashanim")
+    if os.access(anim, os.X_OK):
+        import subprocess
+        subprocess.Popen([anim, str(left + t.width("label", msg) + 14), str(base - 5)], start_new_session=True,
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def choose_here(app):
+    """Settings > Apps in a countdown app: the picker in the app's own process (no second Python to start:
+    it opens at once). Picking another app has the launcher switch (`app NAME`: it stops this one; APP_SWITCH
+    in the previewer); this one, or ‹ Back, carries on."""
+    fx, t, cur = app.fx, Text(app.fx), current()
+    picked = choose(fx, t, app.touch, app.theme_dir, app.ui_dir, cur)
+    if picked and picked != cur:
+        name = dict((a[0], a[1]) for a in installed_apps()).get(picked, picked)
+        starting(fx, t, name)
+        import subprocess
+        try:
+            subprocess.Popen([os.environ.get("APP_SWITCH", "app"), picked], start_new_session=True,
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            until = time.monotonic() + 30
+            while app.running and time.monotonic() < until: app.tick()          # (until the launcher stops this app)
+        except OSError as e:
+            print("picker: couldn't switch to %s: %s" % (picked, e), flush=True)
+    fx.vfx_ui_close()
+
+
 def main():
     cur = current()
     found = installed_apps()
@@ -205,36 +260,13 @@ def main():
     ui_dir = os.environ.get("VACATION_UI_DIR", os.path.join(HERE, "ui"))
     t = Text(fx)
     tp = touch.Touch.open(conf_of(cur))
-    start = time.monotonic()
-    picked = None
-    while picked is None:
-        found = installed_apps(); by_id = {a[0]: a for a in found}
-        cards = draw_grid(fx, t, scene, ui_dir, found, cur)
-        for tap in taps(tp, start, TIMEOUT):
-            if tap is None: picked = ""; break
-            x, y = tap
-            if BACK[0] - 10 <= x < BACK[2] + 10 and y < BACK[3] + 16: picked = ""; break
-            if network() and GET[0] - 10 <= x < GET[2] + 10 and y < GET[3] + 16:
-                get_apps(fx, t, tp, start, scene, ui_dir); break          # (then the grid again: there may be more)
-            hit = next((aid for (aid, _, _), (bx, by) in zip(found, cards)
-                        if bx - GAP // 2 <= x < bx + ICON_W + GAP // 2 and by - 12 <= y < by + ROW_H - 12), None)
-            if hit: picked = hit; break
-    # what starts next takes a few seconds: say so, and leave it on the screen until that app draws
+    picked = choose(fx, t, tp, scene, ui_dir, cur)
+    by_id = {a[0]: a for a in installed_apps()}
     name = (by_id.get(picked) or by_id.get(cur) or ("", ""))[1]
-    if name:
-        box = (L.W // 2 - 230, L.H // 2 - 50, L.W // 2 + 230, L.H // 2 + 50)
-        fx.vfx_ui_round(*box, 18, rgb((8, 14, 30)), 240, rgb(L.GOLD), 160)
-        msg = t.fit("label", "Starting %s" % name, box[2] - box[0] - 80)
-        left = L.W // 2 - (t.width("label", msg) + 10 + 30) // 2; base = box[1] + 58
-        t.draw("label", msg, left, base, L.IVORY)
-        fx.vfx_ui_flush()
-        anim = os.path.join(HERE, "splashanim")                  # (pulsing dots after it, until the app draws)
-        if os.access(anim, os.X_OK):
-            import subprocess
-            subprocess.Popen([anim, str(left + t.width("label", msg) + 14), str(base - 5)], start_new_session=True,
-                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if name: starting(fx, t, name)
     fx.vfx_ui_close(); fx.vfx_close()
     if picked: print(picked)
+
 
 if __name__ == "__main__":
     main()

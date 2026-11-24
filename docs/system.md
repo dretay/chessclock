@@ -63,8 +63,11 @@ optional background `service`): [apps](apps.md).
 
 **Memory.** The F1C100s has 32 MB, about 26 MB of it free for programs: the apps draw straight into
 the framebuffer, never holding more of a screen than they must (the countdown runtime's drawing is
-a small C library, `apps/countdown/fx/vacfx.c`, called from Python). With WiFi too, it takes swap: a 32 MB
-file on the apps partition (`/etc/init.d/S01swap`), used only under pressure ([wifi](wifi.md)). The
+a small C library, `apps/system/fx/vacfx.c`, called from Python, which keeps only the day, dusk or
+night picture the time of day is using). Python starts lean (`-S -OO`, and Settings, WiFi, the
+picker load only when they're opened, in the app's own process). With WiFi too, it takes swap:
+compressed memory (zram) first, then a 32 MB file on the apps partition (`/etc/init.d/S01swap`), used
+only under pressure ([wifi](wifi.md)). The
 F1C200s (64 MB) is the protoboard's.
 
 **USB power.** With the board's micro-USB port plugged into a computer, that also powers the board:

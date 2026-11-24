@@ -2,7 +2,7 @@
 # The countdown runtime, for the app whose folder this is started in (its `run` execs this; S99app
 # sets APP_DATA to the app's settings folder). See apps.py.
 R=$(cd "$(dirname "$0")" && pwd)
-exec python3 -u -c '
+exec python3 -S -OO -u -c '
 import sys
 sys.path.insert(0, sys.argv[1])
 import vacation

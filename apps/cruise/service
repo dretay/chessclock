@@ -5,4 +5,4 @@
 # the same in Python (about 9 MB), if aisd isn't here. Needs an aisstream.io key in $APP_DATA/ais.key.
 [ -d /sys/class/ieee80211 ] || [ -n "$APP_NETWORK" ] || exec sleep 2147483647   # (no WiFi: nothing to fetch with; APP_NETWORK: the previewer)
 [ -x ./aisd ] && exec ./aisd
-exec python3 -u ais.py
+exec python3 -S -OO -u ais.py

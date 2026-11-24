@@ -6,11 +6,11 @@ The Nano has no radio of its own: WiFi comes from an **ESP32 on its SPI bus**, r
 network time. There's no ssh: the board is reached only over USB and its serial console.
 
 **Memory:** WiFi costs about 4 MB of the Nano's 32 MB (the network stack and `cfg80211` built into the
-kernel, and the driver's buffers, none of it given back), and a countdown app alone uses about
-22 MB of the 27 MB left. They fit together with swap: a 32 MB file on the apps partition
-(`/apps/swapfile`, made at the first boot by `S01swap`), which the kernel moves the countdown's idle
-memory to under pressure; and the apps' fetchers run briefly and exit rather than staying in
-memory. The F1C200s (64 MB) on the protoboard ([hardware/protoboard](../hardware/protoboard)) needs
+kernel, and the driver's buffers, none of it given back), and a countdown app's own process about
+11 MB. They fit together with swap (`S01swap`): first compressed memory (zram, LZ4: idle memory
+compresses about 3:1 and comes back far faster than from the card), then a 32 MB file on the apps
+partition (`/apps/swapfile`) if that fills; and the fetchers are small (the cruise's AIS is `aisd`, in
+C: about 2 MB) or run briefly and exit (the castle's ride waits). The F1C200s (64 MB) on the protoboard ([hardware/protoboard](../hardware/protoboard)) needs
 none of that. The kernel without WiFi is a separate build.
 
 ## Building and flashing

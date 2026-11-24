@@ -17,7 +17,7 @@ a defaults.conf (its own settings' first values).
   "enabled" setting isn't 0. A screen is a class taking the App, with run(seconds) (see the cruise's map.py).
 - data and settings: its own folder, APP_DATA (/apps/data/<id>): countdown.conf, and whatever it fetches.
 """
-import importlib.util, json, os, shutil, sys
+import importlib.util, json, os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SYSTEM = os.environ.get("SYSTEM_DIR") or os.path.join(os.path.dirname(HERE), "system")   # (the system package: /apps/system)
@@ -105,7 +105,7 @@ def settings_file(app, old_data=OLD_DATA):
     if os.path.isdir(old_mine):
         for f in os.listdir(old_mine):
             src, dst = os.path.join(old_mine, f), os.path.join(app.data_dir, f)
-            if not os.path.exists(dst): shutil.move(src, dst)
+            if not os.path.exists(dst): os.replace(src, dst)        # (the same filesystem: /apps)
         print("countdown: moved %s's data from %s" % (app.id, old_mine), flush=True)
     sibling = [os.path.join(os.path.dirname(app.data_dir), d, CONF) for d in sorted(os.listdir(os.path.dirname(app.data_dir)))]
     start = next((p for p in [os.path.join(old_data, "vacation.conf")] + sibling if os.path.isfile(p) and p != path),

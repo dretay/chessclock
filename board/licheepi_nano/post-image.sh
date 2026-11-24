@@ -19,7 +19,7 @@ for a in "${EXT}"/apps/*/app.json; do
   CC="${HOST_DIR}/bin/arm-linux-gcc" "${HOST_DIR}/bin/python3" "${EXT}/tools/apps/layout.py" --local "$a" "${APPS_ROOT}/$a" >/dev/null
 done
 echo "${DEFAULT_APP:-chess}" > "${APPS_ROOT}/current"
-"${HOST_DIR}/bin/python3" -m compileall -q "${APPS_ROOT}"
+"${HOST_DIR}/bin/python3" -m compileall -q -o 0 -o 2 "${APPS_ROOT}"     # (-o 2: for the python3 -OO the countdown and system run)
 rm -f "${BINARIES_DIR}/apps.ext4"
 "${HOST_DIR}/sbin/mkfs.ext4" -q -L apps -d "${APPS_ROOT}" -E root_owner=0:0 "${BINARIES_DIR}/apps.ext4" "${APPS_SIZE}"
 

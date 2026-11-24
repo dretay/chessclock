@@ -18,7 +18,17 @@ changed); Cancel, or a minute and a half untouched, leaves everything as it was.
 import calendar, datetime, json, os, threading, time
 
 import vacation_layout as L
-import vacation_wifi as wifi
+
+
+class _LazyWifi:
+    """vacation_wifi, loaded the first time the WiFi page uses it (sockets and all: most of a second)."""
+    def __getattr__(self, name):
+        import vacation_wifi
+        globals()["wifi"] = vacation_wifi
+        return getattr(vacation_wifi, name)
+
+
+wifi = _LazyWifi()
 from vacation_text import Text, plain
 
 IDLE_SECS = 90
@@ -31,18 +41,11 @@ def rgb(c): return (c[0] << 16) | (c[1] << 8) | c[2]
 PICKER = os.environ.get("APP_PICKER") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "pick")   # the app picker (picker.py; APP_PICKER: the previewer's)
 
 
-DEVICE = os.environ.get("APP_DEVICE") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "device")   # device settings
 
 
 def has_picker(): return os.access(PICKER, os.X_OK) and not os.environ.get("VACATION_SIM_CLOCK")
 
 
-def start_system(path):
-    """Settings > Apps or Device: the system screen, in a session of its own (it stops this app, so it
-    mustn't be its child)."""
-    import subprocess
-    try: subprocess.Popen([path], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except OSError as e: print("settings: couldn't start %s: %s" % (path, e), flush=True)
 
 
 def write_conf_value(path, key, value):
@@ -504,28 +507,19 @@ class Settings:
             app.tick()
         if self.wpa: self.wpa.close()
         app.bright_preview = None                                         # (back to the day or night level)
-        if result in ("apps", "device"):
-            if not self.opening(result):                                  # it stopped us: leave its screen be
-                fx.vfx_ui_close(); return False
-            result = "cancel"                                             # (it didn't start: back to the countdown)
+        if result == "device":                                            # device settings, in this process (at once)
+            fx.vfx_ui_close()
+            return Settings(app, "device").run()                          # (saved: the app rereads its settings)
+        if result == "apps":                                              # the app picker, in this process too
+            fx.vfx_ui_close()
+            import picker
+            picker.choose_here(app)
+            return False
         if result == "save": self.save()
         self.closing(result == "save")
         fx.vfx_ui_close()
         return result == "save"
 
-    def opening(self, what, wait=30.0):
-        """Settings > Apps or Device: say so, start the system screen (the picker, device settings), and
-        stay as we are until it stops this app (it takes a few seconds to start; S99app's stop sets
-        app.running to False); True if it didn't, after wait seconds."""
-        box = (L.W // 2 - 200, L.H // 2 - 50, L.W // 2 + 200, L.H // 2 + 50)
-        self.round(box, 18, (8, 14, 30), 240, L.GOLD, 160)
-        self.text("label", "Opening apps..." if what == "apps" else "Opening device settings...", L.W // 2, box[1] + 50, L.IVORY, "m")
-        self.text("small", "one moment", L.W // 2, box[1] + 78, L.DIM, "m")
-        self.fx.vfx_ui_flush()
-        start_system(PICKER if what == "apps" else DEVICE)
-        until = self.app.now() + wait
-        while self.app.running and self.app.now() < until: self.app.tick()
-        return self.app.running
 
     def closing(self, saved):
         """Say so at once, then back to the countdown."""
