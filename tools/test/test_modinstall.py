@@ -1,20 +1,22 @@
 #!/usr/bin/env python3
-"""modinstall (package/modinstall), on the desktop: it installs a module signed by a trusted key, and
-refuses everything else - a changed tarball or statement, an untrusted key, an older version, a newer
-api, and tarballs reaching outside the module (.., absolute paths, links). Uses a throwaway key; needs
-a C compiler, zlib, and OpenSSL 3 (OPENSSL picks one). Run by tools/test/check.py, or by itself.
+"""modinstall (package/modinstall), on the desktop: it installs apps signed by a trusted key (the
+countdown runtime, then the castle on it), and refuses everything else - a changed tarball or
+statement, an untrusted key, an older version, an app without its runtime or with too old a one, a
+runtime too old for an installed app, the names /apps's other things have, replacing what isn't an
+app, and tarballs reaching outside the app (.., absolute paths, links). Uses a throwaway key; needs a
+C compiler, zlib, and OpenSSL 3 (OPENSSL picks one). Run by tools/test/check.py, or by itself.
 """
 import gzip, io, json, os, shutil, subprocess, sys, tarfile, tempfile
 
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-sys.path.insert(0, os.path.join(REPO, "tools", "modules")); import pack
+sys.path.insert(0, os.path.join(REPO, "tools", "apps")); import pack, layout
 SRC = os.path.join(REPO, "package", "modinstall", "src")
 failures = []
 
 
 def run(tmp, *args):
     r = subprocess.run([os.path.join(tmp, "modinstall"), "--keys", os.path.join(tmp, "trusted.keys"),
-                        "--dir", os.path.join(tmp, "app", "modules"), *args], capture_output=True, text=True)
+                        "--dir", os.path.join(tmp, "apps"), *args], capture_output=True, text=True)
     return r.returncode, (r.stdout + r.stderr).strip()
 
 
@@ -48,18 +50,25 @@ def main():
         for k in (key, other):
             subprocess.run([pack.OPENSSL, "genpkey", "-algorithm", "ed25519", "-out", k], check=True, capture_output=True)
         open(os.path.join(tmp, "trusted.keys"), "w").write("# test\n%s test key\n" % pack.public_key(key).hex())
-        os.makedirs(os.path.join(tmp, "app", "modules"))
-        open(os.path.join(tmp, "app", "modules.py"), "w").write("x = 1\nAPI = 1\n")
-        mods = os.path.join(tmp, "app", "modules")
+        mods = os.path.join(tmp, "apps"); os.makedirs(os.path.join(mods, "data"))
 
-        tar = pack.pack("castle")
-        meta = json.load(open(os.path.join(pack.MODULES, "castle", "module.json")))
-        good = os.path.join(tmp, "castle.tar.gz"); shutil.copy(tar, good)
-        pack.sign(good, meta, key)
+        def packed(name, sign_meta=None):
+            """apps/NAME packed (for the desktop) and signed with the test key, as tmp/NAME.tar.gz"""
+            tar = pack.pack(name, board=False)
+            dst = os.path.join(tmp, name + ".tar.gz"); shutil.copy(tar, dst)
+            meta = layout.manifest(name)
+            if os.path.isfile(os.path.join(REPO, "build", "apps", name, "API")):
+                meta["provides_api"] = int(open(os.path.join(REPO, "build", "apps", name, "API")).read())
+            pack.sign(dst, sign_meta or meta, key)
+            return dst, meta
 
-        expect("--check, a good module", True, run(tmp, "--check", good), "ok: castle")
-        expect("install it", True, run(tmp, good), "installed castle")
-        want = sorted(rel for rel, _ in pack.files("castle")[0]) + [".signature", "MANIFEST.json"]
+        good, meta = packed("castle")
+        runtime, rmeta = packed("countdown")
+        expect("--check, a good app", True, run(tmp, "--check", good), "ok: castle")
+        expect("an app before its runtime", False, run(tmp, good), "isn't installed: install it first")
+        expect("install the runtime", True, run(tmp, runtime), "installed countdown")
+        expect("install the app", True, run(tmp, good), "installed castle")
+        want = sorted(rel for rel, _ in layout.files("castle")) + [".signature", "MANIFEST.json"]
         got = sorted(os.path.relpath(os.path.join(d, f), os.path.join(mods, "castle"))
                      for d, _, fs in os.walk(os.path.join(mods, "castle")) for f in fs)
         expect("  every file, and nothing else", sorted(want) == got, (0, "%d files" % len(got)))
@@ -77,24 +86,32 @@ def main():
         shutil.copy(good, bad); pack.sign(bad, dict(meta, version="0.0.1"), key)
         expect("an older version", False, run(tmp, bad), "older than the installed")
         expect("an older version, --force", True, run(tmp, "--force", bad), "installed castle 0.0.1")
-        shutil.copy(good, bad); pack.sign(bad, dict(meta, api=2), key)
-        expect("a newer api than the host's", False, run(tmp, bad), "needs a newer app")
+        expect("  back to the newer one", True, run(tmp, good), "installed castle")
+        shutil.copy(good, bad); pack.sign(bad, dict(meta, api=meta["api"] + 1), key)
+        expect("an api newer than the runtime's", False, run(tmp, bad), "needs a newer countdown runtime")
+        shutil.copy(runtime, bad); pack.sign(bad, dict(rmeta, version="9.0", provides_api=1), key)
+        expect("a runtime too old for an installed app", False, run(tmp, bad), "needs 2")
+        shutil.copy(good, bad); pack.sign(bad, dict(meta, id="data"), key)
+        expect("an app called data (the data folder)", False, run(tmp, bad), "isn't a name an app can have")
+        os.makedirs(os.path.join(mods, "notes")); open(os.path.join(mods, "notes", "x"), "w").write("mine")
+        evil_tar(bad, [("notes/app.json", tarfile.REGTYPE, b'{"id": "notes"}')]); pack.sign(bad, dict(meta, id="notes", runtime=None), key)
+        expect("replacing a folder that isn't an app", False, run(tmp, bad), "isn't an app")
         open(bad + ".sig", "w").write("not a statement\n")
         expect("not a statement", False, run(tmp, bad), "not a module statement")
 
         mj = b'{"id": "castle"}'
         for what, entries in [
-                ("a .. path", [("castle/module.json", tarfile.REGTYPE, mj), ("castle/../escaped", tarfile.REGTYPE, b"x")]),
+                ("a .. path", [("castle/app.json", tarfile.REGTYPE, mj), ("castle/../escaped", tarfile.REGTYPE, b"x")]),
                 ("an absolute path", [("/tmp/escaped", tarfile.REGTYPE, b"x")]),
-                ("another module's folder", [("cruise/module.json", tarfile.REGTYPE, mj)]),
-                ("a symlink", [("castle/module.json", tarfile.REGTYPE, mj), ("castle/link", tarfile.SYMTYPE, "/etc")]),
-                ("a hard link", [("castle/module.json", tarfile.REGTYPE, mj), ("castle/hl", tarfile.LNKTYPE, b"")]),
-                ("the same file twice", [("castle/module.json", tarfile.REGTYPE, mj), ("castle/module.json", tarfile.REGTYPE, mj)]),
-                ("no module.json", [("castle/board.py", tarfile.REGTYPE, b"x")])]:
+                ("another module's folder", [("cruise/app.json", tarfile.REGTYPE, mj)]),
+                ("a symlink", [("castle/app.json", tarfile.REGTYPE, mj), ("castle/link", tarfile.SYMTYPE, "/etc")]),
+                ("a hard link", [("castle/app.json", tarfile.REGTYPE, mj), ("castle/hl", tarfile.LNKTYPE, b"")]),
+                ("the same file twice", [("castle/app.json", tarfile.REGTYPE, mj), ("castle/app.json", tarfile.REGTYPE, mj)]),
+                ("no app.json", [("castle/board.py", tarfile.REGTYPE, b"x")])]:
             evil_tar(bad, entries); pack.sign(bad, dict(meta, version="5.0"), key)
             before = sorted(os.listdir(mods))
             expect("refuses " + what, False, run(tmp, bad))
-            expect("  and leaves the modules as they were", sorted(os.listdir(mods)) == before
+            expect("  and leaves the apps as they were", sorted(os.listdir(mods)) == before
                    and not os.path.exists(os.path.join(tmp, "app", "escaped")), (0, ""))
         return 1 if failures else 0
     finally:

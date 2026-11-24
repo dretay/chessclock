@@ -1,4 +1,4 @@
-# themegen: artwork for the vacation countdown
+# themegen: artwork for the countdown apps
 
 Builds a theme's plates for the countdown display on a desktop machine. The board is
 far too slow to render anything, so it only blends these finished images and animates
@@ -20,14 +20,14 @@ tools/themegen/build_dream.sh            # full quality, ~15 min on an M2
 tools/themegen/build_dream.sh --quick    # a quick look, ~3 min
 ```
 
-Writes the plates to `vacation/modules/cruise/scenes/dream/`, and to `tools/themegen/work/dream/`
+Writes the plates to `apps/cruise/scenes/dream/`, and to `tools/themegen/work/dream/`
 (git-ignored): the intermediate files plus `mockup/cruise-mockups.html`, an interactive
 page that animates the plates the way the device will (time-of-day slider, fireworks,
 horn), and `mockup/preview.png`.
 
 Needs Blender 4.2 or later (Cycles; set `BLENDER=` if it isn't at the macOS default
 path), Python 3 with Pillow, and the source files in `assets/`, listed in
-`vacation/modules/cruise/scenes/dream/SOURCES.md`.
+`apps/cruise/scenes/dream/SOURCES.md`.
 
 ### How it works
 
@@ -56,7 +56,7 @@ camera, `--info` (positions only, no render), `--no-livery`.
 ### The device theme (photo version)
 
 The countdown on the board uses the photograph (the mockup's approach 1), not the Blender renders:
-`cruise/photo_theme.py` turns it into `vacation/modules/cruise/scenes/dream/`:
+`cruise/photo_theme.py` turns it into `apps/cruise/scenes/dream/`:
 - day, dusk and night plates (graded from the photo; the night one has stars)
 - the ship mask
 - the window light: built from the photo's glass, with its glow baked in, grouped into windows

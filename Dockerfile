@@ -5,7 +5,7 @@
 # steps below force the kernel, BusyBox, U-Boot and the boot script to be
 # rebuilt. The apps are laid out afresh every time (board/licheepi_nano/post-image.sh).
 #
-# For tools/board/deploy_app.py, which compiles an app's C part, tag this build's toolchain too
+# For tools/apps/layout.py (deploy, pack), which compiles an app's C part, tag this build's toolchain too
 # (instant once the build has run, as every step is cached):
 #   container build --build-arg BASE_IMAGE=licheepi-nano-mybase --target local -t licheepi-nano-dev .
 
@@ -14,13 +14,13 @@ ARG BASE_VERSION=latest
 
 FROM $BASE_IMAGE:$BASE_VERSION AS local
 
-# both apps go on the SD card's apps partition (see docs/apps.md); this is the one that starts at
-# first boot: chess (the chess clock, clock/) or vacation (the vacation countdown, vacation/).
-# `app NAME` on the board switches later.
+# every app in apps/ goes on the SD card's apps partition (see docs/apps.md); this is the one that
+# starts at first boot: chess (the chess clock), castle or cruise (countdowns, on the countdown
+# runtime). `app NAME` on the board, or Settings > Apps, switches later.
 ARG APP=chess
 # WiFi through an ESP32 on SPI1 (package/esp-hosted): 1 to include it, with TLS for Python (OpenSSL
-# and the CA certificates: the cruise module's AIS feed, vacation/modules/cruise/ais.py, is over a secure websocket). It costs about 4 MB of the
-# Nano's 32 MB, too much alongside the vacation countdown; meant for the F1C200s (64 MB).
+# and the CA certificates: the cruise app's AIS feed, apps/cruise/ais.py, is over a secure websocket). It costs about 4 MB of the
+# Nano's 32 MB: with the countdown too, it needs the swap file S01swap makes.
 ARG WIFI=0
 
 # copy newest version of local files
@@ -28,8 +28,8 @@ WORKDIR /root/licheepi-nano
 COPY board/ board/
 COPY configs/ configs/
 COPY package/ package/
-COPY clock/ clock/
-COPY vacation/ vacation/
+COPY apps/ apps/
+COPY tools/apps/ tools/apps/
 COPY \
     Config.in \
     external.desc \
@@ -38,7 +38,7 @@ COPY \
 
 WORKDIR /root/buildroot
 RUN BR2_EXTERNAL=/root/licheepi-nano make licheepi_nano_defconfig
-RUN case "$APP" in chess|vacation) ;; *) echo "APP must be chess or vacation, not $APP"; exit 1 ;; esac
+RUN [ -f "/root/licheepi-nano/apps/$APP/run" ] || { echo "APP must be an app in apps/ (chess, castle, cruise), not $APP"; exit 1; }
 # the apps used to be packages installed into the root filesystem: clear out what the base image has
 RUN cd output/target && rm -rf etc/init.d/S00splash etc/init.d/S99fbclock etc/init.d/S99vacation \
         usr/bin/fbclock usr/bin/vacation usr/sbin/setcpu usr/lib/libvacfx.so etc/fbclock.conf etc/vacation.conf \
@@ -67,7 +67,7 @@ RUN cd output/build/linux-firmware-20221214/ && rm -f .stamp_built .stamp_*insta
 # turning a package off doesn't remove what it already installed
 RUN rm -f output/target/etc/init.d/S40network
 
-# re-run build (post-image.sh lays out the apps partition from clock/ and vacation/)
+# re-run build (post-image.sh lays out the apps partition from apps/, with tools/apps/layout.py)
 RUN DEFAULT_APP=$APP make
 
 # expose built image files in standalone root folder

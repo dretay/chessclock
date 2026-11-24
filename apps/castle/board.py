@@ -7,7 +7,7 @@ else every ride with a wait, longest first. Above: the park, today's hours, how 
 below: tonight's fireworks (SHOW_NAME, default Happily Ever After).
 
 The waits come from waits.py, the module's service, in its data folder's waits.json
-(/apps/data/vacation/castle/waits.json); without it (no WiFi), waits_example.json beside this file.
+(/apps/data/castle/waits.json); without it (no WiFi), waits_example.json beside this file.
 """
 import datetime, json, os, time
 
@@ -51,7 +51,7 @@ def rides_to_show(data, picked, short=None):
     def order(r):
         up = r.get("status") == "OPERATING" and r.get("wait") is not None
         return (0 if up else 1, -(r.get("wait") or 0), plain(r["name"]))
-    short = {plain(k): v for k, v in (short or {}).items()}      # (module.json "short_names": the names people use)
+    short = {plain(k): v for k, v in (short or {}).items()}      # (app.json "short_names": the names people use)
     return [(short.get(plain(r["name"]), plain(r["name"])).strip('"'), r.get("wait"), r.get("status", "")) for r in sorted(rides, key=order)]
 
 

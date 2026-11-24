@@ -6,7 +6,7 @@
 Reads   THEME_WORK (default tools/themegen/work/castle): ai/{day,dusk,night}.png (or, with --no-ai,
         renders/{day,dusk,night}.png), renders/mask.png (everything that isn't sky), renders/windows.png
         (the windows' glass, white), positions.json
-Writes  vacation/modules/castle/scenes/magic-kingdom/ (THEME_OUT), what the drawing library loads:
+Writes  apps/castle/scenes/magic-kingdom/ (THEME_OUT), what the drawing library loads:
   day.rgb.gz, dusk.rgb.gz, night.rgb.gz   800x480 raw RGB plates (night with a few stars)
   mask.raw.gz                             800x480 bytes, 255 = not sky (fireworks go behind it)
   lights.bin.gz                           the windows' light: which pixels, how much, which window
@@ -20,7 +20,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.normpath(os.path.join(HERE, "..", "..", ".."))
 WORK = os.environ.get("THEME_WORK", os.path.join(REPO, "tools", "themegen", "work", "castle"))
-OUT = os.environ.get("THEME_OUT", os.path.join(REPO, "vacation", "modules", "castle", "scenes", "magic-kingdom"))
+OUT = os.environ.get("THEME_OUT", os.path.join(REPO, "apps", "castle", "scenes", "magic-kingdom"))
 LINING = os.path.join(REPO, "assets", "fonts", "CormorantGaramond-SemiBold-Lining.ttf")
 W, H = 800, 480
 os.makedirs(OUT, exist_ok=True)

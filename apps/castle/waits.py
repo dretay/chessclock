@@ -1,13 +1,13 @@
 """Live ride wait times for the castle's screen (board.py), from ThemeParks.wiki, into
-$MODULE_DATA/waits.json.
+$APP_DATA/waits.json.
 
-The castle module's service (the app's own service starts it, on a kernel with WiFi) runs this with
+The castle app's service (S99app runs it beside the app; with no WiFi it sleeps) runs this with
 --once every few minutes: the park's live data (each ride's status and standby wait, the shows'
 times), and its schedule (opening hours) when the one it has is over an hour old; then it exits, so
 its Python and TLS take memory only for the seconds of a fetch (the countdown and WiFi leave little).
 Exit status: 0 fetched, 1 couldn't (the service waits longer each time), 2 no network time yet.
 Without --once it loops by itself (for trying it on a desktop). ThemeParks.wiki's API is free and
-needs no key. PARK in vacation.conf picks the park (an entity id; default Magic Kingdom).
+needs no key. PARK in its countdown.conf picks the park (an entity id; default Magic Kingdom).
 
 waits.json, written whole each time (the screen just rereads it):
     {"park": "Magic Kingdom", "updated": unix time, "example": false,
@@ -19,10 +19,9 @@ Standard library only (urllib over TLS).
 """
 import datetime, json, os, random, ssl, sys, time, urllib.request
 
-APP_DATA = os.environ.get("APP_DATA", "/apps/data/vacation")
-DATA = os.environ.get("MODULE_DATA") or os.path.join(APP_DATA, "castle")
+DATA = os.environ.get("APP_DATA", "/apps/data/castle")           # (the castle app's own)
 OUT = os.path.join(DATA, "waits.json")
-CONF_FILE = os.path.join(APP_DATA, "vacation.conf")
+CONF_FILE = os.path.join(DATA, "countdown.conf")
 API = "https://api.themeparks.wiki/v1/entity/"
 MAGIC_KINGDOM = "75ea578a-adc8-4116-a54d-dccb60765ef9"
 CA_FILE = "/etc/ssl/certs/ca-certificates.crt"           # Buildroot's ca-certificates

@@ -3,16 +3,16 @@
 reader, so a typo in a newly added game is caught before it reaches the
 board (where the clock would skip the rest of that game).
 
-usage: clock/tools/check_games.py [PGN_FILE]     (default: clock/games.pgn)"""
+usage: apps/chess/tools/check_games.py [PGN_FILE]     (default: apps/chess/games.pgn)"""
 import os
 import sys
 
-REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(REPO, "clock"))
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+sys.path.insert(0, os.path.join(REPO, "apps", "chess"))
 os.environ.setdefault("FBCLOCK_PREVIEW", "1")
 import fbclock as F                                # noqa: E402
 
-path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, "clock", "games.pgn")
+path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, "apps", "chess", "games.pgn")
 bad = 0
 for headers, moves in F.load_games(path):
     pos, name = F.Position(), headers.get("Event", "?")

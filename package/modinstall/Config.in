@@ -1,7 +1,7 @@
 config BR2_PACKAGE_MODINSTALL
-	bool "modinstall (signed vacation-countdown modules)"
+	bool "modinstall (signed apps)"
 	select BR2_PACKAGE_ZLIB
 	help
-	  Checks a vacation-countdown module's Ed25519 signature against
+	  Checks an app's Ed25519 signature against
 	  the keys in /etc/modules/trusted.keys, and installs it into
-	  /apps/vacation/modules. See docs/modules.md.
+	  /apps. See docs/apps.md.

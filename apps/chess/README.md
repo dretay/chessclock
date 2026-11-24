@@ -1,9 +1,9 @@
 # Chess Clock
 
-One of the [apps](../docs/apps.md) (the first one: the project started as this clock): a
+One of the [apps](../../docs/apps.md) (the first one: the project started as this clock): a
 full-screen clock for the Lichee Pi Nano's 5" 800x480 touch screen.
 
-![The chess clock](../docs/clock.png)
+![The chess clock](../../docs/clock.png)
 
 * **Left:** a chessboard replaying famous games, one sliding move every 3
   seconds. Each game starts with its name and players in a caption.
@@ -38,7 +38,7 @@ cache; the cache clears itself whenever the program changes.
 
 ## First boot
 
-The image starts the chess clock unless it was built with `--app vacation` (`app chess` on the board
+The image starts the chess clock unless it was built with `--app castle` (say; `app chess` on the board
 switches to it). A chess knight splash appears within a few seconds, then the clock. **Set the
 time:** press and hold the screen until Settings opens (two seconds: the clock's plunger sinks as you
 hold, so a passing tap can't change anything; a quick tap shows the game's name instead), use the
@@ -47,11 +47,11 @@ fade between them), or turn the display upside down. Settings are kept on the SD
 survive power cuts; the time itself doesn't (the board has no clock battery; a DS3231 module on the
 touch chip's I2C bus would fix that).
 
-![The settings screen](../docs/settings.png)
+![The settings screen](../../docs/settings.png)
 
 ## Files
 
-The clock is an app ([docs/apps.md](../docs/apps.md)) called `chess`:
+The clock is an app ([docs/apps.md](../../docs/apps.md)) called `chess`:
 `install.sh` lays it out in `/apps/chess` on the board, and its settings,
 cache and log are in `/apps/data/chess`.
 
@@ -96,8 +96,8 @@ cd /apps/chess && python3 fbclock.py --touch-debug   # (stopped) print raw and s
 ```
 
 To try a changed `fbclock.py` on the board without reflashing,
-`tools/board/deploy_app.py chess` copies the changed files over the serial console
-and restarts the clock. `clock/tools/simulate.py` checks the
+`tools/board/deploy.py chess` copies the changed files over the serial console
+and restarts the clock. `apps/chess/tools/simulate.py` checks the
 animations and touch handling on a desktop first.
 
 To recalibrate the touch screen: stop the clock, run `--touch-debug`, tap near
@@ -121,13 +121,13 @@ The program can render a single frame to a PNG, which is how most of its
 look was developed. It needs Pillow and the DejaVu fonts:
 
 ```sh
-FBCLOCK_FONTS=/path/to/dejavu/ttf FBCLOCK_GAMES=clock/games.pgn \
-FBCLOCK_PREVIEW=preview.png python3 clock/fbclock.py
+FBCLOCK_FONTS=/path/to/dejavu/ttf FBCLOCK_GAMES=apps/chess/games.pgn \
+FBCLOCK_PREVIEW=preview.png python3 apps/chess/fbclock.py
 ```
 
 Add `FBCLOCK_PLY=20` to show a game 20 moves in, or `FBCLOCK_PREVIEW_SETTER=1`
 for the Settings screen.
 
 The splash images are regenerated with
-`python3 clock/fbclock.py --make-splash clock/splash 800x480x32` (on the board,
+`python3 apps/chess/fbclock.py --make-splash apps/chess/splash 800x480x32` (on the board,
 for pixel-exact output, then copied back).

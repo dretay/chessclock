@@ -1,6 +1,6 @@
 """Turn the Blender renders into the theme's plates, and build the mockup page and a preview sheet.
 
-  THEME_WORK/renders/<look>.png   (2x size, from scene.py)   ->  vacation/modules/cruise/scenes/dream/<look>.png (800x480)
+  THEME_WORK/renders/<look>.png   (2x size, from scene.py)   ->  apps/cruise/scenes/dream/<look>.png (800x480)
   template.html + plates + the panel photo                     ->  THEME_WORK/mockup/cruise-mockups.html
                                                                     THEME_WORK/mockup/preview.png
 
@@ -12,7 +12,7 @@ from PIL import Image, ImageEnhance, ImageDraw, ImageFont
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.normpath(os.path.join(HERE, "..", "..", ".."))
 ASSETS = os.environ.get("THEME_ASSETS", os.path.join(REPO, "assets", "dream"))
 WORK = os.environ.get("THEME_WORK", os.path.join(REPO, "tools", "themegen", "work", "dream"))
-THEME = os.environ.get("THEME_OUT", os.path.join(REPO, "vacation", "modules", "cruise", "scenes", "dream-blender"))
+THEME = os.environ.get("THEME_OUT", os.path.join(REPO, "apps", "cruise", "scenes", "dream-blender"))
 REN, MOCK = os.path.join(WORK, "renders"), os.path.join(WORK, "mockup")
 os.makedirs(THEME, exist_ok=True); os.makedirs(MOCK, exist_ok=True)
 W, H = 800, 480

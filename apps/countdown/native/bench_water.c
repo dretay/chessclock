@@ -1,5 +1,5 @@
 /*
- * Speed test for the vacation countdown's water ripple in C, on the board.
+ * Speed test for the countdown's water ripple in C, on the board.
  *
  *   bench_water PLATE.rgb MASK.raw HORIZON [SECONDS]
  *

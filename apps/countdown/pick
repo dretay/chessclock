@@ -1,0 +1,10 @@
+#!/bin/sh
+# Settings > Apps, in every app: stop the app, show the app picker (picker.py), then start the app
+# picked, or the one that was running. Started detached (in its own session) by the app, which this
+# stops; logs to /apps/data/countdown/picker.log.
+R=$(cd "$(dirname "$0")" && pwd)
+mkdir -p /apps/data/countdown
+/etc/init.d/S99app stop >/dev/null 2>&1
+N=$(cd "$R" && python3 -u picker.py 2>>/apps/data/countdown/picker.log)
+if [ -n "$N" ] && [ -x "/apps/$N/run" ]; then exec app "$N"; fi
+exec /etc/init.d/S99app start

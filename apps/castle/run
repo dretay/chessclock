@@ -1,0 +1,4 @@
+#!/bin/sh
+# Starts this countdown app: the countdown runtime (/apps/countdown), with this folder's scene,
+# screens and settings. /etc/init.d/S99app runs this in this folder, with APP_DATA set.
+exec /apps/countdown/launch

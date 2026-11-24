@@ -1,5 +1,5 @@
 /*
- * vacfx: the vacation countdown's per-frame drawing, in C (the board's ARM9 is far too slow to do
+ * vacfx: the countdown runtime's per-frame drawing, in C (the board's ARM9 is far too slow to do
  * this in Python; see tools/themegen/bench_board*.py). Loaded by vacation.py with ctypes.
  *
  * It owns the theme's images and draws straight into the framebuffer:
@@ -641,31 +641,43 @@ static void draw_ambient(void) {
 
 /* ------------------------------------------------------------------ the flip clock */
 static int split_w(int sp) { return sp && colon_img ? colon_w + cards_gap : sp ? cards_gap * 2 : 0; }
-static void cards_layout_s(int n, int sp, int *x0, int *wtot) { *wtot = n * card_w + (n - 1) * cards_gap + split_w(sp); *x0 = cards_cx - *wtot / 2; }
+/* where a row wtot wide is centred: the scene's centre (cards_cx), moved just enough to keep the row on
+   the screen (a scene with the cards to one side, like the castle's, and three digits) */
+#define CARDS_MARGIN 14
+static int cards_center(int wtot) {
+    int c = cards_cx;
+    if (c - wtot / 2 < CARDS_MARGIN) c = CARDS_MARGIN + wtot / 2;
+    if (c - wtot / 2 + wtot > W - CARDS_MARGIN) c = W - CARDS_MARGIN - wtot + wtot / 2;
+    return c;
+}
+static void cards_layout_s(int n, int sp, int *x0, int *wtot) { *wtot = n * card_w + (n - 1) * cards_gap + split_w(sp); *x0 = cards_center(*wtot) - *wtot / 2; }
 static void cards_layout(int n, int *x0, int *wtot) { cards_layout_s(n, split, x0, wtot); }
 static int card_x(int x0, int k) { return x0 + k * (card_w + cards_gap) + (split && k >= split ? split_w(split) : 0); }
 static void cards_rect_s(int n, int sp, int *a, int *b, int *c, int *d);
 static void cards_rect(int n, int *a, int *b, int *c, int *d) { cards_rect_s(n, split, a, b, c, d); }
 static void cards_rect_s(int n, int sp, int *a, int *b, int *c, int *d) {
     int x0, wt; cards_layout_s(n, sp, &x0, &wt);
+    const int cx = x0 + wt / 2;                            /* (the row's centre, on the screen) */
     if (banner_img && (banner_on || n == 0)) {             /* (the banner's footprint too: it may be showing) */
-        if (x0 > cards_cx - banner_w / 2) { wt += x0 - (cards_cx - banner_w / 2); x0 = cards_cx - banner_w / 2; }
-        if (wt < banner_w) wt = banner_w;
+        const int bx0 = cards_center(banner_w) - banner_w / 2;
+        if (x0 > bx0) { wt += x0 - bx0; x0 = bx0; }
+        if (x0 + wt < bx0 + banner_w) wt = bx0 + banner_w - x0;
     }
     *a = x0 + shadow_ox; *b = cards_top + shadow_oy; *c = x0 + wt - 1 - shadow_ox;
     *d = cards_top + card_h + (label_gap >= 0 ? label_gap + label_h[0] : 0) + 14;      /* (label_gap < 0: no label) */
-    if (*a > cards_cx - 62) *a = cards_cx - 62;          /* wide enough for the hold bar */
-    if (*c < cards_cx + 62) *c = cards_cx + 62;
+    if (*a > cx - 62) *a = cx - 62;                      /* wide enough for the hold bar */
+    if (*c < cx + 62) *c = cx + 62;
     if (*d < cards_top + shadow_oy + shadow_h) *d = cards_top + shadow_oy + shadow_h;
 }
 static void draw_cards(int t_ms, int clip) {
     if (days < 0) return;
     const int level = lerp_i(256, 205, night_lvl), half = card_h / 2;
     if (banner_on && banner_img) {
-        sprite(banner_img, banner_w, banner_h, cards_cx - banner_w / 2, cards_top + (card_h - banner_h) / 2, level, clip);
+        sprite(banner_img, banner_w, banner_h, cards_center(banner_w) - banner_w / 2, cards_top + (card_h - banner_h) / 2, level, clip);
         return;
     }
     int x0, wt; cards_layout(ndig, &x0, &wt);
+    const int cx = x0 + wt / 2;                            /* (the label and the hold bar go under the row) */
     for (int k = 0; k < ndig; k++) sprite(shadow_img, shadow_w, shadow_h, card_x(x0, k) + shadow_ox, cards_top + shadow_oy, level, clip);
     if (split && colon_img) sprite(colon_img, colon_w, colon_h, card_x(x0, split) - cards_gap - colon_w,
                                    cards_top + (card_h - colon_h) / 2, level, clip);
@@ -684,10 +696,10 @@ static void draw_cards(int t_ms, int clip) {
         else flap(card_bot[d], x, hinge, half * -c >> 14, 0, level * (160 + (96 * -c >> 14)) >> 8);        /* new bottom falling */
     }
     const int lab = days == 1 ? 1 : 0;
-    if (label_gap >= 0) sprite(label_img[lab], label_w[lab], label_h[lab], cards_cx - label_w[lab] / 2, cards_top + card_h + label_gap, level, clip);
+    if (label_gap >= 0) sprite(label_img[lab], label_w[lab], label_h[lab], cx - label_w[lab] / 2, cards_top + card_h + label_gap, level, clip);
     /* press and hold: a thin bar fills under the label, and Settings opens when it's full */
     if (hold_lvl > 0) {
-        const int bw = 120, by = cards_top + card_h + (label_gap >= 0 ? label_gap + label_h[lab] : 0) + 7, bx = cards_cx - bw / 2, fill = bw * hold_lvl >> 8;
+        const int bw = 120, by = cards_top + card_h + (label_gap >= 0 ? label_gap + label_h[lab] : 0) + 7, bx = cx - bw / 2, fill = bw * hold_lvl >> 8;
         for (int yy = by; yy < by + 3; yy++) for (int xx = bx; xx < bx + bw; xx++) {
             const uint32_t p = out[yy * W + xx]; const int on = xx < bx + fill;
             const int R = (p >> 16) & 255, G = (p >> 8) & 255, B = p & 255;

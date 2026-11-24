@@ -3,10 +3,10 @@
 #   1. the photo livery (cruise/build_livery.py)      assets/dream  -> work/dream/livery
 #   2. the Blender plates, double size (cruise/scene.py)               -> work/dream/renders
 #   3. the panel-A window mask, the Blender plates at 800x480, the mockup page and a preview sheet
-#                                                                      -> vacation/modules/cruise/scenes/dream-blender, work/dream/mockup
-#   4. the device theme from the photo (cruise/photo_theme.py)         -> vacation/modules/cruise/scenes/dream
+#                                                                      -> apps/cruise/scenes/dream-blender, work/dream/mockup
+#   4. the device theme from the photo (cruise/photo_theme.py)         -> apps/cruise/scenes/dream
 # Needs Blender (BLENDER=..., default the macOS app), Python 3 with Pillow, and the
-# source files in assets/ (see vacation/modules/cruise/scenes/dream/SOURCES.md). Takes ~15 min on an M2.
+# source files in assets/ (see apps/cruise/scenes/dream/SOURCES.md). Takes ~15 min on an M2.
 #
 #   tools/themegen/build_dream.sh            everything
 #   tools/themegen/build_dream.sh --quick    48 samples at panel size: a quick look, ~3 min
@@ -22,7 +22,7 @@ SAMPLES=128; SCALE=2
 [ "$1" = "--quick" ] && { SAMPLES=48; SCALE=1; }
 
 for f in "$THEME_ASSETS/disney_dream.stl" "$THEME_ASSETS/side.png" "$THEME_ASSETS/bow.jpg" "$THEME_ASSETS/panel_photo.jpg"; do
-  [ -f "$f" ] || { echo "missing $f (see vacation/modules/cruise/scenes/dream/SOURCES.md)"; exit 1; }
+  [ -f "$f" ] || { echo "missing $f (see apps/cruise/scenes/dream/SOURCES.md)"; exit 1; }
 done
 mkdir -p "$REN"
 

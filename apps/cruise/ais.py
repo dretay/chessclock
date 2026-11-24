@@ -1,34 +1,33 @@
-"""Live ship positions for the fleet map, from AIS (aisstream.io), into $MODULE_DATA/ships.csv.
+"""Live ship positions for the fleet map, from AIS (aisstream.io), into $APP_DATA/ships.csv.
 
-The cruise module's service (module.json; the app's own service starts it): beside the countdown,
-not inside it, so the map just rereads the file whenever it next shows. Its folder, MODULE_DATA, is
-/apps/data/vacation/cruise on the board. Needs WiFi, and an aisstream.io API key (free; sign up at
-aisstream.io) in $MODULE_DATA/ais.key, on a line of its own. It waits for the key, the
+The cruise app's service (S99app runs it beside the app): beside the countdown, not inside it, so
+the map just rereads the file whenever it next shows. Its folder, APP_DATA, is
+/apps/data/cruise on the board. Needs WiFi, and an aisstream.io API key (free; sign up at
+aisstream.io) in $APP_DATA/ais.key, on a line of its own. It waits for the key, the
 network and the clock (TLS needs the right date) by itself, and reconnects when the link drops.
 
-The ships are the Disney fleet below, by MMSI; AIS_SHIPS in vacation.conf replaces the list
+The ships are the Disney fleet below, by MMSI; AIS_SHIPS in its countdown.conf replaces the list
 (MMSI=Name pairs, comma separated). AIS here is from shore stations only: a ship far out at sea
 goes quiet until it nears a coast again, and the map shows how old its position is.
 
 Writing: a line per ship at most every TRAIL_EVERY seconds (and when its status changes), which
 makes the map's trail; the file is trimmed to the last day now and then. Lines anything else wrote
-(vacation/modules/cruise/tools/send_ships.py) are kept the same way.
+(apps/cruise/tools/send_ships.py) are kept the same way.
 
 Standard library only: a small websocket client over ssl (no compression extension; with a
 handful of ships the traffic is tiny).
 """
 import base64, datetime, json, os, random, socket, ssl, struct, sys, time
 
-APP_DATA = os.environ.get("APP_DATA", "/apps/data/vacation")
-DATA = os.environ.get("MODULE_DATA") or os.path.join(APP_DATA, "cruise")
+DATA = os.environ.get("APP_DATA", "/apps/data/cruise")           # (the cruise app's own)
 HERE = os.path.dirname(os.path.abspath(__file__))
 SHIPS_FILE = os.path.join(DATA, "ships.csv")
 KEY_FILE = os.path.join(DATA, "ais.key")
-CONF_FILE = os.path.join(APP_DATA, "vacation.conf")        # the app's settings (AIS_SHIPS)
+CONF_FILE = os.path.join(DATA, "countdown.conf")           # the app's settings (AIS_SHIPS)
 HOST, PATH = "stream.aisstream.io", "/v0/stream"
 CA_FILE = "/etc/ssl/certs/ca-certificates.crt"           # Buildroot's ca-certificates
 
-# MMSI -> name (Wikipedia, CruiseMapper; 2026). AIS_SHIPS in vacation.conf replaces it.
+# MMSI -> name (Wikipedia, CruiseMapper; 2026). AIS_SHIPS in its countdown.conf replaces it.
 FLEET = {
     "308516000": "Disney Magic",
     "308457000": "Disney Wonder",

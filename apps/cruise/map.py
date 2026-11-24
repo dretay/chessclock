@@ -8,13 +8,13 @@ view is a small ship pointing its way, with its name on a tag (your own ship, SH
 status line says how old the positions are.
 
 The map comes in 256-px tiles made on a desktop (tools/themegen/build_map.py -> map/tiles/,
-map.json); only the dozen or so around the ship are loaded. The cruise module's screen (module.json).
+map.json); only the dozen or so around the ship are loaded. The cruise app's screen (its app.json).
 
 Positions come from a file, one ship per line (see ships_example.csv):
     name, latitude, longitude, heading, speed (knots), when (unix time or YYYY-MM-DDTHH:MM),
     and optionally destination, ETA (MM-DD HH:MM, UTC as AIS sends it), status, MMSI
-the module's data folder's ships.csv (/apps/data/vacation/cruise/ships.csv) when it exists (kept up to date from
-AIS by ais.py, the module's service, over WiFi; or written over serial by vacation/modules/cruise/tools/send_ships.py), otherwise the example. A later line for the same ship replaces an earlier one.
+the module's data folder's ships.csv (/apps/data/cruise/ships.csv) when it exists (kept up to date from
+AIS by ais.py, the module's service, over WiFi; or written over serial by apps/cruise/tools/send_ships.py), otherwise the example. A later line for the same ship replaces an earlier one.
 """
 import calendar, datetime, json, math, os, random, time
 

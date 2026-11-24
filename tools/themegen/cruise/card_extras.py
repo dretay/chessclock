@@ -4,7 +4,7 @@ the last day's hours and minutes (HH:MM). Premultiplied RGBA, each as width, hei
 
 photo_theme.py adds them when it builds a theme; on its own, this adds (or replaces) them in an
 existing theme's cards.bin.gz:
-    python3 tools/themegen/cruise/card_extras.py vacation/modules/cruise/scenes/dream
+    python3 tools/themegen/cruise/card_extras.py apps/cruise/scenes/dream
 """
 import gzip, os, struct, sys
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
@@ -66,4 +66,4 @@ def add_to(theme_dir):
 
 
 if __name__ == "__main__":
-    add_to(sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, "vacation", "modules", "cruise", "scenes", "dream"))
+    add_to(sys.argv[1] if len(sys.argv) > 1 else os.path.join(REPO, "apps", "cruise", "scenes", "dream"))

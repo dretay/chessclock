@@ -1,8 +1,13 @@
 {
   "id": "castle",
   "name": "Magic Kingdom",
-  "version": "0.2.0",
-  "api": 1,
+  "version": "1.0.0",
+  "runtime": "countdown",
+  "api": 2,
+  "exclude": [
+    "scenes/*/preview.png",
+    "splash/preview.png"
+  ],
   "scene": {
     "engine": "scene",
     "dir": "scenes",

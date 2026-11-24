@@ -1,10 +1,10 @@
-"""The vacation countdown's Settings: opened by pressing and holding the picture for two seconds.
+"""The countdown's Settings: opened by pressing and holding the picture for two seconds.
 
   Page 1  the trip's date (the module's label for it: "Sail date", "Park day"), and today's date and time
           (the board has no clock battery)
   Page 2  fireworks: when (random through the night, a nightly show at a set time, both, or off),
           how often the random ones go up, and the show's time
-  Page 3  the theme's own settings (the active module's, from its module.json "settings": the cruise's
+  Page 3  the theme's own settings (the app's, from its app.json "settings": the cruise's
           ship to follow on the map, the castle's rides to show), as chips, a page at a time
   Page 4  WiFi: the networks in range, and which one the board is on (vacation_wifi.py); tapping one
           opens page 5, a keyboard for its password. Joining saves it on the board straight away.
@@ -26,6 +26,19 @@ REPEAT_DELAY, REPEAT_EVERY = 0.5, 0.12
 
 
 def rgb(c): return (c[0] << 16) | (c[1] << 8) | c[2]
+
+
+PICKER = os.environ.get("APP_PICKER") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "pick")   # the app picker (picker.py; APP_PICKER: the previewer's)
+
+
+def has_picker(): return os.access(PICKER, os.X_OK) and not os.environ.get("VACATION_SIM_CLOCK")
+
+
+def open_picker():
+    """Settings > Apps: the picker, in a session of its own (it stops this app, so it mustn't be its child)."""
+    import subprocess
+    try: subprocess.Popen([PICKER], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError as e: print("settings: no app picker: %s" % e, flush=True)
 
 
 def write_conf_value(path, key, value):
@@ -76,9 +89,9 @@ class Settings:
 
     # ---------------------------------------------------------------- the theme's setting (page 3)
     def load_theme_setting(self, app):
-        """The active module's first setting (module.json "settings"): its options, and what's chosen.
+        """The app's first setting (app.json "settings"): its options, and what's chosen.
         "one": pick one; "many": pick any (stored joined with |, as names may have commas). Options are
-        listed in module.json, or come from a file the module's service writes ("options_from", e.g.
+        listed in app.json, or come from a file the app's service writes ("options_from", e.g.
         waits.json's rides), else that file's *_example.json beside the module."""
         mod = getattr(app, "module", None)
         specs = (mod.meta.get("settings") or []) if mod else []
@@ -224,7 +237,8 @@ class Settings:
         self.text("value", self.text_of(k), cx, top + 79, L.IVORY, "m", a)
 
     def draw_button(self, name):
-        x0, y0, x1, y1 = box = {1: L.PAGE1_BUTTONS, 2: L.PAGE2_BUTTONS, 3: L.PAGE3_BUTTONS, 4: L.WIFI_BUTTONS, 5: L.KB_BUTTONS}[self.page][name]
+        if name == "apps": x0, y0, x1, y1 = box = L.PAGE1_APPS
+        else: x0, y0, x1, y1 = box = {1: L.PAGE1_BUTTONS, 2: L.PAGE2_BUTTONS, 3: L.PAGE3_BUTTONS, 4: L.WIFI_BUTTONS, 5: L.KB_BUTTONS}[self.page][name]
         self.bg((x0 - 2, y0 - 2, x1 + 2, y1 + 2)); hot = self.pressed == name; cx = (x0 + x1) // 2
         if name in ("save", "kb_join"):
             self.round(box, 14, (238, 206, 138) if hot else L.GOLD, 255)
@@ -241,7 +255,7 @@ class Settings:
             self.round(box, 12, (255, 255, 255), 40 if hot else 0, (255, 255, 255), 70)
             if name in ("prev", "next"):
                 self.text("button", "‹" if name == "prev" else "›", cx, y0 + 30, L.IVORY if self.pages() > 1 else L.DIM, "m"); return
-            label = {"calibrate": "Touch", "fireworks": "Fireworks ›", "theme": "Theme ›", "wifi": "WiFi ›", "demo": "Demo show",
+            label = {"calibrate": "Touch", "fireworks": "Fireworks ›", "theme": "Theme ›", "wifi": "WiFi ›", "demo": "Demo show", "apps": "Apps ›",
                      "rescan": "Rescan", "forget": "Forget network"}[name]
             self.text("small", label, cx, y0 + 25, L.DIM, "m")
 
@@ -272,6 +286,7 @@ class Settings:
             self.text("small", "date & time", 40, 345, L.DIM)
             for k in self.cols1: self.draw_col(k)
             for b in L.PAGE1_BUTTONS: self.draw_button(b)
+            if has_picker(): self.draw_button("apps")
         elif self.page == 4:
             self.draw_wifi_page()
         elif self.page == 5:
@@ -298,6 +313,8 @@ class Settings:
         """Generous on purpose: a resistive screen's aim drifts."""
         if self.page == 1:
             if y >= 372: return next(name for edge, name in L.PAGE1_SPLITS if x < edge)
+            ax0, _, ax1, ay1 = L.PAGE1_APPS
+            if y < ay1 + 12 and ax0 - 12 <= x < ax1 + 12 and has_picker(): return "apps"
             for _, top, cols in L.PAGE1_ROWS:
                 if top <= y < top + 148:
                     for c in cols:
@@ -380,6 +397,7 @@ class Settings:
         if not again: return None
         if target in ("save", "cancel"): return target
         if target == "demo": self.demo = not self.demo; self.draw_button("demo"); return None
+        if target == "apps": return "apps"
         if target == "fireworks": self.page = 2; self.draw_page()
         elif target == "theme": self.page = 3; self.draw_page()
         elif target in ("prev", "next"):
@@ -426,10 +444,28 @@ class Settings:
             if now - last_touch > IDLE_SECS: result = "cancel"
             app.tick()
         if self.wpa: self.wpa.close()
+        if result == "apps":
+            if not self.opening_apps():                                   # the picker stopped us: leave its screen be
+                fx.vfx_ui_close(); return False
+            result = "cancel"                                             # (it didn't start: back to the countdown)
         if result == "save": self.save()
         self.closing(result == "save")
         fx.vfx_ui_close()
         return result == "save"
+
+    def opening_apps(self, wait=30.0):
+        """Settings > Apps: say so, start the picker, and stay as we are until it stops this app (it
+        takes a few seconds to start; S99app's stop sets app.running to False); True if it didn't, after
+        wait seconds."""
+        box = (L.W // 2 - 170, L.H // 2 - 50, L.W // 2 + 170, L.H // 2 + 50)
+        self.round(box, 18, (8, 14, 30), 240, L.GOLD, 160)
+        self.text("label", "Opening apps...", L.W // 2, box[1] + 50, L.IVORY, "m")
+        self.text("small", "one moment", L.W // 2, box[1] + 78, L.DIM, "m")
+        self.fx.vfx_ui_flush()
+        open_picker()
+        until = self.app.now() + wait
+        while self.app.running and self.app.now() < until: self.app.tick()
+        return self.app.running
 
     def closing(self, saved):
         """Say so at once, then back to the countdown."""

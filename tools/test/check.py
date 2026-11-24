@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
-"""Check the vacation countdown and its modules on a desktop, with the device's own drawing code:
+"""Check the countdown apps (the cruise, the castle) and their runtime on a desktop, with the device's
+own drawing code:
 
     tools/test/check.py                 the checks below, and renders into build/test/now/
     tools/test/check.py --save NAME     ... and keep those renders as the baseline NAME (build/test/NAME/)
     tools/test/check.py --compare NAME  ... and compare them with the baseline NAME, pixel for pixel
 
-1. every module's module.json: parses, and the files it names are there (its screens, its default
-   scene with everything the drawing library loads, an executable service if it has one);
-2. every Python file of the app and its modules compiles; and each module's files as vacation/install.sh
-   lays them out are exactly what tools/modules/pack.py packs (one rule, two places); and modinstall
-   (tools/test/test_modinstall.py) installs a signed module and refuses tampered or unsafe ones;
-3. renders, per module: the countdown at noon and at 10 PM, and its screens (with their example data),
+1. every app's app.json parses; a countdown app's names what's there (its screens, its default scene
+   with everything the drawing library loads, an executable run, and service if it has one);
+2. every Python file of the apps compiles; and modinstall (tools/test/test_modinstall.py) installs a
+   signed app and refuses tampered or unsafe ones;
+3. renders, per countdown app: the countdown at noon and at 10 PM, and its screens (with their example data),
    on the preview clock (VACATION_SIM_CLOCK: the same frames every run), as PNGs, with the frames'
    SHA-256 in hashes.json. --compare reports which differ (and writes a diff image of each).
 
@@ -20,7 +20,8 @@ Needs a C compiler (cc), zlib and Pillow. Exits non-zero if a check fails or a r
 import glob, hashlib, json, os, shutil, subprocess, sys, tempfile
 
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-APP = os.path.join(REPO, "vacation")
+APPS = os.path.join(REPO, "apps")
+APP = os.path.join(APPS, "countdown")                     # the runtime
 OUT = os.path.join(REPO, "build", "test")
 W, H = 800, 480
 SCENE_FILES = ("day.rgb.gz", "dusk.rgb.gz", "night.rgb.gz", "lights.bin.gz", "cards.bin.gz", "theme.json")
@@ -31,15 +32,19 @@ def fail(msg): failures.append(msg); print("FAIL", msg)
 
 
 def check_modules():
-    mods = sorted(glob.glob(os.path.join(APP, "modules", "*", "module.json")))
-    if not mods: fail("no modules")
-    for p in mods:
+    mods = []
+    for p in sorted(glob.glob(os.path.join(APPS, "*", "app.json"))):
         d = os.path.dirname(p); name = os.path.basename(d)
         try: m = json.load(open(p))
-        except ValueError as e: fail("%s: module.json: %s" % (name, e)); continue
-        for k in ("id", "name", "version", "api", "scene"):
-            if k not in m: fail("%s: module.json has no %s" % (name, k))
+        except ValueError as e: fail("%s: app.json: %s" % (name, e)); continue
+        for k in ("id", "name", "version"):
+            if k not in m: fail("%s: app.json has no %s" % (name, k))
         if m.get("id") != name: fail("%s: id is %r, its folder %r" % (name, m.get("id"), name))
+        if m.get("kind") != "runtime" and not os.access(os.path.join(d, "run"), os.X_OK): fail("%s: no executable run" % name)
+        if m.get("runtime") != "countdown": continue
+        mods.append(name)
+        for k in ("api", "scene"):
+            if k not in m: fail("%s: app.json has no %s" % (name, k))
         sc = m.get("scene", {}); scene = os.path.join(d, sc.get("dir", "scenes"), sc.get("default", ""))
         for f in SCENE_FILES:
             if not os.path.exists(os.path.join(scene, f)): fail("%s: scene %s has no %s" % (name, sc.get("default"), f))
@@ -52,29 +57,14 @@ def check_modules():
         for st in m.get("settings", []):
             if st.get("type") not in ("one", "many"): fail("%s: setting %s: type %r" % (name, st.get("key"), st.get("type")))
             if "options" not in st and "options_from" not in st: fail("%s: setting %s has no options" % (name, st.get("key")))
-    return [os.path.basename(os.path.dirname(p)) for p in mods]
+    if not mods: fail("no countdown apps")
+    return mods
 
 
 def check_python():
-    for p in glob.glob(os.path.join(APP, "*.py")) + glob.glob(os.path.join(APP, "modules", "*", "*.py")):
+    for p in glob.glob(os.path.join(APPS, "*", "*.py")) + glob.glob(os.path.join(APPS, "*", "tools", "*.py")):
         try: compile(open(p).read(), p, "exec")
         except SyntaxError as e: fail("compile %s: %s" % (os.path.relpath(p, REPO), e))
-
-
-def check_packing(mods):
-    sys.path.insert(0, os.path.join(REPO, "tools", "modules")); import pack
-    tmp = tempfile.mkdtemp(prefix="vacation-install-")
-    r = subprocess.run(["sh", os.path.join(APP, "install.sh"), os.path.join(tmp, "app")], env=dict(os.environ, CC="cc"),
-                       capture_output=True, text=True)
-    if r.returncode: fail("install.sh: %s" % r.stderr[-300:]); return
-    for mod in mods:
-        root = os.path.join(tmp, "app", "modules", mod); laid = set()
-        for d, _, fs in os.walk(root):
-            laid |= {os.path.relpath(os.path.join(d, f), root) for f in fs if not f.endswith(".pyc")}
-        packed = {rel for rel, _ in pack.files(mod)[0]}
-        if laid != packed: fail("%s: install.sh and pack.py differ: %s" % (mod, sorted(laid ^ packed)[:6]))
-        else: print("packing", mod, "matches install.sh (%d files)" % len(packed))
-    shutil.rmtree(tmp, ignore_errors=True)
 
 
 def render(mods, out):
@@ -87,9 +77,12 @@ def render(mods, out):
     F = W * H * 4; hashes = {}
     for mod in mods:
         data = os.path.join(tmp, mod); os.makedirs(data)
-        conf = os.path.join(data, "vacation.conf")
-        with open(conf, "w") as f: f.write(open(os.path.join(APP, "vacation.conf")).read() + "\nMODULE=%s\nTHEME=\n" % mod)
-        env = dict(os.environ, APP_DATA=data, VACATION_LIB=lib, VACATION_CONF=conf, VACATION_NOW="2026-11-22T12:00",
+        conf = os.path.join(data, "countdown.conf")
+        own = os.path.join(APPS, mod, "defaults.conf")
+        with open(conf, "w") as f:
+            f.write(open(os.path.join(APP, "countdown.conf")).read() + "\n" + (open(own).read() if os.path.exists(own) else "") + "\nTHEME=\n")
+        env = dict(os.environ, APP_DATA=data, VACATION_APP=os.path.join(APPS, mod), VACATION_LIB=lib, VACATION_CONF=conf,
+                   VACATION_NOW="2026-11-22T12:00",
                    VACATION_SIM_CLOCK="0", VACATION_FB=os.path.join(tmp, "fb.raw"))
         shots = [("noon", {"VACATION_HOUR": "12", "VACATION_SIM_END": "2", "VACATION_MAP_AFTER": "99"}, -1),
                  ("night", {"VACATION_HOUR": "22", "VACATION_SIM_END": "2", "VACATION_MAP_AFTER": "99"}, -1),
@@ -98,7 +91,7 @@ def render(mods, out):
             rec = os.path.join(tmp, "rec.raw")
             if os.path.exists(rec): os.remove(rec)
             r = subprocess.run([sys.executable, os.path.join(APP, "vacation.py")], env=dict(env, VACATION_RECORD=rec, **extra),
-                               capture_output=True, text=True, cwd=APP)
+                               capture_output=True, text=True, cwd=os.path.join(APPS, mod))
             if r.returncode or not os.path.exists(rec): fail("%s %s: the app failed: %s" % (mod, shot, r.stderr[-400:])); continue
             raw = open(rec, "rb").read(); n = len(raw) // F
             frame = raw[(n - 1) * F:n * F] if at < 0 else raw[int(n * at) * F:(int(n * at) + 1) * F]
@@ -109,6 +102,27 @@ def render(mods, out):
     json.dump(hashes, open(os.path.join(out, "hashes.json"), "w"), indent=1)
     shutil.rmtree(tmp, ignore_errors=True)
     return hashes
+
+
+def check_picker(out):
+    """The app picker (apps/countdown/picker.py) over the apps here: drawn, and a tap on the cruise picks it."""
+    from PIL import Image
+    tmp = tempfile.mkdtemp(prefix="picker-check-")
+    lib = os.path.join(tmp, "libvacfx.so")
+    subprocess.run(["cc", "-O2", "-shared", "-fPIC", "-o", lib, os.path.join(APP, "fx", "vacfx.c"), "-lz"], check=True)
+    names = [json.load(open(p))["name"] for p in glob.glob(os.path.join(APPS, "*", "app.json"))
+             if os.access(os.path.join(os.path.dirname(p), "run"), os.X_OK)]
+    i = sorted(names, key=str.lower).index("Disney cruise")
+    x = 20 + (i % 3) * 260 + 120
+    open(os.path.join(tmp, "taps"), "w").write("1.0 %d 240 0.1\n" % x)
+    r = subprocess.run([sys.executable, os.path.join(APP, "picker.py")], capture_output=True, text=True,
+                       env=dict(os.environ, PICKER_APPS=APPS, PICKER_CURRENT="castle", PICKER_TIMEOUT="3", VACATION_LIB=lib,
+                                VACATION_FB=os.path.join(tmp, "fb.raw"), VACATION_TOUCH_SCRIPT=os.path.join(tmp, "taps")))
+    if r.returncode or r.stdout.strip() != "cruise": fail("picker: tapped the cruise, got %r %s" % (r.stdout.strip(), r.stderr[-300:]))
+    else:
+        Image.frombytes("RGB", (W, H), open(os.path.join(tmp, "fb.raw"), "rb").read()[:W * H * 4], "raw", "BGRX").save(os.path.join(out, "picker.png"))
+        print("picker: %d apps, a tap on the cruise picks it" % len(names))
+    shutil.rmtree(tmp, ignore_errors=True)
 
 
 def compare(now, name):
@@ -128,11 +142,12 @@ def compare(now, name):
 
 def main():
     args = sys.argv[1:]
-    mods = check_modules(); check_python(); check_packing(mods)
+    mods = check_modules(); check_python()
     r = subprocess.run([sys.executable, os.path.join(REPO, "tools", "test", "test_modinstall.py")], capture_output=True, text=True)
     if r.returncode: fail("modinstall:\n" + "\n".join(l for l in (r.stdout + r.stderr).splitlines() if not l.startswith("ok")))
-    else: print("modinstall: installs a signed module, refuses the rest (%d checks)" % r.stdout.count("\nok"))
+    else: print("modinstall: installs signed apps, refuses the rest (%d checks)" % r.stdout.count("\nok"))
     now = render(mods, os.path.join(OUT, "now"))
+    check_picker(os.path.join(OUT, "now"))
     if "--save" in args:
         name = args[args.index("--save") + 1]; dst = os.path.join(OUT, name)
         shutil.rmtree(dst, ignore_errors=True); shutil.copytree(os.path.join(OUT, "now"), dst); print("baseline saved:", os.path.relpath(dst, REPO))

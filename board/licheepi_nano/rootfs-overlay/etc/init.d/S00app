@@ -1,12 +1,20 @@
 #!/bin/sh
 #
-# Mounts the apps partition (the SD card's third, at /apps; see docs/apps.md) and shows the boot
-# splash of the app that's chosen to start, if it has one (/apps/NAME/splash.sh), as early as possible.
+# Mounts the apps partition (the SD card's third, at /apps; see docs/apps.md), sets the CPU clock,
+# and shows the boot splash of the app that's chosen to start, if it has one (/apps/NAME/splash.sh),
+# as early as possible.
+#
+# The CPU clock: 600 MHz (the F1C100s's own is 408; 600 ran cleanly in testing, and the countdown's
+# log reports a "self-check" each minute), or the MHz in /apps/data/cpu_mhz (a multiple of 24;
+# 408 for the chip's own). Set before the splash, so the rest of the boot is quicker too.
 #
 
 case "$1" in
 	start)
 		mount -t ext4 -o noatime /dev/mmcblk0p3 /apps 2>/dev/null
+		MHZ=600
+		[ -r /apps/data/cpu_mhz ] && read -r MHZ < /apps/data/cpu_mhz
+		case "$MHZ" in [1-9][0-9][0-9]) setcpu "$MHZ" >/dev/null ;; esac
 		A=
 		[ -r /apps/current ] && read -r A < /apps/current
 		if [ -n "$A" ] && [ -f "/apps/$A/splash.sh" ]; then

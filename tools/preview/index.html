@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>App Preview</title>
+<style>
+  :root {
+    --bg: #14161b; --panel: #1d2027; --line: #2c313b; --text: #e8e4d8; --dim: #9aa0ab;
+    --gold: #e2be78; --bezel: #0b0c0f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  main { display: grid; grid-template-columns: minmax(0, 860px) 280px; gap: 24px; padding: 24px; justify-content: center; }
+  @media (max-width: 1200px) { main { grid-template-columns: minmax(0, 1fr); padding: 16px; } }
+  .bezel { background: var(--bezel); border-radius: 22px; padding: 30px; box-shadow: 0 10px 40px rgba(0,0,0,.45); }
+  canvas { display: block; width: 100%; aspect-ratio: 800 / 480; border-radius: 3px; background: #000; cursor: pointer; touch-action: none; image-rendering: auto; }
+  .hint { color: var(--dim); font-size: 12px; margin: 10px 4px 0; }
+  aside { display: flex; flex-direction: column; gap: 14px; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0 0 4px; letter-spacing: .02em; }
+  h1 span { color: var(--gold); }
+  label { display: block; color: var(--dim); font-size: 12px; margin-bottom: 4px; }
+  select, input[type=datetime-local] { width: 100%; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font: inherit; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .row label { margin: 0; color: var(--text); font-size: 14px; }
+  button { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--gold); }
+  button.primary { background: var(--gold); color: #1b1710; border-color: var(--gold); font-weight: 600; }
+  .log { grid-column: 1 / -1; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+         font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--dim); height: 220px; overflow: auto; white-space: pre-wrap; margin: 0; }
+  .note { color: var(--dim); font-size: 12px; }
+  .disabled { opacity: .45; pointer-events: none; }
+</style>
+</head>
+<body>
+<main>
+  <section>
+    <div class="bezel"><canvas id="screen" width="800" height="480"></canvas></div>
+    <p class="hint">The mouse is the touchscreen: click to tap, hold for two seconds for Settings, drag on sliders.</p>
+  </section>
+  <aside>
+    <h1>App <span>Preview</span></h1>
+    <div>
+      <label for="app">App</label>
+      <select id="app"></select>
+    </div>
+    <div id="timebox">
+      <label for="hour">Time of day</label>
+      <select id="hour">
+        <option value="">Live (this Mac's clock)</option>
+        <option value="9">Morning (9 AM)</option>
+        <option value="12">Noon</option>
+        <option value="18.5">Dusk (6:30 PM)</option>
+        <option value="20">Evening (8 PM)</option>
+        <option value="22">Night (10 PM)</option>
+      </select>
+    </div>
+    <div id="datebox">
+      <label for="now">Pretend it's</label>
+      <input type="datetime-local" id="now">
+      <div class="row" style="margin-top:6px"><button id="today">Today</button><span class="note">e.g. the trip's last day</span></div>
+    </div>
+    <div class="row" id="svcbox">
+      <input type="checkbox" id="service"><label for="service">Live data (its background job)</label>
+    </div>
+    <button class="primary" id="restart">Restart</button>
+    <p class="note">Saving a file in the app or the runtime restarts it by itself. Settings, data and log:
+      <code>build/preview/data/</code></p>
+  </aside>
+  <pre class="log" id="log"></pre>
+</main>
+<script>
+const canvas = document.getElementById("screen"), ctx = canvas.getContext("2d");
+const img = ctx.createImageData(800, 480);
+let etag = null;
+
+async function frame() {
+  try {
+    const r = await fetch("/frame", { headers: etag ? { "If-None-Match": etag } : {} });
+    if (r.status === 200) {
+      etag = r.headers.get("ETag");
+      const src = new Uint8Array(await r.arrayBuffer()), d = img.data;
+      for (let i = 0; i < src.length; i += 4) { d[i] = src[i + 2]; d[i + 1] = src[i + 1]; d[i + 2] = src[i]; d[i + 3] = 255; }
+      ctx.putImageData(img, 0, 0);
+    }
+  } catch (e) {}
+  setTimeout(frame, 40);
+}
+frame();
+
+// the mouse as the touchscreen
+let down = false, lastMove = 0;
+function pos(e) {
+  const r = canvas.getBoundingClientRect();
+  return [Math.round((e.clientX - r.left) * 800 / r.width), Math.round((e.clientY - r.top) * 480 / r.height)];
+}
+function send(kind, e) {
+  const [x, y] = pos(e);
+  fetch("/touch", { method: "POST", body: `${kind} ${Math.max(0, Math.min(799, x))} ${Math.max(0, Math.min(479, y))}` });
+}
+canvas.addEventListener("pointerdown", e => { down = true; canvas.setPointerCapture(e.pointerId); send("down", e); });
+canvas.addEventListener("pointermove", e => { if (down && e.timeStamp - lastMove > 40) { lastMove = e.timeStamp; send("move", e); } });
+canvas.addEventListener("pointerup", e => { if (down) { down = false; send("up", e); } });
+canvas.addEventListener("pointercancel", e => { if (down) { down = false; send("up", e); } });
+
+// the controls
+const $ = id => document.getElementById(id);
+function control(c) { fetch("/control", { method: "POST", body: JSON.stringify(c) }); }
+$("app").onchange = () => control({ app: $("app").value });
+$("hour").onchange = () => control({ hour: $("hour").value });
+$("now").onchange = () => control({ now: $("now").value ? $("now").value : "" });
+$("today").onclick = () => { $("now").value = ""; control({ now: "" }); };
+$("service").onchange = () => control({ service: $("service").checked });
+$("restart").onclick = () => control({});
+
+let first = true, lastLog = "";
+async function state() {
+  try {
+    const s = await (await fetch("/state")).json();
+    const sel = $("app");
+    const opts = s.apps.map(([id, name]) => `<option value="${id}">${name}</option>`).join("");
+    if (sel.dataset.opts !== opts) { sel.innerHTML = opts; sel.dataset.opts = opts; }
+    if (document.activeElement !== sel) sel.value = s.app;
+    if (first) { $("hour").value = s.hour; $("now").value = s.now; first = false; }
+    $("service").checked = s.service;
+    $("svcbox").classList.toggle("disabled", !s.has_service);
+    $("timebox").classList.toggle("disabled", !s.countdown);
+    $("datebox").classList.toggle("disabled", !s.countdown);
+    const text = s.log.join("\n");
+    if (text !== lastLog) {
+      const log = $("log"), atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
+      log.textContent = text; lastLog = text;
+      if (atEnd) log.scrollTop = log.scrollHeight;
+    }
+  } catch (e) {}
+  setTimeout(state, 1000);
+}
+state();
+</script>
+</body>
+</html>

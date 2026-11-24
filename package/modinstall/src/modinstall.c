@@ -1,14 +1,16 @@
-/* modinstall: check a vacation-countdown module's signature, and install it.
+/* modinstall: check an app's signature, and install it (into /apps: see docs/apps.md).
  *
- *   modinstall [--check] [--force] [--keys FILE] [--dir DIR] MODULE.tar.gz [MODULE.tar.gz.sig]
+ *   modinstall [--check] [--force] [--keys FILE] [--dir DIR] APP.tar.gz [APP.tar.gz.sig]
  *
- * A module comes as a tarball (tools/modules/pack.py) and a signed statement beside it (.sig):
+ * An app comes as a tarball (tools/apps/pack.py) and a signed statement beside it (.sig):
  *
  *   licheepi-module 1
  *   id castle
  *   name Magic Kingdom
  *   version 0.1.0
- *   api 1
+ *   api 2
+ *   runtime countdown            (the runtime it runs on, if any: a folder in DIR, with an API file)
+ *   provides-api 2               (a runtime: the app api it provides)
  *   size 2227697                 (the tarball's, in bytes)
  *   sha512 <128 hex>             (the tarball's)
  *   key <16 hex>                 (the signing key: the first 8 bytes of its public key)
@@ -17,9 +19,11 @@
  * The statement's signature is checked against the public keys in /etc/modules/trusted.keys (in the
  * base system, where a module can't change them), then the tarball's size and SHA-512 against the
  * statement; nothing in the tarball is read before both match. Then it's unpacked into a staging folder
- * (regular files and folders only, all under ID/, no "..", no links), and swapped in for the module's
+ * (regular files and folders only, all under ID/, no "..", no links), and swapped in for the app's
  * folder in one rename; the previous one stays as .old-ID. Refused: a version older than the one
- * installed (--force allows it), or an api newer than the host's (modules.py's API).
+ * installed (--force allows it); an app whose runtime isn't installed, or is older than its api; a
+ * runtime older than an installed app needs (--force allows it); the names DIR's other things have
+ * (data, current, ...), and replacing a folder that isn't an app.
  *
  * --check: only check the signature and the tarball. Memory: a few KB whatever the module's size
  * (the tarball is hashed and unpacked as a stream).
@@ -28,6 +32,7 @@
 #define _DEFAULT_SOURCE
 #define _DARWIN_C_SOURCE                /* (for testing on a Mac: O_NOFOLLOW) */
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <ftw.h>
@@ -89,8 +94,8 @@ static void hex(const uint8_t *b, size_t n, char *out)
 struct statement {
     char text[MAX_STATEMENT];
     size_t signed_len;                   /* the bytes the signature covers */
-    char id[33], version[33], name[80];
-    long api;
+    char id[33], version[33], name[80], runtime[33];
+    long api, provides_api;
     long long size;
     uint8_t sha512[64], key[8], sig[64];
 };
@@ -134,6 +139,7 @@ static int parse(struct statement *st, const char *path, const char **why)
     if (unhex(s + 5, st->sig, 64) || strcmp(s + 5 + 128, "\n")) { *why = "bad sig line (or something after it)"; return -1; }
 
     int have = 0;
+    st->runtime[0] = 0; st->provides_api = -1;
     for (char *line = st->text; line < st->text + st->signed_len; ) {
         char *end = strchr(line, '\n');
         *end = 0;
@@ -144,12 +150,15 @@ static int parse(struct statement *st, const char *path, const char **why)
         else if (!strncmp(line, "sha512 ", 7) && !unhex(line + 7, st->sha512, 64)) have |= 16;
         else if (!strncmp(line, "key ", 4) && !unhex(line + 4, st->key, 8)) have |= 32;
         else if (!strncmp(line, "name ", 5)) snprintf(st->name, sizeof st->name, "%s", line + 5);
+        else if (!strncmp(line, "runtime ", 8) && strlen(line + 8) < sizeof st->runtime) strcpy(st->runtime, line + 8);
+        else if (!strncmp(line, "provides-api ", 13)) st->provides_api = strtol(line + 13, NULL, 10);
         *end = '\n';                     /* (put back: the signature covers the text as it was) */
         line = end + 1;
     }
     if (have != 63) { *why = "a line is missing or bad (id, version, api, size, sha512, key)"; return -1; }
     if (!good_id(st->id)) { *why = "bad id"; return -1; }
     if (!good_version(st->version)) { *why = "bad version"; return -1; }
+    if (st->runtime[0] && !good_id(st->runtime)) { *why = "bad runtime"; return -1; }
     return 0;
 }
 
@@ -176,18 +185,18 @@ static void check_signature(const struct statement *st, const char *keys_path)
 static void check_tarball(int fd, const struct statement *st)
 {
     struct stat sb;
-    if (fstat(fd, &sb) || !S_ISREG(sb.st_mode)) die("the module isn't a regular file");
-    if (sb.st_size != st->size) die("the module is %lld bytes, the statement says %lld", (long long)sb.st_size, st->size);
+    if (fstat(fd, &sb) || !S_ISREG(sb.st_mode)) die("the app isn't a regular file");
+    if (sb.st_size != st->size) die("the app is %lld bytes, the statement says %lld", (long long)sb.st_size, st->size);
     crypto_sha512_ctx ctx;
     crypto_sha512_init(&ctx);
     static uint8_t buf[16384];
     ssize_t n;
     long long total = 0;
     while ((n = read(fd, buf, sizeof buf)) > 0) { crypto_sha512_update(&ctx, buf, (size_t)n); total += n; }
-    if (n < 0 || total != st->size) die("couldn't read the module");
+    if (n < 0 || total != st->size) die("couldn't read the app");
     uint8_t h[64];
     crypto_sha512_final(&ctx, h);
-    if (crypto_verify64(h, st->sha512)) die("the module doesn't match its statement (changed, or the wrong file)");
+    if (crypto_verify64(h, st->sha512)) die("the app doesn't match its statement (changed, or the wrong file)");
 }
 
 static int vcmp(const char *a, const char *b)
@@ -201,14 +210,53 @@ static int vcmp(const char *a, const char *b)
     return 0;
 }
 
-/* the host's module API (modules.py: "API = N"), or -1 if it can't tell */
-static long host_api(const char *dir)
+/* a runtime's app api (DIR/RUNTIME/API, a number), or -1 if it isn't installed */
+static long runtime_api(const char *dir, const char *runtime)
 {
-    char path[600], buf[16384];
-    snprintf(path, sizeof path, "%s/../modules.py", dir);
+    char path[600], buf[32];
+    snprintf(path, sizeof path, "%s/%s/API", dir, runtime);
     if (read_file(path, buf, sizeof buf) < 0) return -1;
-    char *p = strstr(buf, "\nAPI = ");
-    return p ? strtol(p + 7, NULL, 10) : -1;
+    return strtol(buf, NULL, 10);
+}
+
+/* the names in DIR that aren't apps */
+static int reserved(const char *id)
+{
+    static const char *names[] = {"data", "current", "swapfile", NULL};      /* (lost+found: not a possible id) */
+    for (int i = 0; names[i]; i++) if (!strcmp(id, names[i])) return 1;
+    return 0;
+}
+
+static int is_app_folder(const char *path)
+{
+    char p[700];
+    struct stat sb;
+    if (lstat(path, &sb) || !S_ISDIR(sb.st_mode)) return 0;
+    snprintf(p, sizeof p, "%s/app.json", path);
+    if (access(p, F_OK) == 0) return 1;
+    snprintf(p, sizeof p, "%s/module.json", path);
+    return access(p, F_OK) == 0;
+}
+
+/* a runtime about to be installed: the installed (signed) apps on it it would be too old for */
+static void check_dependents(const char *dir, const struct statement *st, int force)
+{
+    DIR *d = opendir(dir);
+    if (!d) return;
+    struct dirent *e;
+    while ((e = readdir(d))) {
+        if (e->d_name[0] == '.') continue;
+        static struct statement other;
+        char p[700];
+        const char *why;
+        snprintf(p, sizeof p, "%s/%s/.signature", dir, e->d_name);
+        if (access(p, F_OK) || parse(&other, p, &why)) continue;
+        if (strcmp(other.runtime, st->id) || other.api <= st->provides_api) continue;
+        if (!force) { closedir(d); die("%s %s provides api %ld, and %s %s needs %ld (--force installs it anyway)",
+                                       st->id, st->version, st->provides_api, other.id, other.version, other.api); }
+        fprintf(stderr, "modinstall: %s %s needs api %ld; it won't run until it's updated\n", other.id, other.version, other.api);
+    }
+    closedir(d);
 }
 
 /* a path inside the tarball: ID/ then plain names */
@@ -255,7 +303,7 @@ static void make_parents(char *path)
 
 static void unpack(int fd, const char *id)
 {
-    if (lseek(fd, 0, SEEK_SET)) die("couldn't reread the module");
+    if (lseek(fd, 0, SEEK_SET)) die("couldn't reread the app");
     gzFile gz = gzdopen(dup(fd), "rb");
     if (!gz) die("not a gzip file");
     if (mkdir(staging, 0755)) die("mkdir %s: %s", staging, strerror(errno));
@@ -275,7 +323,7 @@ static void unpack(int fd, const char *id)
         memcpy(prefix, h + 345, 155); prefix[155] = 0;
         snprintf(path, sizeof path, prefix[0] ? "%s/%s" : "%s%s", prefix, name);
         const char *rel = checked_path(path, id);
-        if (!rel) die("a file outside the module, or a bad name: %s", path);
+        if (!rel) die("a file outside the app, or a bad name: %s", path);
         long long size = octal(h + 124, 12), mode = octal(h + 100, 8);
         char type = h[156];
         if (size < 0 || mode < 0) die("a bad tar header: %s", path);
@@ -303,20 +351,20 @@ static void unpack(int fd, const char *id)
         if (fsync(o) || close(o)) die("writing %s: %s", out, strerror(errno));
         long long pad = (512 - size % 512) % 512;
         if (pad && gzread(gz, buf, (unsigned)pad) != pad) die("the tarball ends early");
-        if (!strcmp(rel, "module.json")) has_meta = 1;
+        if (!strcmp(rel, "app.json") || !strcmp(rel, "module.json")) has_meta = 1;
     }
     gzclose(gz);
-    if (!has_meta) die("no module.json in the module");
+    if (!has_meta) die("no app.json in the app");
 }
 
 static const char *usage =
-    "usage: modinstall [--check] [--force] [--keys FILE] [--dir DIR] MODULE.tar.gz [MODULE.tar.gz.sig]\n"
-    "  check a module's signature (--check: only that), then install it into DIR\n"
-    "  (default /apps/vacation/modules; keys: /etc/modules/trusted.keys)\n";
+    "usage: modinstall [--check] [--force] [--keys FILE] [--dir DIR] APP.tar.gz [APP.tar.gz.sig]\n"
+    "  check an app's signature (--check: only that), then install it into DIR\n"
+    "  (default /apps; keys: /etc/modules/trusted.keys)\n";
 
 int main(int argc, char **argv)
 {
-    const char *keys = "/etc/modules/trusted.keys", *dir = "/apps/vacation/modules", *tar = NULL, *sig = NULL;
+    const char *keys = "/etc/modules/trusted.keys", *dir = "/apps", *tar = NULL, *sig = NULL;
     int check_only = 0, force = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--check")) check_only = 1;
@@ -345,12 +393,18 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    long api = host_api(dir);
-    if (api >= 0 && st.api > api) die("%s %s needs a newer app (module api %ld; this one is %ld)", st.id, st.version, st.api, api);
+    if (reserved(st.id)) die("%s isn't a name an app can have here", st.id);
+    if (st.runtime[0]) {
+        long api = runtime_api(dir, st.runtime);
+        if (api < 0) die("%s %s runs on the %s runtime, which isn't installed: install it first", st.id, st.version, st.runtime);
+        if (st.api > api) die("%s %s needs a newer %s runtime (app api %ld; the installed one has %ld)", st.id, st.version, st.runtime, st.api, api);
+    }
+    if (st.provides_api >= 0) check_dependents(dir, &st, force);
     char cur[600], old[600], was[80] = "new";
     snprintf(cur, sizeof cur, "%s/%s", dir, st.id);
     snprintf(old, sizeof old, "%s/.old-%s", dir, st.id);
     struct stat sb;
+    if (lstat(cur, &sb) == 0 && !is_app_folder(cur)) die("%s is there and isn't an app: not replacing it", cur);
     if (lstat(cur, &sb) == 0) {
         static struct statement in;
         char p[700];

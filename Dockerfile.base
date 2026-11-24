@@ -74,8 +74,8 @@ WORKDIR /root/licheepi-nano
 COPY board/ board/
 COPY configs/ configs/
 COPY package/ package/
-COPY clock/ clock/
-COPY vacation/ vacation/
+COPY apps/chess/ apps/chess/
+COPY apps/countdown/ apps/countdown/
 COPY \
     Config.in \
     external.desc \

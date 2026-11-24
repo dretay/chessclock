@@ -15,7 +15,7 @@ board only has 32MB of RAM, so the screen is never held as one full image:
 board squares and the parts of the clock case are drawn and written
 separately.
 
-See clock/README.md in the repository for the settings file, logs, command
+See apps/chess/README.md in the repository for the settings file, logs, command
 line options and how to try it on a desktop. In short:
 
 Settings (fbclock.conf in APP_DATA, /apps/data/chess on the board; KEY=VALUE): TOUCH_X_MIN, TOUCH_X_MAX,
@@ -734,12 +734,45 @@ def bounds(layers):
             max(x + i.width for i, x, _ in layers), max(y + i.height for i, _, y in layers))
 
 
+class PipeTouch:
+    """Presses from the desktop previewer (tools/preview/preview.py): "down X Y", "move X Y" and
+    "up X Y" lines, in screen pixels, from a named pipe (FBCLOCK_TOUCH_PIPE)."""
+
+    rotated = False
+
+    def __init__(self, path):
+        self.fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+        self.buf, self.samples = b"", []
+
+    def poll(self):
+        try:
+            self.buf += os.read(self.fd, 4096)
+        except (BlockingIOError, OSError):
+            pass
+        out = []
+        while b"\n" in self.buf:
+            line, self.buf = self.buf.split(b"\n", 1)
+            p = line.split()
+            if len(p) == 3 and p[0] in (b"down", b"move", b"up"):
+                x, y = int(p[1]), int(p[2])
+                if self.rotated:
+                    x, y = 799 - x, 479 - y
+                self.samples = [] if p[0] == b"up" else [(x, y)]
+                out.append((p[0].decode(), x, y, x, y))
+        return out
+
+
 # ------------------------------------------------------------- time setter
+
+# the app picker (the countdown runtime's; see docs/apps.md): Settings > Apps opens it, when it's there
+PICKER = os.environ.get("APP_PICKER", "/apps/countdown/pick")
+
 
 class TimeSetter:
     """The settings screen: up/down spinners for the hour, minute and AM/PM,
     daytime and night-time brightness sliders, and Cancel, Rotate (turn the
-    display upside down) and Save. The date is left as it is.
+    display upside down) and Save; and Apps (the app picker) when it's
+    installed. The date is left as it is.
 
     Buttons are keyed ("up", column), ("down", column), "cancel", "rotate" and
     "save"; the sliders are "day" and "night". Each part can be drawn on its
@@ -786,6 +819,9 @@ class TimeSetter:
         for i, key in enumerate(("cancel", "rotate", "save")):
             x0 = bgap + i * (bw + bgap)
             self.boxes[key] = (x0, bottom_y, x0 + bw, h - int(h * 0.04))
+        if os.access(PICKER, os.X_OK):         # top right, above the sliders
+            ay0 = int(h * 0.035)
+            self.boxes["apps"] = (w - int(w * 0.04) - int(w * 0.16), ay0, w - int(w * 0.04), ay0 + int(h * 0.11))
         self.label_font = font(int(h * 0.04))
         self.value_font = font(int(h * 0.11), True)
         self.arrow_font = font(int(h * 0.08))
@@ -796,6 +832,8 @@ class TimeSetter:
 
     def hit(self, x, y, slack=8):
         """The button or slider under (x, y), allowing a little slack."""
+        if "apps" in self.boxes and y < self.top - 4 and x >= self.boxes["apps"][0] - 40:
+            return "apps"                      # (the whole corner above the time: nothing else is there)
         for key, sl in self.sliders.items():
             x0, y0, x1, y1 = sl["track"]
             if x0 - 20 <= x <= x1 + 20 and y0 - 20 <= y <= y1 + 20:
@@ -943,6 +981,12 @@ def pack_pixels(img, bpp):
 
 class Framebuffer:
     def __init__(self, device):
+        if os.path.isfile(device):             # a plain file: the desktop previewer's screen (tools/preview)
+            self.width, self.height, self.bpp, self.bytes_pp = 800, 480, 32, 4
+            self.stride = self.width * 4
+            self.fd = os.open(device, os.O_RDWR)
+            self.mem = mmap.mmap(self.fd, self.stride * self.height, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
+            return
         sysfs = "/sys/class/graphics/" + os.path.basename(device)
 
         def read(attr):
@@ -1064,6 +1108,8 @@ class Touch:
 
     @classmethod
     def open(cls, width, height):
+        if os.environ.get("FBCLOCK_TOUCH_PIPE"):
+            return PipeTouch(os.environ["FBCLOCK_TOUCH_PIPE"])
         bus = os.environ.get("FBCLOCK_TOUCH_BUS", "/dev/i2c-0")
         try:
             return cls(bus, width, height)
@@ -1759,7 +1805,8 @@ class App:
         fb = self.fb
         mem = getattr(fb, "mem", None)
         plain = mem is not None and fb.stride == fb.width * fb.bytes_pp
-        name = "settings-%dx%dx%d-%d.raw" % (fb.width, fb.height, fb.bpp, getattr(fb, "rotated", False))
+        name = "settings%s-%dx%dx%d-%d.raw" % ("-apps" if "apps" in self.setter.boxes else "", fb.width, fb.height, fb.bpp,
+                                               getattr(fb, "rotated", False))
         size = fb.stride * fb.height if plain else 0
         if plain and self.show_cached(cache_path(name), size):
             for i in range(len(self.setter.FIELDS)):
@@ -1847,6 +1894,18 @@ class App:
             self.set_rotation(not self.fb.rotated)
             self.draw_setter()
             return
+        if key == "apps":                      # the app picker: it stops this app, and starts the one picked
+            print("fbclock: opening the app picker", flush=True)
+            import subprocess                  # (only now: memory)
+            try:
+                subprocess.Popen([PICKER], start_new_session=True, stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except OSError as e:
+                print("fbclock: no app picker: %s" % e, flush=True)
+                self.close_setter()
+                return
+            self.paint_button(key, True)       # (stays lit, and the screen stays as it is, until the picker
+            return                             # stops this app: it takes a few seconds to start)
         if key in ("cancel", "save"):          # these act on release, so a slip is harmless
             if key == "save":
                 try:
@@ -2004,6 +2063,20 @@ def touch_debug():
             print("%-4s raw x=%4d y=%4d  ->  screen x=%3d y=%3d" % (kind, rx, ry, x, y), flush=True)
 
 
+def stop_splash():
+    """Stop the loading animation (splashanim: the boot splash's dots, or the app picker's) and wait for
+    it to finish, so its last frame can't land on this app's first."""
+    try: pid = int(open("/var/run/splashanim.pid").read())
+    except (OSError, ValueError): return
+    import signal
+    try: os.kill(pid, signal.SIGTERM)
+    except OSError: return
+    for _ in range(50):
+        try: os.kill(pid, 0)
+        except OSError: return
+        time.sleep(0.01)
+
+
 def main():
     if "--touch-debug" in sys.argv:
         return touch_debug()
@@ -2023,6 +2096,7 @@ def main():
         touch.rotated = fb.rotated
     print("fbclock: %dx%d %dbpp, touch: %s" % (fb.width, fb.height, fb.bpp, "yes" if touch else "no"),
           flush=True)
+    stop_splash()                              # (the app picker's "Starting" dots)
     App(fb, touch).run()
 
 

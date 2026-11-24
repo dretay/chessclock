@@ -3,7 +3,7 @@
 # between builds instead of in image layers: ~7 GB of disk per kind of build rather than the
 # builder's 100+.
 #
-#   tools/build/build.sh [--wifi] [--app chess|vacation] [--fresh]
+#   tools/build/build.sh [--wifi] [--app chess|castle|cruise] [--fresh]
 #     --wifi    the WiFi build (ESP32 over SPI, TLS for Python); its own build tree
 #     --app     the app that starts at first boot (default chess; `app NAME` switches later)
 #     --fresh   start this kind of build over from the base image (e.g. after Buildroot misbehaves)
@@ -35,7 +35,7 @@ while [ $# -gt 0 ]; do
 	esac
 	shift
 done
-case "$APP" in chess|vacation) ;; *) echo "--app must be chess or vacation"; exit 1 ;; esac
+[ -x "apps/$APP/run" ] || { echo "--app must be an app in apps/ (chess, castle, cruise)"; exit 1; }
 BASE=${BASE_IMAGE:-licheepi-nano-mybase}
 VOL=licheepi-out; IMAGES=build/images
 [ "$WIFI" = 1 ] && VOL=licheepi-out-wifi && IMAGES=build/images-wifi

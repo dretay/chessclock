@@ -2,21 +2,21 @@
 
 The Nano has no radio of its own: WiFi comes from an **ESP32 on its SPI bus**, running Espressif's
 [ESP-Hosted-NG](https://github.com/espressif/esp-hosted-linux) firmware, so Linux sees an ordinary
-`wlan0`. Used by the vacation countdown's modules (AIS ship positions, ride wait times) and for
+`wlan0`. Used by the countdown apps (AIS ship positions, ride wait times) and for
 network time and ssh.
 
 **Memory:** WiFi costs about 4 MB of the Nano's 32 MB (the network stack and `cfg80211` built into the
-kernel, and the driver's buffers, none of it given back), and the vacation countdown alone uses about
+kernel, and the driver's buffers, none of it given back), and a countdown app alone uses about
 22 MB of the 27 MB left. They fit together with swap: a 32 MB file on the apps partition
 (`/apps/swapfile`, made at the first boot by `S01swap`), which the kernel moves the countdown's idle
-memory to under pressure; and the modules' fetchers run briefly and exit rather than staying in
+memory to under pressure; and the apps' fetchers run briefly and exit rather than staying in
 memory. The F1C200s (64 MB) on the protoboard ([hardware/protoboard](../hardware/protoboard)) needs
 none of that. The kernel without WiFi is a separate build.
 
 ## Building and flashing
 
 ```sh
-tools/build/build.sh --wifi --app vacation     # -> build/images-wifi/ (its own build tree)
+tools/build/build.sh --wifi --app castle       # -> build/images-wifi/ (its own build tree)
 tools/board/flash_sd.sh build/images-wifi       # kernel and base system; the apps stay
 ```
 
@@ -67,7 +67,7 @@ read -s P; wpa_cli -i wlan0 set_network 0 psk "\"$P\""; unset P
 wpa_cli -i wlan0 enable_network 0; wpa_cli -i wlan0 save_config
 ```
 
-(or the vacation countdown's Settings > WiFi, on the touchscreen).
+(or a countdown app's Settings > WiFi, on the touchscreen).
 
 ## What it took (if WiFi misbehaves, check these first)
 

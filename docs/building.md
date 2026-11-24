@@ -12,7 +12,7 @@ changed (seconds to minutes).
 container build --memory 4g --cpus 8 -f Dockerfile.base --target main -t licheepi-nano-mybase:latest .
 
 # each time: an incremental build, into build/images/ (build/images-wifi/ with --wifi)
-tools/build/build.sh [--wifi] [--app vacation] [--fresh]
+tools/build/build.sh [--wifi] [--app castle] [--fresh]
 ```
 
 `tools/build/build.sh` keeps the whole Buildroot tree between builds in a container volume
@@ -28,8 +28,8 @@ case-insensitive and the kernel's source has files whose names differ only in ca
 mounted where the base image built it (`/root/buildroot`), as Buildroot records its own path
 everywhere.
 
-`--app` picks the app that starts at first boot (`chess` by default, or `vacation`); on the board,
-`app NAME` switches later. Apps change without a new image at all: `tools/board/deploy_app.py`
+`--app` picks the app that starts at first boot (`chess` by default, `castle` or `cruise`); on the board,
+`app NAME` (or Settings > Apps) switches later. Apps change without a new image at all: `tools/board/deploy.py`
 ([apps](apps.md)).
 
 To look around inside: `container run -it -v licheepi-out:/root/buildroot licheepi-nano-mybase /bin/bash`
@@ -52,11 +52,11 @@ rebuilding it takes an hour or two.
 
 ```sh
 docker build -f Dockerfile.base --target main -t licheepi-nano-mybase:latest .
-docker build --build-arg BASE_IMAGE=licheepi-nano-mybase [--build-arg APP=vacation] [--build-arg WIFI=1] \
+docker build --build-arg BASE_IMAGE=licheepi-nano-mybase [--build-arg APP=castle] [--build-arg WIFI=1] \
     --output type=tar,dest=- . | (mkdir -p dist && tar x -C dist)
 ```
 
-The Dockerfile copies `board/`, `configs/`, `package/`, `clock/` and `vacation/` into the base image
+The Dockerfile copies `board/`, `configs/`, `package/`, `apps/chess/` and `apps/countdown/` into the base image
 and rebuilds, every time, the kernel, BusyBox, U-Boot and the boot script. (With `container build`,
 `-o type=tar,dest=dist.tar` and untar it: `container` can't send the output to the terminal.)
 

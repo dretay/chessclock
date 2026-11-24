@@ -1,4 +1,4 @@
-"""Vacation countdown for the framebuffer: a photo of the ship at sea that follows the time of day
+"""The countdown for the framebuffer (the runtime the countdown apps run on): a picture that follows the time of day
 (day, dusk, night with cabin lights switching on and off), a rippling sea with foam and wake,
 funnel smoke, fireworks at night, and a flip-clock of the days left at the top. Press and hold for
 Settings (vacation_settings.py).
@@ -7,11 +7,13 @@ The drawing is all done by the C library vacfx (fx/vacfx.c), which owns the imag
 screen; this program decides what to show: the number, the time of day, when fireworks go off.
 It deliberately doesn't import Pillow: on the 32 MB board every megabyte counts.
 
-An app (see docs/apps.md): its files are this folder's (/apps/vacation on the board), its settings
-and saved state in APP_DATA (/apps/data/vacation): vacation.conf (KEY=VALUE lines; the run script
-starts it from this folder's). What it counts down to is a module (modules.py, modules/): the cruise
-by default, whose scene is the ship and whose screen is the fleet map. For trying it out:
-  VACATION_CONF, VACATION_THEME_DIR, VACATION_LIB, VACATION_FB, VACATION_MODULES   other files than the usual ones
+The countdown runtime (/apps/countdown on the board): every countdown app (the cruise, the castle:
+see apps.py) starts it from its own folder with its `run` (`exec /apps/countdown/launch`); the app
+brings the scene, screens and settings. Its settings and saved state are in APP_DATA
+(/apps/data/<app>): countdown.conf (KEY=VALUE lines; made the first time, see apps.settings_file).
+For trying it out:
+  VACATION_APP=apps/castle  the app to run (default: the current folder)
+  VACATION_CONF, VACATION_THEME_DIR, VACATION_LIB, VACATION_FB   other files than the usual ones
   VACATION_HOUR=21.5        pretend it's always this time of day
   VACATION_DAYLAPSE=90      run a whole day in this many seconds
   VACATION_FRAMES=N         stop after N frames
@@ -29,9 +31,9 @@ by default, whose scene is the ship and whose screen is the fleet map. For tryin
   VACATION_MAP_AFTER=5      show the module's first screen (the fleet map) after this many seconds
   VACATION_NOW=2026-12-16T15:58   pretend the date and time are this (try the last day and sailing)
 """
-import ctypes, datetime, json, math, os, random, signal, sys, time
+import ctypes, datetime, json, math, os, random, shutil, signal, sys, time
 
-import modules
+import apps
 import vacation_settings
 import vacation_touch as touch
 
@@ -70,8 +72,8 @@ EFFECTS = {"water": 1, "wake": 2, "smoke": 4, "gulls": 8, "dolphins": 16, "raft"
 FADE_SECS = 0.6                                     # countdown <-> a module's screen
 
 
-# settings and saved state (S99app sets it to /apps/data/vacation on the board)
-DATA = os.environ.get("APP_DATA", "/apps/data/vacation")
+# the app's settings and saved state (S99app sets it to /apps/data/<app> on the board)
+DATA = os.environ.get("APP_DATA")
 
 def days_left(sail, today):
     return max(0, (sail - today).days)
@@ -80,9 +82,13 @@ def days_left(sail, today):
 class App:
     def __init__(self):
         here = os.path.dirname(os.path.abspath(__file__))
-        self.conf_path = os.environ.get("VACATION_CONF", os.path.join(DATA, "vacation.conf"))
+        app_dir = os.environ.get("VACATION_APP") or os.getcwd()
+        app_id = json.load(open(apps.manifest_path(app_dir) or os.path.join(app_dir, "app.json")))["id"]
+        self.module = apps.App(app_dir, DATA or os.path.join("/apps/data", app_id))   # the trip: scene, screens, data
+        self.conf_path = os.environ.get("VACATION_CONF") or apps.settings_file(self.module)
         self.conf = read_conf(self.conf_path)
-        self.module = modules.active(self.conf, DATA)                   # the trip: its scene, screens and data
+        mhz = self.conf.get("CPU_MHZ", "").strip()                      # (the CPU clock: CPU_MHZ=600, say)
+        if mhz.isdigit() and not os.environ.get("VACATION_SIM_CLOCK") and shutil.which("setcpu"): os.system("setcpu %s" % mhz)
         self.theme_dir = os.environ.get("VACATION_THEME_DIR") or self.module.scene_dir(self.conf)
         self.screens = self.module.screens()
         self.ui_dir = os.environ.get("VACATION_UI_DIR", os.path.join(here, "ui"))
@@ -92,6 +98,7 @@ class App:
         self.fx.vfx_selftest.restype = ctypes.c_uint
         self.fx.vfx_stats.restype = ctypes.c_char_p
         self.fb_path = os.environ.get("VACATION_FB", "/dev/fb0")
+        stop_splash()
         if self.fx.vfx_open(self.fb_path.encode(), self.theme_dir.encode()) != 0:
             sys.exit("vacation: couldn't start the display (see above)")
         s, c = self.scene, self.scene["cards"]
@@ -297,7 +304,22 @@ class App:
         self.fx.vfx_close()
 
 
-CLOCK_FILE = os.path.join(DATA, "clock")
+# (shared by the countdown apps, so switching between them keeps the time; where it was before apps)
+CLOCK_FILE = os.path.join(os.path.dirname(DATA) if DATA else "/apps/data", "countdown", "clock")
+OLD_CLOCK_FILE = os.path.join(apps.OLD_DATA, "clock")
+
+
+def stop_splash():
+    """Stop the loading animation (splashanim: the boot splash's dots, or the app picker's) and wait for
+    it to finish, so its last frame can't land on this app's first."""
+    try: pid = int(open("/var/run/splashanim.pid").read())
+    except (OSError, ValueError): return
+    try: os.kill(pid, signal.SIGTERM)
+    except OSError: return
+    for _ in range(50):
+        try: os.kill(pid, 0)
+        except OSError: return
+        time.sleep(0.01)
 
 
 def save_clock():
@@ -312,8 +334,11 @@ def save_clock():
 
 
 def restore_clock():
-    try: saved = int(open(CLOCK_FILE).read().strip())
-    except (OSError, ValueError): return
+    saved = 0
+    for f in (CLOCK_FILE, OLD_CLOCK_FILE):
+        try: saved = max(saved, int(open(f).read().strip()))
+        except (OSError, ValueError): pass
+    if not saved: return
     if time.time() < saved:
         os.system("date -s @%d >/dev/null" % saved)
         print("vacation: clock restored to the last saved time,", time.ctime(), flush=True)

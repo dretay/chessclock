@@ -1,0 +1,5 @@
+#!/bin/sh
+# The app picker's stand-in in the desktop previewer (tools/preview/preview.py): an app's Settings >
+# Apps runs this (APP_PICKER), and the previewer stops the app, shows the real picker, and starts the
+# app picked.
+touch "${PREVIEW_DIR:?}/pick-request"

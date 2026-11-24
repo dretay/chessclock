@@ -1,9 +1,10 @@
 #!/bin/sh
-# The castle module's background job: ride wait times from ThemeParks.wiki into $MODULE_DATA/waits.json
-# for the wait-times screen. The app's service starts it (in this folder, with MODULE_DATA set), on a
-# kernel with WiFi. waits.py fetches once and exits each time (its Python and TLS need memory the
+# The castle app's background job: ride wait times from ThemeParks.wiki into $APP_DATA/waits.json
+# for the wait-times screen. /etc/init.d/S99app runs it beside the app (in this folder, with APP_DATA
+# set); with no WiFi in the kernel it just sleeps. waits.py fetches once and exits each time (its Python and TLS need memory the
 # countdown and WiFi barely leave): every 5 minutes, waiting longer after each failure (1 minute,
 # doubling, up to 15), and every 10 seconds until there's network time.
+[ -d /sys/class/ieee80211 ] || [ -n "$APP_NETWORK" ] || exec sleep 2147483647   # (no WiFi: nothing to fetch with; APP_NETWORK: the previewer)
 retry=60
 while true; do
 	python3 -u waits.py --once

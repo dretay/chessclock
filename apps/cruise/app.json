@@ -1,8 +1,16 @@
 {
   "id": "cruise",
   "name": "Disney cruise",
-  "version": "1.0.0",
-  "api": 1,
+  "version": "2.0.0",
+  "runtime": "countdown",
+  "api": 2,
+  "exclude": [
+    "map/preview_*.png",
+    "scenes/*/SOURCES.md",
+    "scenes/*/preview.png",
+    "scenes/dream-blender",
+    "splash/preview.png"
+  ],
   "scene": {
     "engine": "scene",
     "dir": "scenes",

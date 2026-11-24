@@ -19,6 +19,7 @@ PAGE1_ROWS = [("Sail date", 78, [("sm", 100), ("sd", 80), ("sy", 106)]),
               ("Today", 236, [("tm", 100), ("td", 80), ("ty", 106), None, ("hh", 80), ("mi", 80), ("ap", 84)])]
 PAGE1_BUTTONS = {"cancel": (24, 404, 150, 458), "calibrate": (162, 412, 274, 450), "fireworks": (282, 412, 394, 450),
                  "theme": (402, 412, 514, 450), "wifi": (522, 412, 634, 450), "save": (646, 404, 776, 458)}
+PAGE1_APPS = (250, 22, 362, 60)        # Apps › (the app picker), beside the title, when it's installed
 PAGE1_SPLITS = [(156, "cancel"), (278, "calibrate"), (398, "fireworks"), (518, "theme"), (640, "wifi"), (9999, "save")]   # bottom row, by x
 
 # ---- page 2: fireworks
@@ -30,7 +31,7 @@ CHIP_X0, CHIP_W, CHIP_H, CHIP_GAP = 190, 136, 48, 10
 PAGE2_ROW_B = ("Show time", 226, [("fh", 80), ("fm", 80), ("fa", 84)])
 PAGE2_BUTTONS = {"back": (36, 404, 236, 458), "demo": (300, 412, 500, 450), "save": (564, 404, 764, 458)}
 
-# ---- page 3: the theme's settings (the active module's, from its module.json: the cruise's ship
+# ---- page 3: the theme's settings (the app's, from its app.json: the cruise's ship
 # to follow, the castle's rides to show): a label, then its options as chips, a page at a time
 PAGE3_PANEL = (20, 74, 780, 398)
 PAGE3_LABEL_Y = 108                                             # the setting's label, and its note
@@ -68,15 +69,15 @@ def columns(row_cols, top):
 
 # every fixed piece of text, by font (numbers are drawn digit by digit)
 STRINGS = {
-    "title": ["Settings", "Fireworks", "Touch calibration", "Theme settings", "WiFi"],
+    "title": ["Settings", "Fireworks", "Touch calibration", "Theme settings", "WiFi", "Apps"],
     "label": ["Sail date", "Today", "Schedule", "Random", "Show time", " days to go", " day to go",
               "Today's the day!", "Already sailed", "Saved", "No changes", "Calibrated",
               "Tap the centre of the cross (1 of 4)", "Tap the centre of the cross (2 of 4)",
               "Tap the centre of the cross (3 of 4)", "Tap the centre of the cross (4 of 4)",
-              "That didn't look right: nothing changed"],
+              "That didn't look right: nothing changed", "Opening apps..."],
     "small": ["date & time", "bursts", "nightly show", "back to the countdown", "Calibrate touch", "Fireworks ›",
               "Demo show", "Demo show on exit", "fireworks!",
-              "Theme ›", "Nothing to set for this theme",
+              "Theme ›", "Nothing to set for this theme", "Apps ›", "one moment",
               "WiFi ›", "Touch", "Rescan", "Forget network", "Scanning...", "Not connected", "Connecting to ",
               "Connected to ", "No WiFi hardware (is the ESP32 connected?)", "Tap a network to join it",
               "open", "shift", "del", "123", "abc", "space", "Join", "Password for ", "Joining...",

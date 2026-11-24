@@ -1,7 +1,7 @@
-"""Touch input for the vacation countdown and its Settings screen.
+"""Touch input for the countdown, its Settings screen and the app picker.
 
 Touch: the board's NS2009 resistive touch chip, polled over I2C (the same chip and the same
-tested reading sequence as the chess clock's, clock/fbclock.py). Calibration comes from the
+tested reading sequence as the chess clock's, apps/chess/fbclock.py). Calibration comes from the
 TOUCH_* keys in vacation.conf.
 
 ScriptTouch: for previews on a desktop. Reads presses from a file, one per line:
@@ -40,6 +40,8 @@ class Touch:
     def open(cls, conf):
         if os.environ.get("VACATION_TOUCH_SCRIPT"):
             return ScriptTouch(os.environ["VACATION_TOUCH_SCRIPT"])
+        if os.environ.get("VACATION_TOUCH_PIPE"):
+            return PipeTouch(os.environ["VACATION_TOUCH_PIPE"])
         bus = os.environ.get("VACATION_TOUCH_BUS", "/dev/i2c-0")
         try:
             return cls(bus, conf)
@@ -113,3 +115,27 @@ class ScriptTouch:
                 self.presses.remove(p); self.active = p; self.raw = (int(p[1] * 4096 / 800), int(p[2] * 4096 / 480))
                 return [("down", int(p[1]), int(p[2]))]
         return []
+
+
+class PipeTouch:
+    """Presses from the desktop previewer (tools/preview/preview.py): "down X Y", "move X Y" and
+    "up X Y" lines, in screen pixels, from a named pipe (VACATION_TOUCH_PIPE)."""
+
+    def __init__(self, path):
+        self.fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+        self.buf = b""
+        self.raw = (0, 0)
+        self.cfg = {"TOUCH_X_MIN": 0, "TOUCH_X_MAX": 4096, "TOUCH_Y_MIN": 0, "TOUCH_Y_MAX": 4096, "TOUCH_SWAP_XY": 0}
+
+    def poll(self, now=None):
+        try: self.buf += os.read(self.fd, 4096)
+        except (BlockingIOError, OSError): pass
+        out = []
+        while b"\n" in self.buf:
+            line, self.buf = self.buf.split(b"\n", 1)
+            p = line.split()
+            if len(p) == 3 and p[0] in (b"down", b"move", b"up"):
+                x, y = int(p[1]), int(p[2])
+                self.raw = (x * 4096 // 800, y * 4096 // 480)
+                out.append((p[0].decode(), x, y))
+        return out

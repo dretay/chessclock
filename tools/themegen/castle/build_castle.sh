@@ -3,7 +3,7 @@
 # so the window light and the fireworks mask always line up with the plates:
 #   renders: day, dusk, night (the plates), windows (the glass), mask (not sky), keep (castle + lamps)
 #   ai_detail.py --keep: photographic detail everywhere but the castle and lamps (skip: --no-ai)
-#   castle_theme.py: the device's files, in vacation/modules/castle/scenes/magic-kingdom/
+#   castle_theme.py: the device's files, in apps/castle/scenes/magic-kingdom/
 # Any scene.py options (after --) go to every render, e.g. -- --dist 150 --eye 3.
 # Inputs in assets/castle/ (the STL) and assets/hdri/; Blender in /Applications; the AI pass needs
 # tools/themegen/work/aienv (see ai_detail.py). ~10 min with the AI pass.

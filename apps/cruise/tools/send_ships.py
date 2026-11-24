@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 """Send Disney ship positions to the board's fleet map over the serial console (for trying
-the map without WiFi; with it, the cruise module's AIS service, vacation/modules/cruise/ais.py, keeps the file up to date). The map rereads the file whenever it next shows.
+the map without WiFi; with it, the cruise module's AIS service, apps/cruise/ais.py, keeps the file up to date). The map rereads the file whenever it next shows.
 
 usage:
-  send_ships.py FILE                                    the whole file (format: vacation/modules/cruise/ships_example.csv)
+  send_ships.py FILE                                    the whole file (format: apps/cruise/ships_example.csv)
   send_ships.py --ship NAME LAT LON [HEADING [SPEED]]   one ship, stamped with the time now
   send_ships.py --clear                                 remove it (the map goes back to the example positions)
 
-e.g.  vacation/modules/cruise/tools/send_ships.py vacation/modules/cruise/ships_example.csv
-      vacation/modules/cruise/tools/send_ships.py --ship Dream 27.3 -79.1 125 18
+e.g.  apps/cruise/tools/send_ships.py apps/cruise/ships_example.csv
+      apps/cruise/tools/send_ships.py --ship Dream 27.3 -79.1 125 18
 
-Writes /apps/data/vacation/cruise/ships.csv (the cruise module's data folder). One line per ship; a later line for the same ship replaces an
+Writes /apps/data/cruise/ships.csv (the cruise module's data folder). One line per ship; a later line for the same ship replaces an
 earlier one, so --ship just adds a line.
 """
 import os, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-BOARD_TOOLS = os.path.join(HERE, "..", "..", "..", "..", "tools", "board")
-REMOTE = "/apps/data/vacation/cruise/ships.csv"
+BOARD_TOOLS = os.path.join(HERE, "..", "..", "..", "tools", "board")
+REMOTE = "/apps/data/cruise/ships.csv"
 
 
 def board(*commands):

@@ -1,5 +1,7 @@
 #!/bin/sh
-# The cruise module's background job: live ship positions from AIS (ais.py) into
-# $MODULE_DATA/ships.csv for the fleet map. The app's service starts it (in this folder, with
-# MODULE_DATA set). Needs an aisstream.io key in $MODULE_DATA/ais.key: until then it just waits.
+# The cruise app's background job: live ship positions from AIS (ais.py) into $APP_DATA/ships.csv
+# for the fleet map. /etc/init.d/S99app runs it beside the app (in this folder, with APP_DATA set);
+# with no WiFi in the kernel it just sleeps. Needs an aisstream.io key in $APP_DATA/ais.key: until
+# then it just waits.
+[ -d /sys/class/ieee80211 ] || [ -n "$APP_NETWORK" ] || exec sleep 2147483647   # (no WiFi: nothing to fetch with; APP_NETWORK: the previewer)
 exec python3 -u ais.py

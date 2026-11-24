@@ -32,12 +32,17 @@ which unpacks faster than gzip on this CPU, and boots `quiet`. The screen shows 
 first startup script (`S00app`) puts up the current app's splash image, ready-made in the screen's
 pixel format, using only shell built-ins (starting programs is slow on this CPU).
 
+**The CPU clock** is 600 MHz, set at the start of boot by `S00app` (the F1C100s's own is 408 MHz;
+600 ran cleanly in testing, and the countdown's log reports a `self-check` once a minute). For
+another speed, put its MHz (a multiple of 24) in `/apps/data/cpu_mhz`; `setcpu MHZ` changes it until
+the next reboot, and `devmem 0x01C20000` shows it (24 MHz x (bits 8-12, plus 1)).
+
 **The apps** run as `/etc/init.d/S99app` starts them (`run`, restarted if it exits; and an
 optional background `service`): [apps](apps.md).
 
 **Memory.** The F1C100s has 32 MB, about 26 MB of it free for programs: the apps draw straight into
-the framebuffer, never holding more of a screen than they must (the vacation countdown's drawing is
-a small C library, `vacation/fx/vacfx.c`, called from Python). With WiFi too, it takes swap: a 32 MB
+the framebuffer, never holding more of a screen than they must (the countdown runtime's drawing is
+a small C library, `apps/countdown/fx/vacfx.c`, called from Python). With WiFi too, it takes swap: a 32 MB
 file on the apps partition (`/etc/init.d/S01swap`), used only under pressure ([wifi](wifi.md)). The
 F1C200s (64 MB) is the protoboard's.
 

@@ -6,7 +6,7 @@ capture, saving every few frames as PNGs; then checks the touch behaviour
 Settings). Needs Pillow and the DejaVu fonts.
 
 usage: simulate.py FONT_DIR [OUT_DIR]     (default OUT_DIR: ./sim-out)
-e.g.   clock/tools/simulate.py /opt/homebrew/share/fonts/dejavu
+e.g.   apps/chess/tools/simulate.py /opt/homebrew/share/fonts/dejavu
 Exits non-zero if a check fails."""
 import os
 import sys
@@ -14,11 +14,11 @@ import time
 
 if len(sys.argv) < 2:
     sys.exit(__doc__)
-REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 OUT = sys.argv[2] if len(sys.argv) > 2 else "sim-out"
-os.environ.update(FBCLOCK_FONTS=sys.argv[1], FBCLOCK_GAMES=os.path.join(REPO, "clock", "games.pgn"),
+os.environ.update(FBCLOCK_FONTS=sys.argv[1], FBCLOCK_GAMES=os.path.join(REPO, "apps", "chess", "games.pgn"),
                   FBCLOCK_PREVIEW="1")             # (keeps the clock from caching drawings)
-sys.path.insert(0, os.path.join(REPO, "clock"))
+sys.path.insert(0, os.path.join(REPO, "apps", "chess"))
 import fbclock as F                                # noqa: E402
 from PIL import Image                              # noqa: E402
 

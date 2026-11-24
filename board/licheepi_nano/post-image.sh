@@ -4,17 +4,19 @@
 BOARD_DIR="$(dirname $0)"
 EXT="${BR2_EXTERNAL_LICHEEPI_NANO_PATH}"
 
-# the apps partition (/apps on the board; see docs/apps.md): every app, laid out by its own
-# install.sh, with the drawing library compiled for the board and the Python pre-compiled (the
-# build's Python is the board's version) so the first start isn't slow. DEFAULT_APP (the Dockerfile's
-# APP) is the one that starts at first boot; `app NAME` on the board switches.
-APPS="chess=clock vacation=vacation"
+# the apps partition (/apps on the board; see docs/apps.md): every app in apps/ (the chess clock, the
+# countdown runtime and the countdown apps on it), laid out by tools/apps/layout.py as deploy and
+# packing do, with the drawing library compiled for the board and the Python pre-compiled (the
+# build's Python is the board's version) so the first start isn't slow. They go unsigned: the image
+# is where they come from. DEFAULT_APP (the Dockerfile's APP) is the one that starts at first boot;
+# `app NAME` on the board, or Settings > Apps, switches.
 APPS_SIZE=128M
 APPS_ROOT="${BUILD_DIR}/apps-root"
 rm -rf "${APPS_ROOT}"
 mkdir -p "${APPS_ROOT}/data"
-for a in ${APPS}; do
-  CC="${HOST_DIR}/bin/arm-linux-gcc" "${EXT}/${a#*=}/install.sh" "${APPS_ROOT}/${a%%=*}"
+for a in "${EXT}"/apps/*/app.json; do
+  a=$(basename "$(dirname "$a")")
+  CC="${HOST_DIR}/bin/arm-linux-gcc" "${HOST_DIR}/bin/python3" "${EXT}/tools/apps/layout.py" --local "$a" "${APPS_ROOT}/$a" >/dev/null
 done
 echo "${DEFAULT_APP:-chess}" > "${APPS_ROOT}/current"
 "${HOST_DIR}/bin/python3" -m compileall -q "${APPS_ROOT}"

@@ -1,7 +1,7 @@
-"""Speed test for the vacation countdown on the board: times each piece of a frame
+"""Speed test for the countdown on the board: times each piece of a frame
 using Pillow only (the image has no numpy), the way the device app would do it.
 
-    tools/board/push_to_board.py vacation/modules/cruise/scenes/dream/day.png /root/day.png
+    tools/board/push_to_board.py apps/cruise/scenes/dream/day.png /root/day.png
     tools/board/push_to_board.py tools/themegen/bench_board.py /root/bench_board.py
     app stop; python3 /root/bench_board.py; app start
 
