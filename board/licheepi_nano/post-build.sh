@@ -1,11 +1,14 @@
 #!/bin/sh -e
-# After Buildroot has filled the root filesystem: a login prompt on the USB serial port too
-# (/dev/ttyGS0, the micro-USB port as seen from the Mac; see linux/linux_defconfig), beside the
-# one on UART0.
+# After Buildroot has filled the root filesystem:
+# - the consoles: UART0 (ttyS0) and the micro-USB port as a USB serial port (ttyGS0: what the Mac sees,
+#   see linux/linux_defconfig) each give a root shell straight away. Physical access is the trust: root
+#   has no usable password (BR2_TARGET_ENABLE_ROOT_LOGIN off), there's no ssh, so nothing logs in over
+#   the network.
 INITTAB="${TARGET_DIR}/etc/inittab"
-grep -q ttyGS0 "${INITTAB}" || \
-	sed -i '/GENERIC_SERIAL/a ttyGS0::respawn:/sbin/getty -L ttyGS0 0 vt100 # USB serial' "${INITTAB}"
-grep -q ttyGS0 "${INITTAB}" || echo 'ttyGS0::respawn:/sbin/getty -L ttyGS0 0 vt100 # USB serial' >> "${INITTAB}"
-if [ -f "${TARGET_DIR}/etc/securetty" ] && ! grep -q ttyGS0 "${TARGET_DIR}/etc/securetty"; then
-	echo ttyGS0 >> "${TARGET_DIR}/etc/securetty"
-fi
+sed -i -e '/getty.*ttyS0/d' -e '/getty.*ttyGS0/d' -e '/console shell/d' "${INITTAB}"
+sed -i '/^# Put a getty on the serial port/a ttyS0::respawn:-/bin/sh # console shell (UART0)\nttyGS0::respawn:-/bin/sh # console shell (USB serial)' "${INITTAB}"
+grep -q 'ttyGS0.*console shell' "${INITTAB}" || printf 'ttyS0::respawn:-/bin/sh # console shell (UART0)\nttyGS0::respawn:-/bin/sh # console shell (USB serial)\n' >> "${INITTAB}"
+# - the root filesystem is read-only (boot.cmd's "ro", and no remount): what used to be written to it lives
+#   on the apps partition instead. The random seed: /apps/data/system/seedrng (S00app makes the folder).
+mkdir -p "${TARGET_DIR}/etc/default"
+echo 'SEEDRNG_ARGS="--seed-dir=/apps/data/system/seedrng"' > "${TARGET_DIR}/etc/default/seedrng"

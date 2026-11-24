@@ -1,0 +1,3 @@
+#!/bin/sh
+# Back to a read-only base system (see rw).
+sync; mount -o remount,ro / && echo "/ is read-only"

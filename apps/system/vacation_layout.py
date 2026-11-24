@@ -17,10 +17,27 @@ MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", 
 # ---- page 1: dates
 PAGE1_ROWS = [("Sail date", 78, [("sm", 100), ("sd", 80), ("sy", 106)]),
               ("Today", 236, [("tm", 100), ("td", 80), ("ty", 106), None, ("hh", 80), ("mi", 80), ("ap", 84)])]
-PAGE1_BUTTONS = {"cancel": (24, 404, 150, 458), "calibrate": (162, 412, 274, 450), "fireworks": (282, 412, 394, 450),
+PAGE1_BUTTONS = {"cancel": (24, 404, 150, 458), "display": (162, 412, 274, 450), "fireworks": (282, 412, 394, 450),
                  "theme": (402, 412, 514, 450), "wifi": (522, 412, 634, 450), "save": (646, 404, 776, 458)}
 PAGE1_APPS = (250, 22, 362, 60)        # Apps › (the app picker), beside the title, when it's installed
-PAGE1_SPLITS = [(156, "cancel"), (278, "calibrate"), (398, "fireworks"), (518, "theme"), (640, "wifi"), (9999, "save")]   # bottom row, by x
+# page 1 in each mode: an app's (its trip date; Fireworks, Theme, Device) and the device's (today's date
+# and time; Display, WiFi): Settings > Device › runs the device's (the system package's device.py)
+PAGE1_ROWS_APP = [PAGE1_ROWS[0]]
+PAGE1_ROWS_DEVICE = [("Today", 78, PAGE1_ROWS[1][2])]
+PAGE1_BUTTONS_APP = {"cancel": (24, 404, 150, 458), "fireworks": (162, 412, 310, 450), "theme": (324, 412, 472, 450),
+                     "device": (486, 412, 634, 450), "save": (646, 404, 776, 458)}
+PAGE1_SPLITS_APP = [(156, "cancel"), (317, "fireworks"), (479, "theme"), (640, "device"), (9999, "save")]
+PAGE1_BUTTONS_DEVICE = {"cancel": (24, 404, 150, 458), "display": (162, 412, 390, 450), "wifi": (406, 412, 634, 450),
+                        "save": (646, 404, 776, 458)}
+PAGE1_SPLITS_DEVICE = [(156, "cancel"), (398, "display"), (640, "wifi"), (9999, "save")]
+PAGE1_SPLITS = [(156, "cancel"), (278, "display"), (398, "fireworks"), (518, "theme"), (640, "wifi"), (9999, "save")]   # bottom row, by x
+
+# ---- page 6: display (the device's settings: every app's)
+BRIGHT_DAY = [(25, "25%"), (50, "50%"), (75, "75%"), (100, "100%")]
+BRIGHT_NIGHT = [(10, "10%"), (25, "25%"), (50, "50%"), (75, "75%")]
+PAGE6_PANEL = (20, 74, 780, 262)
+PAGE6_ROWS = [("Daytime", 92, BRIGHT_DAY), ("Night", 176, BRIGHT_NIGHT)]           # (label, chip top, choices)
+PAGE6_BUTTONS = {"back": (36, 404, 236, 458), "touch": (300, 412, 500, 450), "save": (564, 404, 764, 458)}
 
 # ---- page 2: fireworks
 SCHEDULES = [("random", "Random"), ("show", "Nightly show"), ("both", "Both"), ("off", "Off")]
@@ -69,22 +86,22 @@ def columns(row_cols, top):
 
 # every fixed piece of text, by font (numbers are drawn digit by digit)
 STRINGS = {
-    "title": ["Settings", "Fireworks", "Touch calibration", "Theme settings", "WiFi", "Apps"],
+    "title": ["Settings", "Fireworks", "Touch calibration", "Theme settings", "WiFi", "Apps", "Display", "Get apps", "Device"],
     "label": ["Sail date", "Today", "Schedule", "Random", "Show time", " days to go", " day to go",
               "Today's the day!", "Already sailed", "Saved", "No changes", "Calibrated",
               "Tap the centre of the cross (1 of 4)", "Tap the centre of the cross (2 of 4)",
               "Tap the centre of the cross (3 of 4)", "Tap the centre of the cross (4 of 4)",
-              "That didn't look right: nothing changed", "Opening apps..."],
+              "That didn't look right: nothing changed", "Opening apps...", "Daytime", "Night", "Opening device settings..."],
     "small": ["date & time", "bursts", "nightly show", "back to the countdown", "Calibrate touch", "Fireworks ›",
               "Demo show", "Demo show on exit", "fireworks!",
-              "Theme ›", "Nothing to set for this theme", "Apps ›", "one moment",
+              "Theme ›", "Nothing to set for this theme", "Apps ›", "one moment", "Device ›", "back to the app", "Display ›", "brightness", "every app shares these", "Get apps ›", "Install", "Update", "Installed",
               "WiFi ›", "Touch", "Rescan", "Forget network", "Scanning...", "Not connected", "Connecting to ",
               "Connected to ", "No WiFi hardware (is the ESP32 connected?)", "Tap a network to join it",
               "open", "shift", "del", "123", "abc", "space", "Join", "Password for ", "Joining...",
               "Couldn't connect: check the password", "Saved on the board", "No networks found",
               "WiFi isn't running yet"],
     "button": ["Cancel", "Save", "‹ Back", "Join", "‹", "›"],
-    "chip": [t for _, t in SCHEDULES] + [t for _, t in RATES],
+    "chip": [t for _, t in SCHEDULES] + [t for _, t in RATES] + sorted({t for _, t in BRIGHT_DAY + BRIGHT_NIGHT}),
     "value": MONTHS + ["AM", "PM"],
 }
 # ---- the cruise module's fleet map (modules/cruise/map.py; the chart itself is tools/themegen/build_map.py)

@@ -25,7 +25,10 @@
  * runtime older than an installed app needs (--force allows it); the names DIR's other things have
  * (data, current, ...), and replacing a folder that isn't an app.
  *
- * --check: only check the signature and the tarball. Memory: a few KB whatever the module's size
+ * --check: only check the signature and the tarball.
+ * --verify-installed DIR: an installed app's .signature (the statement it was installed with) is signed
+ * by a trusted key, names this app, and so is its runtime's (and that runtime's, down the chain) (S99app and the app picker, when the board is
+ * locked to signed apps: /apps/data/locked). It doesn't re-hash the files: that's at install. Memory: a few KB whatever the module's size
  * (the tarball is hashed and unpacked as a stream).
  */
 #define _XOPEN_SOURCE 700
@@ -357,8 +360,32 @@ static void unpack(int fd, const char *id)
     if (!has_meta) die("no app.json in the app");
 }
 
+/* an installed app's signature, and its runtime's; exits (die) if either isn't good */
+static void verify_installed(const char *appdir, const char *keys, int depth)
+{
+    char p[700];
+    const char *why;
+    struct statement st;
+    snprintf(p, sizeof p, "%s/.signature", appdir);
+    if (parse(&st, p, &why)) die("%s isn't signed (%s)", appdir, why);
+    check_signature(&st, keys);
+    const char *name = strrchr(appdir, '/');
+    name = name ? name + 1 : appdir;
+    if (*name == 0 || strcmp(st.id, name)) die("%s's signature is for %s", appdir, st.id);
+    if (st.runtime[0] && depth < 4) {                    /* (its runtime's, and that one's: castle, countdown, system) */
+        char rt[700], parent[600];
+        snprintf(parent, sizeof parent, "%s", appdir);
+        char *slash = strrchr(parent, '/');
+        if (slash) *slash = 0; else snprintf(parent, sizeof parent, ".");
+        snprintf(rt, sizeof rt, "%s/%s", parent, st.runtime);
+        verify_installed(rt, keys, 1);
+    }
+    if (depth == 0) printf("signed: %s %s\n", st.id, st.version);
+}
+
 static const char *usage =
     "usage: modinstall [--check] [--force] [--keys FILE] [--dir DIR] APP.tar.gz [APP.tar.gz.sig]\n"
+    "       modinstall [--keys FILE] --verify-installed DIR\n"
     "  check an app's signature (--check: only that), then install it into DIR\n"
     "  (default /apps; keys: /etc/modules/trusted.keys)\n";
 
@@ -366,8 +393,10 @@ int main(int argc, char **argv)
 {
     const char *keys = "/etc/modules/trusted.keys", *dir = "/apps", *tar = NULL, *sig = NULL;
     int check_only = 0, force = 0;
+    const char *installed = NULL;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--check")) check_only = 1;
+        else if (!strcmp(argv[i], "--verify-installed") && i + 1 < argc) installed = argv[++i];
         else if (!strcmp(argv[i], "--force")) force = 1;
         else if (!strcmp(argv[i], "--keys") && i + 1 < argc) keys = argv[++i];
         else if (!strcmp(argv[i], "--dir") && i + 1 < argc) dir = argv[++i];
@@ -375,6 +404,14 @@ int main(int argc, char **argv)
         else if (!tar) tar = argv[i];
         else if (!sig) sig = argv[i];
         else { fputs(usage, stderr); return 2; }
+    }
+    if (installed) {
+        char d[600];
+        snprintf(d, sizeof d, "%s", installed);
+        size_t n = strlen(d);
+        while (n > 1 && d[n - 1] == '/') d[--n] = 0;     /* (no trailing /) */
+        verify_installed(d, keys, 0);
+        return 0;
     }
     if (!tar) { fputs(usage, stderr); return 2; }
     char sig_buf[600];

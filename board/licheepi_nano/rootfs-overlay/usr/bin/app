@@ -4,6 +4,7 @@
 #   app NAME                 switch to NAME: start it now, and at every boot
 #   app start|stop|restart   the current one
 #   app log                  follow its log
+#   app lock|unlock          run only signed apps (modinstall's), or any app (the default)
 A=
 [ -r /apps/current ] && read -r A < /apps/current
 case "$1" in
@@ -11,8 +12,10 @@ case "$1" in
 		echo "current: ${A:-none}"
 		for d in /apps/*/; do
 			n=$(basename "$d")
-			[ -x "$d/run" ] && echo "installed: $n"
+			[ -x "$d/run" ] || continue
+			if modinstall --verify-installed "/apps/$n" >/dev/null 2>&1; then echo "installed: $n (signed)"; else echo "installed: $n"; fi
 		done
+		[ -f /apps/data/locked ] && echo "locked: only signed apps run (app unlock: any)"
 		;;
 	start|stop|restart)
 		exec /etc/init.d/S99app "$1"
@@ -20,8 +23,14 @@ case "$1" in
 	log)
 		exec tail -f "/apps/data/$A/$A.log"
 		;;
+	lock)
+		: > /apps/data/locked && sync && echo "locked: only signed apps run (from the next start: app restart)"
+		;;
+	unlock)
+		rm -f /apps/data/locked && sync && echo "unlocked: any app runs"
+		;;
 	-*|help)
-		sed -n '2,6p' "$0"
+		sed -n '2,7p' "$0"
 		;;
 	*)
 		[ -x "/apps/$1/run" ] || { echo "no app called $1 in /apps"; exit 1; }

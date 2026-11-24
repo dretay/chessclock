@@ -1,8 +1,8 @@
 """Draw the Settings pages' text and arrows on a desktop, for the board to place without Pillow.
 
-    python3 tools/themegen/build_ui.py      -> apps/countdown/ui/ui.bin.gz
+    python3 tools/themegen/build_ui.py      -> apps/system/ui/ui.bin.gz
 
-Every string in apps/countdown/vacation_layout.py's STRINGS (and the digits 0-9 in the fonts that show
+Every string in apps/system/vacation_layout.py's STRINGS (and the digits 0-9 in the fonts that show
 numbers) becomes an antialiased alpha image, with its offset from the pen position on the
 baseline and its advance, so the board can colour it and line it up. Plus the spinner arrows.
 Needs assets/fonts/CormorantGaramond-SemiBold-Lining.ttf (make_lining_font.py).
@@ -14,11 +14,11 @@ import gzip, os, struct, sys
 from PIL import Image, ImageDraw, ImageFont
 
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
-sys.path.insert(0, os.path.join(REPO, "apps", "countdown"))
+sys.path.insert(0, os.path.join(REPO, "apps", "system"))
 import vacation_layout as L
 
 FONT = os.path.join(REPO, "assets", "fonts", "CormorantGaramond-SemiBold-Lining.ttf")
-OUT = os.path.join(REPO, "apps", "countdown", "ui", "ui.bin.gz")
+OUT = os.path.join(REPO, "apps", "system", "ui", "ui.bin.gz")
 
 entries = []
 def add(name, img, ox=0, oy=0, adv=0):

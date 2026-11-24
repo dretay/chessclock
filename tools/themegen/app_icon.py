@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Each app's picture for the app picker (apps/countdown/picker.py): apps/<id>/icon.rgb.gz, 240x144
+"""Each app's picture for the app picker (apps/system/picker.py): apps/<id>/icon.rgb.gz, 240x144
 raw RGB, gzipped without a timestamp (the same picture makes the same file).
 
     python3 tools/themegen/app_icon.py [NAME ...]          (default: every app that has a picture)

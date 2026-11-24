@@ -4,7 +4,9 @@
 # it ever exits. Its settings and log live in /apps/data/NAME (APP_DATA), the log as NAME.log with
 # the previous run's in NAME.log.1. An app's optional /apps/NAME/service (a background job, such as
 # fetching data for it) runs beside it the same way, logging to service.log, and is restarted on its
-# own. `app` switches between apps; see docs/apps.md.
+# own. `app` switches between apps; see docs/apps.md. Locked to signed apps (`app lock`:
+# /apps/data/locked), it starts only an app whose signature (and its runtime's) checks out
+# (modinstall --verify-installed); if the current one doesn't, the first one that does.
 #
 
 PIDFILE=/var/run/app.pid          # the restart loop
@@ -33,6 +35,16 @@ start() {
 	if [ -z "$A" ] || [ ! -x "/apps/$A/run" ]; then
 		echo "FAIL (no app: /apps/current names none that's installed)"
 		return 1
+	fi
+	if [ -f /apps/data/locked ] && ! modinstall --verify-installed "/apps/$A" >/dev/null 2>&1; then
+		B=
+		for d in /apps/*/; do
+			n=${d%/}; n=${n##*/}
+			[ -x "$d/run" ] && modinstall --verify-installed "/apps/$n" >/dev/null 2>&1 && { B=$n; break; }
+		done
+		[ -n "$B" ] || { echo "FAIL (locked to signed apps, and none is signed: app unlock)"; return 1; }
+		printf "(%s isn't signed, and apps are locked to signed ones: %s) " "$A" "$B"
+		A=$B
 	fi
 	DATA=/apps/data/$A
 	LOG=$DATA/$A.log

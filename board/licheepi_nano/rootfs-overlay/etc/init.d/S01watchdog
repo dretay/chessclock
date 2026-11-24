@@ -1,0 +1,19 @@
+#!/bin/sh
+#
+# The hardware watchdog (the F1C100s's: 16 s at most): BusyBox's watchdog daemon feeds it every 4 s, so
+# if the kernel hangs, or the system is too starved to run even this, the board reboots by itself within
+# 16 s. (An app that exits is S99app's job: it starts it again.)
+#
+case "$1" in
+	start)
+		[ -c /dev/watchdog ] && watchdog -T 16 -t 4 /dev/watchdog
+		;;
+	stop)
+		killall watchdog 2>/dev/null           # (a clean stop: the daemon disarms it as it goes)
+		;;
+	restart|reload)
+		;;
+	*)
+		echo "Usage: $0 {start|stop}"; exit 1
+		;;
+esac

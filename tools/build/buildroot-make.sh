@@ -17,8 +17,11 @@ if [ "$WIFI" = 1 ]; then
 	echo 'BR2_PACKAGE_CA_CERTIFICATES=y' >> .config
 	make olddefconfig >/dev/null
 else
-	rm -f "$OUT"/target/etc/init.d/S35wifi "$OUT"/target/etc/init.d/S50dropbear
+	rm -f "$OUT"/target/etc/init.d/S35wifi
 fi
+# no ssh server on the board (it used to come with WiFi; a package turned off leaves its files behind)
+(cd "$OUT/target" && rm -rf etc/init.d/S50dropbear etc/dropbear usr/sbin/dropbear usr/bin/dropbearkey \
+	usr/bin/dropbearconvert usr/bin/dbclient usr/bin/scp)
 # the apps used to be packages installed into the root filesystem (harmless once they're gone)
 (cd "$OUT/target" && rm -rf etc/init.d/S00splash etc/init.d/S99fbclock etc/init.d/S99vacation \
 	usr/bin/fbclock usr/bin/vacation usr/lib/libvacfx.so etc/fbclock.conf etc/vacation.conf \

@@ -1,0 +1,4 @@
+#!/bin/sh
+# The base system (/) is read-only, so a power cut can't damage it; `rw` makes it writable for changes by
+# hand, until `ro` or the next boot. (/apps, the apps and their data, is always writable.)
+mount -o remount,rw / && echo "/ is writable: 'ro' (or a reboot) makes it read-only again"

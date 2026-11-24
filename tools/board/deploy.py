@@ -39,8 +39,11 @@ def on_board(port, command, secs):
     text = out.decode("utf-8", "replace").replace("\r", "")
     if "__DEPDONE " not in text: return None, text
     body, status = text.rsplit("__DEPDONE ", 1)
-    lines = body.split("\n")[1:]                                               # (the echoed command)
-    return int(status.split()[0]), "\n".join(l for l in lines if l.strip()).strip()
+    # the board echoes the command back, wrapped over as many lines as it takes: its output starts after
+    # the command's end ($?")
+    body = body.rsplit('$?"', 1)[1] if '$?"' in body else body.split("\n", 1)[-1]
+    # (a wrap can split the command's end over two lines, leaving its closing quote on a line of its own)
+    return int(status.split()[0]), "\n".join(l for l in body.split("\n") if l.strip() and l.strip() != '"').strip()
 
 
 def board(command, secs=60):
@@ -85,6 +88,9 @@ def main():
         staged = [layout.layout(n) for n in names]
         for n in names: print("laid out", n)
 
+    if not signed:
+        status, _ = board("[ -f /apps/data/locked ]", 30)
+        if status == 0: sys.exit("the board is locked to signed apps: --signed, or `app unlock` on the board first")
     board("/etc/init.d/S99app stop >/dev/null 2>&1")
     print("stopped the app")
     copied = []
@@ -93,6 +99,8 @@ def main():
             pairs = []
             for n, d in zip(names, staged): pairs += [d, "/apps/" + n]
             push(pairs, force)
+            # (what was signed isn't what's there now: an unsigned copy says so, until the next --signed)
+            board("rm -f %s" % " ".join("/apps/%s/.signature" % n for n in names))
         else:
             pairs = []
             for t in packages:

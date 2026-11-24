@@ -113,7 +113,10 @@ class WaitsScreen:
         start = app.now(); tp = app.touch
         app.fade(256)                                       # (drawn in the dark: fade it in)
         while app.running and app.now() - start < seconds:
-            if tp and any(ev == "up" for ev, x, y in tp.poll(app.now())): break      # a tap: back to the countdown
+            # a tap: back to the countdown; held (as on the countdown): Settings
+            if hasattr(app, "screen_touch"):
+                if app.screen_touch(app.now()): break
+            elif tp and any(ev == "up" for ev, x, y in tp.poll(app.now())): break
             app.tick(); app.tick()
         app.fade(0)
         fx.vfx_ui_close()

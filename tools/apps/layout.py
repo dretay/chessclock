@@ -4,10 +4,12 @@ tools/board/deploy.py and tools/apps/pack.py all use.
 
     tools/apps/layout.py [--local] NAME [DEST]    (DEST default: build/apps/NAME; NAME: a folder in apps/)
 
-An app with an install.sh lays itself out (`install.sh DEST`): the countdown runtime (it compiles its
+An app with an install.sh lays itself out (`install.sh DEST`): the system package (it compiles its
 drawing library: for the board, in the build container, with CC set to the board's compiler) and the
 chess clock. Any other app is its folder as it is, less its tools/ (desktop helpers), Python caches,
-and what its app.json "exclude" lists (paths in it, * allowed).
+and what its app.json "exclude" lists (paths in it, * allowed); and its "native" programs compiled
+into it: [{"src": "aisd.c", "out": "aisd", "libs": "-lssl -lcrypto"}] (for the board in the WiFi build
+tree, which has OpenSSL; on a Mac, against Homebrew's).
 
 The board's compiler comes from tools/build/build.sh's build tree (its licheepi-out volume, with the
 base image licheepi-nano-mybase) when that's there; otherwise from DEV_IMAGE (default
@@ -44,22 +46,44 @@ def files(name):
     return sorted(out)
 
 
-def _container_install(name, dest):
-    """Run the app's install.sh in the build container (the board's compiler), into dest (under the repo)."""
+def _in_container(name, script):
+    """Run a shell script in the build container (the board's compiler as $CC), the repository at /src. The
+    WiFi build tree when there is one (a superset: it has OpenSSL too), else the plain one."""
     runner = shutil.which("container") or shutil.which("docker")
     if not runner: sys.exit("needs Apple's container tool or Docker, to compile %s for the board" % name)
-    use_volume = os.path.basename(runner) == "container" and "DEV_IMAGE" not in os.environ and \
-        subprocess.run([runner, "volume", "inspect", "licheepi-out"], capture_output=True).returncode == 0
-    where = (["-v", "licheepi-out:/root/buildroot", os.environ.get("BASE_IMAGE", "licheepi-nano-mybase")] if use_volume
+    volume = None
+    if os.path.basename(runner) == "container" and "DEV_IMAGE" not in os.environ:
+        for v in ("licheepi-out-wifi", "licheepi-out"):
+            if subprocess.run([runner, "volume", "inspect", v], capture_output=True).returncode == 0: volume = v; break
+    where = (["-v", "%s:/root/buildroot" % volume, os.environ.get("BASE_IMAGE", "licheepi-nano-mybase")] if volume
              else [os.environ.get("DEV_IMAGE", "licheepi-nano-dev")])
-    rel = os.path.relpath(dest, REPO)
-    if rel.startswith(".."): sys.exit("laying out %s for the board: DEST must be inside the repository" % name)
-    r = subprocess.run([runner, "run", "--rm", "-v", "%s:/src" % REPO] + where +
-                       ["sh", "-c", "CC=%s /src/apps/%s/install.sh /src/%s" % (BOARD_CC, name, rel)],
+    r = subprocess.run([runner, "run", "--rm", "-v", "%s:/src" % REPO] + where + ["sh", "-c", "CC=%s; %s" % (BOARD_CC, script)],
                        stdout=subprocess.DEVNULL)
     if r.returncode:
-        sys.exit("laying out %s failed (%s)" % (name, "the build tree: run tools/build/build.sh once" if use_volume
-                                                 else "is the build image there? see the Dockerfile's top comment"))
+        sys.exit("compiling %s failed (%s)" % (name, "the build tree: run tools/build/build.sh once" if volume
+                                               else "is the build image there? see the Dockerfile's top comment"))
+
+
+def _native(name, dest, board):
+    """Compile the app's "native" programs into dest."""
+    for n in manifest(name).get("native", []):
+        src = os.path.join(APPS, name, n["src"]); libs = n.get("libs", "")
+        if board:
+            rel = os.path.relpath(dest, REPO)
+            _in_container(name, "$CC -O2 -Wall -o /src/%s/%s /src/apps/%s/%s %s" % (rel, n["out"], name, n["src"], libs))
+        else:
+            extra = []
+            if sys.platform == "darwin" and "ssl" in libs:          # (Homebrew's OpenSSL)
+                o = "/opt/homebrew/opt/openssl@3"; extra = ["-I" + o + "/include", "-L" + o + "/lib"]
+            r = subprocess.run([os.environ.get("CC", "cc"), "-O2", "-Wall", *extra, "-o", os.path.join(dest, n["out"]), src, *libs.split()])
+            if r.returncode: sys.exit("compiling %s's %s failed" % (name, n["src"]))
+
+
+def _container_install(name, dest):
+    """Run the app's install.sh in the build container (the board's compiler), into dest (under the repo)."""
+    rel = os.path.relpath(dest, REPO)
+    if rel.startswith(".."): sys.exit("laying out %s for the board: DEST must be inside the repository" % name)
+    _in_container(name, "CC=$CC /src/apps/%s/install.sh /src/%s" % (name, rel))
 
 
 def layout(name, dest=None, board=True):
@@ -78,6 +102,7 @@ def layout(name, dest=None, board=True):
         for rel, path in files(name):
             out = os.path.join(dest, rel); os.makedirs(os.path.dirname(out), exist_ok=True)
             shutil.copy2(path, out)
+        _native(name, dest, board)
     return dest
 
 

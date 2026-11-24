@@ -12,7 +12,7 @@ Desktop ⌘S). Closing it stops the preview. It's built (swiftc, from the Xcode 
 first time and whenever viewer.swift changes. --browser, or no swiftc: a page instead, at
 http://localhost:8800 (the same controls).
 
-- The real app runs: the countdown runtime (apps/countdown, its drawing library compiled for the Mac)
+- The real app runs: the countdown runtime (apps/countdown, on the system package's drawing library, compiled for the Mac)
   with a countdown app, or the chess clock; its own settings and data in build/preview/data/APP.
 - Mouse: press, drag and release, as on the touchscreen (press and hold for Settings).
 - Save a file in the app (or the runtime) and it restarts; change fx/vacfx.c and it's recompiled first.
@@ -24,18 +24,20 @@ The chess clock draws with the DejaVu fonts, as on the board: they're copied onc
 build tree (tools/build/build.sh's licheepi-out volume), or FBCLOCK_FONTS names a folder with them.
 Needs Pillow (the chess clock) and a C compiler (cc) and zlib (the countdown).
 """
-import collections, hashlib, http.server, json, os, shutil, signal, socketserver, subprocess, sys, threading, time
+import collections, fcntl, hashlib, http.server, json, os, shutil, signal, socketserver, subprocess, sys, threading, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.normpath(os.path.join(HERE, "..", ".."))
 APPS = os.path.join(REPO, "apps")
 RUNTIME = os.path.join(APPS, "countdown")
+SYSTEM = os.path.join(APPS, "system")          # (the drawing library, Settings, the picker)
 STATE = os.path.join(REPO, "build", "preview")
 FB = os.path.join(STATE, "fb.raw")
 PIPE = os.path.join(STATE, "touch.pipe")
 LIB = os.path.join(STATE, "libvacfx.dylib")
 FONTS = os.environ.get("FBCLOCK_FONTS") or os.path.join(STATE, "fonts")
 PICK_REQUEST = os.path.join(STATE, "pick-request")
+DEVICE_REQUEST = os.path.join(STATE, "device-request")
 VIEWER_SRC = os.path.join(HERE, "viewer.swift")
 VIEWER = os.path.join(STATE, "App Preview")
 W, H = 800, 480
@@ -90,7 +92,7 @@ class Preview:
 
     # ---------------------------------------------------------------- building
     def build_lib(self):
-        src = os.path.join(RUNTIME, "fx", "vacfx.c")
+        src = os.path.join(SYSTEM, "fx", "vacfx.c")
         if os.path.exists(LIB) and os.path.getmtime(LIB) >= os.path.getmtime(src): return True
         r = subprocess.run(["cc", "-O2", "-shared", "-fPIC", "-o", LIB, src, "-lz"], capture_output=True, text=True)
         if r.returncode: self.say("compiling the drawing library failed:\n" + r.stderr[-1500:]); return False
@@ -111,6 +113,7 @@ class Preview:
     # ---------------------------------------------------------------- running
     def env(self, app):
         e = dict(os.environ, APP_DATA=os.path.join(STATE, "data", app), APP_PICKER=os.path.join(HERE, "pick"),
+                 APP_DEVICE=os.path.join(HERE, "device"),
                  PREVIEW_DIR=STATE, PYTHONUNBUFFERED="1")
         os.makedirs(e["APP_DATA"], exist_ok=True)
         return e
@@ -169,7 +172,7 @@ class Preview:
             if self.service_on and os.path.exists(svc):
                 self.svc = self.spawn(["sh", svc], dict(env, APP_NETWORK="1"), os.path.join(APPS, self.app), "service: ")
                 self.say("started its service (with the Mac's network)")
-            self.stamp = newest(os.path.join(APPS, self.app), RUNTIME)
+            self.stamp = newest(os.path.join(APPS, self.app), RUNTIME, SYSTEM)
 
     def pick(self):
         """Settings > Apps: the real picker, then the app picked (or the same one again)."""
@@ -177,14 +180,28 @@ class Preview:
             self.picking = True
             self.stop()
         if not self.build_lib(): self.picking = False; return
-        e = dict(self.env("countdown"), PICKER_APPS=APPS, PICKER_CURRENT=self.app, VACATION_LIB=LIB, VACATION_FB=FB,
-                 VACATION_TOUCH_PIPE=PIPE)
+        e = dict(self.env("countdown"), PICKER_APPS=APPS, PICKER_DATA=os.path.join(STATE, "data"), PICKER_CURRENT=self.app,
+                 VACATION_LIB=LIB, VACATION_FB=FB, VACATION_TOUCH_PIPE=PIPE)
         self.say("the app picker")
-        r = subprocess.run([sys.executable, os.path.join(RUNTIME, "picker.py")], env=e, capture_output=True, text=True)
+        r = subprocess.run([sys.executable, os.path.join(SYSTEM, "picker.py")], env=e, capture_output=True, text=True)
         if r.stderr.strip(): self.log.extend(r.stderr.strip().splitlines())
         picked = r.stdout.strip()
         self.picking = False
         self.start(picked or self.app)
+
+    def device(self):
+        """Settings > Device ›: the real device settings, then the same app again."""
+        with self.lock:
+            self.picking = True
+            self.stop()
+        if not self.build_lib(): self.picking = False; return
+        e = dict(self.env("countdown"), PICKER_APPS=APPS, PICKER_DATA=os.path.join(STATE, "data"), PICKER_CURRENT=self.app,
+                 VACATION_LIB=LIB, VACATION_FB=FB, VACATION_TOUCH_PIPE=PIPE)
+        self.say("device settings")
+        r = subprocess.run([sys.executable, os.path.join(SYSTEM, "device.py")], env=e, capture_output=True, text=True)
+        self.log.extend((r.stdout + r.stderr).strip().splitlines()[-20:])
+        self.picking = False
+        self.start()
 
     def watch(self):
         """Restart the app when its files change, or when it exits (as the board does); the picker on request."""
@@ -192,10 +209,12 @@ class Preview:
             time.sleep(0.5)
             if os.path.exists(PICK_REQUEST):
                 os.remove(PICK_REQUEST); threading.Thread(target=self.pick, daemon=True).start(); continue
+            if os.path.exists(DEVICE_REQUEST):
+                os.remove(DEVICE_REQUEST); threading.Thread(target=self.device, daemon=True).start(); continue
             if self.picking: continue
             with self.lock:
                 if self.proc is None: continue
-                if newest(os.path.join(APPS, self.app), RUNTIME) > self.stamp:
+                if newest(os.path.join(APPS, self.app), RUNTIME, SYSTEM) > self.stamp:
                     self.say("files changed: restarting"); self.start(); continue
                 if self.proc.poll() is not None:
                     self.say("%s exited (status %s): starting it again" % (self.app, self.proc.returncode))
@@ -274,7 +293,15 @@ def main():
     if any(x.startswith("-") for x in a): sys.exit(__doc__)
     app = a[0] if a else "castle"
     if app not in dict(apps()): sys.exit("no app %s to preview (%s)" % (app, ", ".join(x for x, _ in apps())))
+    # one preview at a time: two would share the screen file and the touch pipe (each app drawing over the
+    # other's, taps going to either)
+    os.makedirs(STATE, exist_ok=True)
+    lock = open(os.path.join(STATE, "lock"), "a+")
+    try: fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError: sys.exit("a preview is already running (its window, or another preview.py): close it first")
+    lock.seek(0); lock.truncate(); lock.write(str(os.getpid())); lock.flush()
     window = None if browser else viewer()
+    signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt))   # (stopped: stop the app too)
     pv = Preview(app)
     pv.start()
     threading.Thread(target=pv.watch, daemon=True).start()

@@ -838,10 +838,59 @@ void vfx_dim(void) {
 /* for previews: 1 gulls, 2 dolphins, 3 the raft, now */
 void vfx_demo(int what) { if (what == 1) next_gulls_ms = 0; if (what == 2) next_pod_ms = 0; if (what == 3) { raft_start = -1; next_raft_ms = 0; } }
 
+/* three digits on a scene that asks for it (theme.json cards.scale3; the castle's cards sit to one side
+   and three of them would reach it): a smaller copy of the cards, made the first time it's needed */
+static int scale3_q8, small_ready, using_small;
+typedef struct { int w, h, sox, soy, sw, sh; uint8_t *top[10], *bot[10], *shadow; } cardset_t;
+static cardset_t big_set, small_set;
+static void save_set(cardset_t *c) {
+    c->w = card_w; c->h = card_h; c->sox = shadow_ox; c->soy = shadow_oy; c->sw = shadow_w; c->sh = shadow_h; c->shadow = shadow_img;
+    for (int d = 0; d < 10; d++) { c->top[d] = card_top[d]; c->bot[d] = card_bot[d]; }
+}
+static void load_set(const cardset_t *c) {
+    card_w = c->w; card_h = c->h; shadow_ox = c->sox; shadow_oy = c->soy; shadow_w = c->sw; shadow_h = c->sh; shadow_img = c->shadow;
+    for (int d = 0; d < 10; d++) { card_top[d] = c->top[d]; card_bot[d] = c->bot[d]; }
+}
+/* a premultiplied RGBA image, scaled (bilinear: fine for the gentle shrink this is) */
+static uint8_t *scaled(const uint8_t *s, int sw, int sh, int dw, int dh) {
+    uint8_t *d = malloc((size_t)dw * dh * 4); if (!d) return NULL;
+    for (int y = 0; y < dh; y++) {
+        double fy = (y + 0.5) * sh / dh - 0.5; if (fy < 0) fy = 0;
+        int y0 = (int)fy; if (y0 > sh - 1) y0 = sh - 1; const int y1 = y0 + 1 < sh ? y0 + 1 : y0; const double ty = fy - y0;
+        for (int x = 0; x < dw; x++) {
+            double fx = (x + 0.5) * sw / dw - 0.5; if (fx < 0) fx = 0;
+            int x0 = (int)fx; if (x0 > sw - 1) x0 = sw - 1; const int x1 = x0 + 1 < sw ? x0 + 1 : x0; const double tx = fx - x0;
+            for (int ch = 0; ch < 4; ch++) {
+                const double a = s[((size_t)y0 * sw + x0) * 4 + ch] * (1 - tx) + s[((size_t)y0 * sw + x1) * 4 + ch] * tx;
+                const double b = s[((size_t)y1 * sw + x0) * 4 + ch] * (1 - tx) + s[((size_t)y1 * sw + x1) * 4 + ch] * tx;
+                d[((size_t)y * dw + x) * 4 + ch] = (uint8_t)(a * (1 - ty) + b * ty + 0.5);
+            }
+        }
+    }
+    return d;
+}
+static void use_small_cards(int on) {
+    if (!scale3_q8 || on == using_small) return;
+    if (on && !small_ready) {
+        save_set(&big_set);
+        cardset_t *c = &small_set; const int q = scale3_q8, half = big_set.h / 2;
+        c->w = big_set.w * q / 256; const int nh = half * q / 256; c->h = nh * 2;
+        c->sox = big_set.sox * q / 256; c->soy = big_set.soy * q / 256; c->sw = big_set.sw * q / 256; c->sh = big_set.sh * q / 256;
+        int ok = c->w > 8 && nh > 4 && (c->shadow = scaled(big_set.shadow, big_set.sw, big_set.sh, c->sw, c->sh)) != NULL;
+        for (int d = 0; ok && d < 10; d++)
+            ok = (c->top[d] = scaled(big_set.top[d], big_set.w, half, c->w, nh)) && (c->bot[d] = scaled(big_set.bot[d], big_set.w, half, c->w, nh));
+        if (!ok) { fprintf(stderr, "vacfx: no memory for the smaller cards\n"); scale3_q8 = 0; return; }   /* (the big ones, then) */
+        small_ready = 1;
+    }
+    load_set(on ? &small_set : &big_set); using_small = on;
+}
+void vfx_cards_scale3(int q8) { scale3_q8 = clampi(q8, 0, 256); }
+
 /* the cards show value as n digits (with a colon before digit sp, if sp); flip: animate the ones that change */
 static void set_cards(int value, int n, int sp, int flip, int t_ms) {
     int nd[4]; for (int k = n - 1, v = value; k >= 0; k--, v /= 10) nd[k] = v % 10;
     if (days >= 0) { int a, b, c, e; cards_rect_s(ndig, split, &a, &b, &c, &e); rect_add(rlo, rhi, a, b, c, e); }   /* old footprint */
+    use_small_cards(n == 3 && !sp);
     const int same_shape = n == ndig && sp == split;
     old_ndig = ndig; old_split = split; memcpy(old_dig, dig, sizeof dig);
     for (int k = 0; k < n; k++) {

@@ -44,6 +44,8 @@ KEEP = 26 * 3600              # trimming keeps this much of each ship's history.
 KEEP_LINES = 160              # ...and at most this many lines of it (a day at TRAIL_EVERY)
 TRIM_EVERY = 3600
 QUIET = 90                    # no frame for this long: ping; twice: reconnect
+SESSION = int(os.environ.get("AIS_SESSION", "90"))   # --once: listen this long (seconds), then exit (the service runs it every 10 minutes)
+STATE_FILE = os.path.join(DATA, ".ais-state.json")   # between sessions: each ship's last report and destination
 STATUS = {0: "under way", 1: "at anchor", 2: "not under command", 3: "restricted", 5: "moored",
           6: "aground", 7: "fishing", 8: "under way"}
 
@@ -168,6 +170,18 @@ class Ships:
         self.written = {}                      # MMSI -> (time, status) of its last line
         self.trimmed = 0
 
+    def load(self):
+        """What earlier sessions learned (destinations and ETAs come rarely; when each ship was last written)."""
+        try: saved = json.load(open(STATE_FILE))
+        except (OSError, ValueError): return
+        self.state = {k: v for k, v in saved.get("state", {}).items() if k in self.names}
+        self.written = {k: tuple(v) for k, v in saved.get("written", {}).items() if k in self.names}
+
+    def save(self):
+        os.makedirs(DATA, exist_ok=True)
+        with open(STATE_FILE + ".tmp", "w") as f: json.dump({"state": self.state, "written": self.written}, f)
+        os.replace(STATE_FILE + ".tmp", STATE_FILE)
+
     def position(self, mmsi, lat, lon, sog, cog, heading, status, when=None):
         if not (-90 <= lat <= 90 and -180 <= lon <= 180) or (lat == 0 and lon == 0): return
         s = self.state.setdefault(mmsi, {})
@@ -225,7 +239,8 @@ class Ships:
 
 # ---- the stream ----
 
-def stream(key, ships):
+def stream(key, ships, until=None):
+    """Follow the fleet's reports into ships.csv; return at `until` (time.time()), or raise when the link drops."""
     ws = WebSocket(HOST, PATH)
     try:
         # (within 3 s of connecting, or the server hangs up; the whole world, filtered to the fleet)
@@ -234,8 +249,9 @@ def stream(key, ships):
                             "FilterMessageTypes": ["PositionReport", "ShipStaticData"]}))
         log("connected; following %d ships" % len(ships.names))
         quiet = 0
-        while True:
-            msg = ws.recv(QUIET)
+        while until is None or time.time() < until:
+            msg = ws.recv(QUIET if until is None else max(1, min(QUIET, until - time.time())))
+            if msg is None and until is not None and time.time() >= until: break
             if msg is None:
                 quiet += 1
                 if quiet >= 2: raise Closed("nothing from the server for %d s" % (QUIET * quiet))
@@ -258,7 +274,27 @@ def stream(key, ships):
         ws.close()
 
 
+def once():
+    """One session (--once, what the service runs every 10 minutes): listen for SESSION seconds, write what
+    came, and exit, so its Python and TLS take memory only for that minute and a half. Exit status: 0 done,
+    1 the link failed (the service waits longer each time), 2 no key or no network time yet."""
+    key = api_key()
+    if not key: log("no API key yet: put an aisstream.io key in %s" % KEY_FILE); return 2
+    if time.time() < 1.7e9: log("waiting for the clock (network time)"); return 2
+    ships = Ships(fleet()); ships.load()
+    before = sum(1 for _ in ships.written)
+    try: stream(key, ships, time.time() + SESSION)
+    except (OSError, Closed, ssl.SSLError) as e:
+        log("link down: %s" % e); ships.save(); return 1
+    finally:
+        ships.trim()
+    ships.save()
+    log("session done: %d ships known" % len(ships.state))
+    return 0
+
+
 def main():
+    if "--once" in sys.argv[1:]: return once()
     ships = Ships(fleet())
     ships.trim()
     wait, said = 5, None
@@ -282,5 +318,5 @@ def main():
 
 
 if __name__ == "__main__":
-    try: main()
+    try: sys.exit(main())
     except KeyboardInterrupt: sys.exit(0)

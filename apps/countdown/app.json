@@ -1,6 +1,8 @@
 {
   "id": "countdown",
   "name": "Countdown runtime",
-  "version": "1.0.0",
-  "kind": "runtime"
+  "version": "2.0.0",
+  "kind": "runtime",
+  "runtime": "system",
+  "api": 1
 }

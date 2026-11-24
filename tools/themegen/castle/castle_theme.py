@@ -168,7 +168,7 @@ scene = {
     "effects": [],
     "horizon": HORIZON,
     "fireworks_scale": 0.85,
-    "cards": {"center_x": 170, "top": 16, "gap": 12, "label_gap": -1},
+    "cards": {"center_x": 170, "top": 16, "gap": 12, "label_gap": -1, "scale3": 0.82},   # (three digits: smaller, clear of the castle)
 }
 json.dump(scene, open(os.path.join(OUT, "theme.json"), "w"), indent=1)
 

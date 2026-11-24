@@ -42,28 +42,27 @@ no `run`, and isn't in the app picker. A countdown app's `run` is `exec /apps/co
 | `vacation.py` | | the countdown, and the app's screens in turn with it |
 | `apps.py` | | the app: its app.json, scene and screens, and its settings file (made the first time) |
 | `API` | | the app api this runtime provides (`2`): modinstall checks an app against it |
-| `fx/vacfx.c` | `fx/libvacfx.so` | the drawing |
-| `vacation_settings.py` | | the Settings pages (drawn by the C library) |
-| `vacation_layout.py` | | where everything goes on them, and their text (shared with `tools/themegen/build_ui.py`) |
-| `ui/ui.bin.gz` | | their text and arrows, pre-drawn in Cormorant Garamond (SIL OFL, `fonts/OFL.txt`) |
-| `vacation_text.py` | | text from data (ride names, app names), drawn letter by letter |
-| `vacation_touch.py` | | the touchscreen (the NS2009 chip, as in the chess clock) |
-| `vacation_wifi.py` | | Settings > WiFi |
-| `pick`, `picker.py` | | the app picker (Settings > Apps, in every app) |
-| `fx/splashanim.c` | `splashanim` | the loading dots after "Starting" (a countdown app's boot splash, the picker's note), until the app draws |
 | `countdown.conf` | | the settings every countdown app starts with (and the app's own `defaults.conf`) |
 | `native/bench_water.c` | | the speed test the design came from (not installed) |
 
+It runs on the **system package** (`apps/system`, `/apps/system`), which every app shares: the drawing
+library (`fx/vacfx.c`), the Settings pages (`vacation_settings.py`, their layout and pre-drawn text:
+`vacation_layout.py`, `ui/ui.bin.gz`), text, touch and WiFi (`vacation_text.py`, `vacation_touch.py`,
+`vacation_wifi.py`), Device settings (`device.py`), the app picker and Get apps (`picker.py`,
+`catalog.py`), and the loading dots (`fx/splashanim.c`).
+
 ## Settings
 
-**Press and hold** the picture for two seconds (a bar fills under the cards) for Settings. Page one:
-the trip's date (the app's name for it: "Sail date", "Park day"), and today's date and time (the
-board has no clock battery; the time is saved every five minutes and put back at start-up, so after a
-power cut it's only behind by however long the power was off; with WiFi it's set from the network),
-and Touch (calibration). **Apps ›**: the app picker. **Fireworks ›**: when the fireworks go up
-(random, a nightly show, both, or off), how often the random ones do, and the show's time.
-**Theme ›**: the app's own setting (the ship the map follows, the rides the wait-times board shows).
-**WiFi ›**: the networks in range. Save or Cancel goes back to the countdown.
+**Press and hold** the picture (or the app's own screen: the wait-times board, the fleet map) for two
+seconds (a bar fills under the cards) for Settings: the trip's date (the app's name for it: "Sail
+date", "Park day"). **Fireworks ›**: when the fireworks go up (random, a nightly show, both, or off), how
+often the random ones do, and the show's time. **Theme ›**: the app's own setting (the ship the map
+follows, the rides the wait-times board shows). **Device ›**: the device's settings, every app's (today's
+date and time: the board has no clock battery, so the time is saved every five minutes and put back at
+start-up, and with WiFi it's set from the network; Display: day and night brightness, which the
+countdown eases between at the night hours, 9 PM to 7 AM by default, and Calibrate touch; WiFi).
+**Apps ›**: the app picker (and Get apps, the catalog, with WiFi). Save or Cancel goes back to the
+countdown.
 
 Each countdown app keeps its own settings, `/apps/data/<app>/countdown.conf` (so each trip has its
 own date), made the first time it runs: from the old shared `vacation.conf` if the board had one
@@ -81,7 +80,7 @@ plus the app's own `defaults.conf`. `KEY=VALUE` lines:
 | `COUNTDOWN_SECS` | `60` | how long the countdown shows between the app's own screens |
 | `DITHER` | `1` | dither for the 18-bit panel (`0` turns it off) |
 | `CPU_MHZ` | empty | set the CPU clock when this app starts (the base system already runs it at 600 MHz: [system](../../docs/system.md)). The log's `self-check` line, once a minute, reports if the CPU starts making mistakes |
-| `TOUCH_*` | the 5" panel's | the touchscreen calibration (Settings > Touch measures it) |
+| `TOUCH_*` | the 5" panel's | the touchscreen calibration: the device's, in `/apps/data/device.conf` (Settings > Display > Calibrate touch measures it) |
 
 The apps' own: [docs/countdown.md](../../docs/countdown.md).
 
@@ -107,5 +106,4 @@ this for every countdown app, and compares the frames with a baseline.
 
 ## Not done yet
 
-The swipe and horn gestures (APDS-9960), the horn sound, backlight brightness by time of day, and
-settings shared by every app (the touch calibration is each app's own).
+The swipe and horn gestures (APDS-9960), and the horn sound.

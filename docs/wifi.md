@@ -3,7 +3,7 @@
 The Nano has no radio of its own: WiFi comes from an **ESP32 on its SPI bus**, running Espressif's
 [ESP-Hosted-NG](https://github.com/espressif/esp-hosted-linux) firmware, so Linux sees an ordinary
 `wlan0`. Used by the countdown apps (AIS ship positions, ride wait times) and for
-network time and ssh.
+network time. There's no ssh: the board is reached only over USB and its serial console.
 
 **Memory:** WiFi costs about 4 MB of the Nano's 32 MB (the network stack and `cfg80211` built into the
 kernel, and the driver's buffers, none of it given back), and a countdown app alone uses about
@@ -56,7 +56,7 @@ the driver (`reset-gpios`, `handshake-gpios`, `data-ready-gpios`, `spi-max-frequ
 ## On the board
 
 `S35wifi` starts it all in the background (`/var/log/wifi.log`): the driver, then wpa_supplicant,
-DHCP, network time and ssh. Networks are saved in `/apps/data/wifi/wpa_supplicant.conf` (on the apps
+DHCP and network time. Networks are saved in `/apps/data/wifi/wpa_supplicant.conf` (on the apps
 partition, so flashing a new base system keeps them). To add one without typing
 the password into anything that logs it:
 

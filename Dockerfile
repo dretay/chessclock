@@ -51,7 +51,10 @@ RUN if [ "$WIFI" = 1 ]; then \
         echo 'BR2_PACKAGE_CA_CERTIFICATES=y' >> .config && \
         make olddefconfig && \
         rm -rf output/build/python3-3*; \
-    else rm -f output/target/etc/init.d/S35wifi output/target/etc/init.d/S50dropbear; fi
+    else rm -f output/target/etc/init.d/S35wifi; fi
+# no ssh server on the board (it used to come with WiFi)
+RUN cd output/target && rm -rf etc/init.d/S50dropbear etc/dropbear usr/sbin/dropbear usr/bin/dropbearkey \
+        usr/bin/dropbearconvert usr/bin/dbclient usr/bin/scp
 
 # Rebuild the kernel from a freshly unpacked source tree: the base image may
 # hold a different kernel version, and kernel patches are only applied when

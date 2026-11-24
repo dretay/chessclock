@@ -1,16 +1,12 @@
 #!/bin/sh
 # Lays out the countdown runtime as an app folder (/apps/countdown; see docs/apps.md): install.sh DEST
-# CC: the board's C compiler (arm-linux-gcc from the Buildroot build), for the drawing library.
+# (It runs on the system package, /apps/system: the drawing library, Settings, the picker.)
 # Used by tools/apps/layout.py (the SD card image, deploy, pack).
 set -e
 [ -n "$1" ] || { echo "usage: $0 DEST" >&2; exit 1; }
 SRC=$(cd "$(dirname "$0")" && pwd)
 DEST=$1
 rm -rf "$DEST"
-mkdir -p "$DEST/fx" "$DEST/ui"
-# the drawing library, the countdown and Settings, the pre-drawn text, the defaults
-${CC:-arm-linux-gcc} -O2 -Wall -shared -fPIC -o "$DEST/fx/libvacfx.so" "$SRC/fx/vacfx.c" -lz
-${CC:-arm-linux-gcc} -O2 -Wall -o "$DEST/splashanim" "$SRC/fx/splashanim.c" -lm     # (the loading dots)
-cp "$SRC"/vacation.py "$SRC"/vacation_*.py "$SRC/apps.py" "$SRC/countdown.conf" "$SRC/app.json" "$SRC/API" "$DEST/"
-cp "$SRC/launch" "$SRC/pick" "$SRC/picker.py" "$DEST/" && chmod 755 "$DEST/launch" "$DEST/pick"
-cp "$SRC/ui/ui.bin.gz" "$SRC/fonts/OFL.txt" "$DEST/ui/"
+mkdir -p "$DEST"
+cp "$SRC/vacation.py" "$SRC/apps.py" "$SRC/countdown.conf" "$SRC/app.json" "$SRC/API" "$DEST/"
+cp "$SRC/launch" "$DEST/" && chmod 755 "$DEST/launch"

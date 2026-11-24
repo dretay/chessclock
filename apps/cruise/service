@@ -1,7 +1,8 @@
 #!/bin/sh
-# The cruise app's background job: live ship positions from AIS (ais.py) into $APP_DATA/ships.csv
-# for the fleet map. /etc/init.d/S99app runs it beside the app (in this folder, with APP_DATA set);
-# with no WiFi in the kernel it just sleeps. Needs an aisstream.io key in $APP_DATA/ais.key: until
-# then it just waits.
+# The cruise app's background job: live ship positions from AIS into $APP_DATA/ships.csv for the fleet
+# map. /etc/init.d/S99app runs it beside the app (in this folder, with APP_DATA set); with no WiFi in the
+# kernel it just sleeps. aisd (aisd.c) holds the connection aisstream needs, in a couple of MB; ais.py,
+# the same in Python (about 9 MB), if aisd isn't here. Needs an aisstream.io key in $APP_DATA/ais.key.
 [ -d /sys/class/ieee80211 ] || [ -n "$APP_NETWORK" ] || exec sleep 2147483647   # (no WiFi: nothing to fetch with; APP_NETWORK: the previewer)
+[ -x ./aisd ] && exec ./aisd
 exec python3 -u ais.py

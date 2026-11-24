@@ -1,0 +1,5 @@
+#!/bin/sh
+# Device settings' stand-in in the desktop previewer (tools/preview/preview.py): an app's Settings >
+# Device › runs this (APP_DEVICE), and the previewer stops the app, shows the real device settings
+# (apps/system/device.py), and starts the app again.
+touch "${PREVIEW_DIR:?}/device-request"

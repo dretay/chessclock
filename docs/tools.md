@@ -32,7 +32,7 @@ fonts are copied once from the board's build tree (`tools/build/build.sh` first,
 
 They use the board's shell over a serial line: the board's own micro-USB port plugged into the Mac
 when it is (Linux's USB serial gadget: by far the fastest, and picked by itself), otherwise a 3.3 V
-USB-serial adapter on the Nano's UART0 (115200 baud; login `root` / `root`). `CLOCK_SERIAL` picks a
+USB-serial adapter on the Nano's UART0 (115200 baud). Both give a root shell straight away (no password: physical access is the trust). `CLOCK_SERIAL` picks a
 port by name.
 
 | Tool | |
@@ -73,8 +73,9 @@ a local Stable Diffusion detail pass), the pre-drawn text (`build_ui.py`). Its
 ## Apps — `tools/apps/`
 
 `layout.py NAME [DEST]` (an app's files as they go on the board: the one rule the image, deploy and
-packing share), `pack.py NAME [--key KEY]` (its tarball and signed statement, for `modinstall`) and
-`keygen.sh` (the signing key, once): [apps](apps.md).
+packing share), `pack.py NAME [--key KEY]` (its tarball and signed statement, for `modinstall`),
+`publish.py NAME ...` (pack, sign, and publish to the catalog on GitHub Releases) and `keygen.sh` (the
+signing key, once): [apps](apps.md).
 
 ## WiFi — `tools/wifi/`
 

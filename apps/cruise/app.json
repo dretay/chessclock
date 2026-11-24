@@ -1,10 +1,11 @@
 {
   "id": "cruise",
   "name": "Disney cruise",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "runtime": "countdown",
   "api": 2,
   "exclude": [
+    "aisd.c",
     "map/preview_*.png",
     "scenes/*/SOURCES.md",
     "scenes/*/preview.png",
@@ -50,5 +51,12 @@
     "date_label": "Sail date",
     "after": "Already sailed",
     "time": "16:00"
-  }
+  },
+  "native": [
+    {
+      "src": "aisd.c",
+      "out": "aisd",
+      "libs": "-lssl -lcrypto"
+    }
+  ]
 }

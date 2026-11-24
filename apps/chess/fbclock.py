@@ -64,6 +64,11 @@ DATA = os.environ.get("APP_DATA", "/apps/data/chess")
 GAMES_FILE = os.environ.get("FBCLOCK_GAMES", os.path.join(HERE, "games.pgn"))
 SPLASH_DIR = os.path.join(HERE, "splash")   # boot splash images, see splash_name()
 CONFIG_FILE = os.environ.get("FBCLOCK_CONF", os.path.join(DATA, "fbclock.conf"))
+# the device's own settings, shared by every app (the touch calibration, brightness; see docs/apps.md):
+# read from there first, and saved there
+DEVICE_FILE = os.path.join(os.path.dirname(os.path.abspath(DATA)), "device.conf")
+DEVICE_KEYS = ("TOUCH_X_MIN", "TOUCH_X_MAX", "TOUCH_Y_MIN", "TOUCH_Y_MAX", "TOUCH_SWAP_XY", "DAY_BRIGHTNESS",
+               "NIGHT_BRIGHTNESS", "NIGHT_START", "NIGHT_END", "CPU_MHZ", "CATALOG_URL")
 # drawings kept on the SD card so later starts are quicker (pieces, the
 # settings screen); not used for desktop previews
 CACHE_DIR = os.environ.get("FBCLOCK_CACHE", "" if os.environ.get("FBCLOCK_PREVIEW")
@@ -765,7 +770,9 @@ class PipeTouch:
 # ------------------------------------------------------------- time setter
 
 # the app picker (the countdown runtime's; see docs/apps.md): Settings > Apps opens it, when it's there
-PICKER = os.environ.get("APP_PICKER", "/apps/countdown/pick")
+PICKER = os.environ.get("APP_PICKER", "/apps/system/pick")
+# device settings (the system package's: the date and time, brightness, touch, WiFi, shared by every app)
+DEVICE = os.environ.get("APP_DEVICE", "/apps/system/device")
 
 
 class TimeSetter:
@@ -822,6 +829,17 @@ class TimeSetter:
         if os.access(PICKER, os.X_OK):         # top right, above the sliders
             ay0 = int(h * 0.035)
             self.boxes["apps"] = (w - int(w * 0.04) - int(w * 0.16), ay0, w - int(w * 0.04), ay0 + int(h * 0.11))
+        # with the system package's device settings (which set the time and brightness for every app),
+        # this screen is just the clock's own: Device ›, Apps ›, Rotate, Close
+        self.lean = os.access(DEVICE, os.X_OK)
+        if self.lean:
+            self.FIELDS, self.sliders, self.cols = (), {}, []
+            bw, bh, x0 = int(w * 0.5), int(h * 0.13), (w - int(w * 0.5)) // 2
+            keys = ["device"] + (["apps"] if os.access(PICKER, os.X_OK) else []) + ["rotate"]
+            self.boxes = {k: (x0, int(h * 0.20) + i * int(h * 0.17), x0 + bw, int(h * 0.20) + i * int(h * 0.17) + bh)
+                          for i, k in enumerate(keys)}
+            cw = int(w * 0.26)
+            self.boxes["cancel"] = ((w - cw) // 2, int(h * 0.80), (w + cw) // 2, h - int(h * 0.04))
         self.label_font = font(int(h * 0.04))
         self.value_font = font(int(h * 0.11), True)
         self.arrow_font = font(int(h * 0.08))
@@ -832,7 +850,7 @@ class TimeSetter:
 
     def hit(self, x, y, slack=8):
         """The button or slider under (x, y), allowing a little slack."""
-        if "apps" in self.boxes and y < self.top - 4 and x >= self.boxes["apps"][0] - 40:
+        if not self.lean and "apps" in self.boxes and y < self.top - 4 and x >= self.boxes["apps"][0] - 40:
             return "apps"                      # (the whole corner above the time: nothing else is there)
         for key, sl in self.sliders.items():
             x0, y0, x1, y1 = sl["track"]
@@ -900,6 +918,9 @@ class TimeSetter:
         d.rounded_rectangle((0, 0, img.width - 1, img.height - 1), radius=12, fill=fill)
         if isinstance(key, tuple):
             label, fnt = ("▲" if key[0] == "up" else "▼"), self.arrow_font
+        elif self.lean:
+            label, fnt = {"device": "Device settings", "apps": "Apps", "rotate": "Rotate screen",
+                          "cancel": "Close"}.get(key, key.capitalize()), self.button_font
         else:
             label, fnt = key.capitalize(), self.button_font
         d.text((img.width / 2, img.height / 2), label, font=fnt, fill=colour, anchor="mm")
@@ -954,9 +975,10 @@ class TimeSetter:
                        font=self.label_font, fill=TEXT_DIM, anchor="ms")
                 part, px, py = self.render_value(i)
                 img.paste(part, (px - x0, py))
-        colon_x = (self.cols[0] + self.col_w + self.cols[1]) / 2 - x0
-        d.text((colon_x, self.top + self.btn_h + self.val_h / 2), ":", font=self.value_font,
-               fill=TEXT, anchor="mm")
+        if self.cols:
+            colon_x = (self.cols[0] + self.col_w + self.cols[1]) / 2 - x0
+            d.text((colon_x, self.top + self.btn_h + self.val_h / 2), ":", font=self.value_font,
+                   fill=TEXT, anchor="mm")
         for key, box in self.boxes.items():
             if x0 <= box[2] and box[0] <= x1:
                 part, px, py = self.render_button(key)
@@ -1096,14 +1118,15 @@ class Touch:
         self.pos = (0, 0, 0, 0)
         cfg = {"TOUCH_X_MIN": 0, "TOUCH_X_MAX": 4095, "TOUCH_Y_MIN": 0, "TOUCH_Y_MAX": 4095,
                "TOUCH_SWAP_XY": 0}
-        try:
-            with open(CONFIG_FILE) as f:
-                for line in f:
-                    k, _, v = line.partition("=")
-                    if k.strip() in cfg:
-                        cfg[k.strip()] = int(v.strip())
-        except (OSError, ValueError):
-            pass
+        for path in (CONFIG_FILE, DEVICE_FILE):    # (the device's calibration, if it has one, wins)
+            try:
+                with open(path) as f:
+                    for line in f:
+                        k, _, v = line.partition("=")
+                        if k.strip() in cfg:
+                            cfg[k.strip()] = int(v.strip())
+            except (OSError, ValueError):
+                pass
         self.cfg = cfg
 
     @classmethod
@@ -1262,8 +1285,18 @@ def write_splash(path, width, height, bpp, rotated):
 
 
 def read_setting(key, default=None):
+    """A setting: a device one (DEVICE_KEYS) from device.conf if it's there, else from the app's file."""
+    if key in DEVICE_KEYS:
+        v = _read_setting(DEVICE_FILE, key)
+        if v is not None:
+            return v
+    v = _read_setting(CONFIG_FILE, key)
+    return default if v is None else v
+
+
+def _read_setting(path, key, default=None):
     try:
-        with open(CONFIG_FILE) as f:
+        with open(path) as f:
             for line in f:
                 k, _, v = line.partition("=")
                 if k.strip() == key:
@@ -1278,11 +1311,21 @@ def save_setting(key, value):
 
 
 def save_settings(values):
+    """Save settings: the device's (DEVICE_KEYS) in device.conf, the rest in the app's file."""
+    mine = {k: v for k, v in values.items() if k not in DEVICE_KEYS}
+    device = {k: v for k, v in values.items() if k in DEVICE_KEYS}
+    if mine:
+        _save_settings(CONFIG_FILE, mine)
+    if device:
+        _save_settings(DEVICE_FILE, device)
+
+
+def _save_settings(path, values):
     """Set KEY=value lines in the config file, keeping everything else in it.
     Written to a new file, flushed to the SD card, then swapped in, so losing
     power part-way can't leave a half-written config."""
     try:
-        with open(CONFIG_FILE) as f:
+        with open(path) as f:
             lines = f.read().splitlines()
     except OSError:
         lines = []
@@ -1294,14 +1337,14 @@ def save_settings(values):
                 break
         else:
             lines.append(line)
-    tmp = CONFIG_FILE + ".tmp"
+    tmp = path + ".tmp"
     try:
         with open(tmp, "w") as f:
             f.write("\n".join(lines) + "\n")
             f.flush()
             os.fsync(f.fileno())
-        os.replace(tmp, CONFIG_FILE)
-        fd = os.open(os.path.dirname(CONFIG_FILE) or ".", os.O_RDONLY)
+        os.replace(tmp, path)
+        fd = os.open(os.path.dirname(path) or ".", os.O_RDONLY)
         try:
             os.fsync(fd)
         finally:
@@ -1805,7 +1848,8 @@ class App:
         fb = self.fb
         mem = getattr(fb, "mem", None)
         plain = mem is not None and fb.stride == fb.width * fb.bytes_pp
-        name = "settings%s-%dx%dx%d-%d.raw" % ("-apps" if "apps" in self.setter.boxes else "", fb.width, fb.height, fb.bpp,
+        name = "settings%s%s-%dx%dx%d-%d.raw" % ("-apps" if "apps" in self.setter.boxes else "", "-lean" if self.setter.lean else "",
+                                                fb.width, fb.height, fb.bpp,
                                                getattr(fb, "rotated", False))
         size = fb.stride * fb.height if plain else 0
         if plain and self.show_cached(cache_path(name), size):
@@ -1894,11 +1938,11 @@ class App:
             self.set_rotation(not self.fb.rotated)
             self.draw_setter()
             return
-        if key == "apps":                      # the app picker: it stops this app, and starts the one picked
-            print("fbclock: opening the app picker", flush=True)
+        if key in ("apps", "device"):          # the app picker, device settings: they stop this app, and start one
+            print("fbclock: opening %s" % ("the app picker" if key == "apps" else "device settings"), flush=True)
             import subprocess                  # (only now: memory)
             try:
-                subprocess.Popen([PICKER], start_new_session=True, stdin=subprocess.DEVNULL,
+                subprocess.Popen([PICKER if key == "apps" else DEVICE], start_new_session=True, stdin=subprocess.DEVNULL,
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except OSError as e:
                 print("fbclock: no app picker: %s" % e, flush=True)

@@ -40,18 +40,10 @@ import vacation_touch as touch
 FPS = 25
 HOLD_SECS = 2.0       # press and hold this long for Settings
 TAP_SECS = 0.3        # (the bar only appears after this, so a passing tap shows nothing)
+SWITCH_SECS = 0.8     # a press let go sooner than this is a tap: the next screen (the app's own, or the countdown)
 
 
-def read_conf(path):
-    conf = {}
-    try:
-        for line in open(path):
-            line = line.split("#", 1)[0].strip()
-            if "=" in line:
-                k, v = line.split("=", 1); conf[k.strip()] = v.strip()
-    except OSError:
-        pass
-    return conf
+read_conf = apps.read_conf
 
 
 def smooth(a, b, v):
@@ -75,6 +67,32 @@ FADE_SECS = 0.6                                     # countdown <-> a module's s
 # the app's settings and saved state (S99app sets it to /apps/data/<app> on the board)
 DATA = os.environ.get("APP_DATA")
 
+class Backlight:
+    """The panel's backlight (Linux's backlight interface: PWM on the board), as a percentage on the same
+    curve as the chess clock's (level = max x p^2 / 10000: even steps look even). Nothing on a desktop."""
+
+    def __init__(self):
+        self.path, self.max, self.level = None, 0, None
+        base = "/sys/class/backlight"
+        for d in sorted(os.listdir(base)) if os.path.isdir(base) else []:
+            try: self.max = int(open(os.path.join(base, d, "max_brightness")).read()); self.path = os.path.join(base, d, "brightness"); break
+            except (OSError, ValueError): pass
+
+    def set(self, percent):
+        if not self.path: return
+        level = max(1, round(self.max * percent * percent / 10000))
+        if level == self.level: return
+        try:
+            with open(self.path, "w") as f: f.write(str(level))
+            self.level = level
+        except OSError: pass
+
+
+def minutes(text, default):
+    try: h, m = (int(v) for v in text.split(":")); return h * 60 + m
+    except (ValueError, AttributeError): return default
+
+
 def days_left(sail, today):
     return max(0, (sail - today).days)
 
@@ -86,14 +104,16 @@ class App:
         app_id = json.load(open(apps.manifest_path(app_dir) or os.path.join(app_dir, "app.json")))["id"]
         self.module = apps.App(app_dir, DATA or os.path.join("/apps/data", app_id))   # the trip: scene, screens, data
         self.conf_path = os.environ.get("VACATION_CONF") or apps.settings_file(self.module)
-        self.conf = read_conf(self.conf_path)
+        # the device's settings (touch calibration, brightness, CPU): shared by every app
+        self.device_path = None if os.environ.get("VACATION_CONF") else apps.ensure_device(self.module, self.conf_path)
+        self.conf = apps.read_settings(self.conf_path, self.device_path)
         mhz = self.conf.get("CPU_MHZ", "").strip()                      # (the CPU clock: CPU_MHZ=600, say)
         if mhz.isdigit() and not os.environ.get("VACATION_SIM_CLOCK") and shutil.which("setcpu"): os.system("setcpu %s" % mhz)
         self.theme_dir = os.environ.get("VACATION_THEME_DIR") or self.module.scene_dir(self.conf)
         self.screens = self.module.screens()
-        self.ui_dir = os.environ.get("VACATION_UI_DIR", os.path.join(here, "ui"))
+        self.ui_dir = os.environ.get("VACATION_UI_DIR", os.path.join(apps.SYSTEM, "ui"))     # (the system package's)
         self.scene = json.load(open(os.path.join(self.theme_dir, "theme.json")))
-        lib = os.environ.get("VACATION_LIB", os.path.join(here, "fx", "libvacfx.so"))
+        lib = os.environ.get("VACATION_LIB", os.path.join(apps.SYSTEM, "fx", "libvacfx.so"))
         self.fx = ctypes.CDLL(lib)
         self.fx.vfx_selftest.restype = ctypes.c_uint
         self.fx.vfx_stats.restype = ctypes.c_char_p
@@ -110,9 +130,13 @@ class App:
         stacks = s.get("stacks", [[-50, -50], [-50, -50]])
         self.fx.vfx_scene(s["horizon"], *stacks[0], *stacks[1], int(s.get("smoke_scale", 0.8) * 256), int(s.get("fireworks_scale", 0.85) * 256),
                           *s.get("bow", [799, 479]), *s.get("stern", [0, 479]), c["center_x"], c["top"], c["gap"], c["label_gap"])
+        if c.get("scale3"): self.fx.vfx_cards_scale3(int(c["scale3"] * 256))     # (three digits: smaller cards)
         tube = [v for pt in s.get("tube", []) for v in pt]
         mast = s.get("mast", [-1, 0])
         self.fx.vfx_ambient(mast[0], mast[1], int(s.get("ambient_scale", 1.0) * 256), len(tube) // 2, (ctypes.c_int * max(1, len(tube)))(*tube))
+        self.backlight = Backlight()
+        self.bl_shown, self.bl_at, self.bright_preview = None, 0.0, None
+        self.screen_press, self.want_settings, self.screen_tapped = None, False, False
         self.load_conf()
         self.fixed_hour = float(os.environ["VACATION_HOUR"]) if "VACATION_HOUR" in os.environ else None
         self.daylapse = float(os.environ.get("VACATION_DAYLAPSE", "0"))
@@ -150,6 +174,13 @@ class App:
         except ValueError: self.fw_every = 900
         try: h, m = (int(v) for v in c.get("FIREWORKS_SHOW_TIME", "21:00").split(":")); self.show_at = h + m / 60
         except ValueError: self.show_at = 21.0
+        # the backlight: day and night brightness (percent) and when night is (the device's settings)
+        try: self.day_bright = max(5, min(100, int(c.get("DAY_BRIGHTNESS", "100"))))
+        except ValueError: self.day_bright = 100
+        try: self.night_bright = max(5, min(100, int(c.get("NIGHT_BRIGHTNESS", "25"))))
+        except ValueError: self.night_bright = 25
+        self.night_start = minutes(c.get("NIGHT_START"), 21 * 60)
+        self.night_end = minutes(c.get("NIGHT_END"), 7 * 60)
         # the module's screens (the cruise's fleet map), in turn with the countdown: each for its
         # seconds setting, while its on/off setting isn't 0
         try: self.countdown_secs = float(c.get("COUNTDOWN_SECS", "60"))
@@ -165,8 +196,41 @@ class App:
     # time: real, or a preview's frame-by-frame clock
     def now(self): return self.clock if self.sim else time.monotonic()
 
+    def screen_touch(self, now):
+        """For an app's screen (the wait-times board, the fleet map): "tap" when a press is let go (the next
+        screen, or back to the countdown), "hold" once one has lasted HOLD_SECS (Settings, as on the
+        countdown), else None."""
+        tp = self.touch
+        for ev, x, y in (tp.poll(now) if tp else []):
+            if ev == "down": self.screen_press = now
+            elif ev == "up":
+                was, self.screen_press = self.screen_press, None
+                if was is not None: self.screen_tapped = True; return "tap"
+        if self.screen_press is not None and now - self.screen_press >= HOLD_SECS:
+            self.screen_press = None; self.want_settings = True; return "hold"
+        return None
+
+    def is_night(self, t):
+        m = self.hour(t) * 60; a, b = self.night_start, self.night_end
+        return (a <= m < b) if a <= b else (m >= a or m < b)
+
+    def update_backlight(self):
+        """Ease the backlight toward the day or night brightness (over about a minute; at once the first
+        time); Settings > Display previews a level by setting bright_preview."""
+        now = time.monotonic()
+        if now - self.bl_at < 0.25: return
+        dt, self.bl_at = now - self.bl_at, now
+        target = self.bright_preview if self.bright_preview is not None else \
+            self.night_bright if self.is_night(self.now()) else self.day_bright
+        if self.bl_shown is None or self.bright_preview is not None: self.bl_shown = float(target)
+        else:
+            step = 100 / 60 * min(dt, 1.0)
+            self.bl_shown += max(-step, min(step, target - self.bl_shown))
+        self.backlight.set(round(self.bl_shown))
+
     def tick(self):
         """One step of waiting (in a preview: one recorded frame)."""
+        self.update_backlight()
         if self.sim:
             if self.record: self.record.write(open(self.fb_path, "rb").read())
             self.clock += 1.0 / FPS
@@ -264,24 +328,34 @@ class App:
             if tp and total_frames % (1 if self.sim else 2) == 0:
                 for ev, x, y in tp.poll(now):
                     if ev == "down": hold_start = now; print("vacation: press at (%d, %d)" % (x, y), flush=True)
-                    elif ev == "up": hold_start = None; self.fx.vfx_hold(0)
+                    elif ev == "up":
+                        if hold_start is not None and now - hold_start < SWITCH_SECS and self.playlist:
+                            next_map = -1                              # a tap: the app's screen, now
+                        hold_start = None; self.fx.vfx_hold(0)
             if hold_start is not None:
                 k = (now - hold_start - TAP_SECS) / (HOLD_SECS - TAP_SECS)
                 self.fx.vfx_hold(int(max(0.0, min(1.0, k)) * 256) or (1 if k > 0 else 0))
                 if k >= 1:
                     hold_start = None; self.fx.vfx_hold(0)
-                    settings = vacation_settings.Settings(self)
-                    if settings.run():                                     # saved: pick up the new settings
-                        self.conf = read_conf(self.conf_path); self.load_conf(); days = cards = None; last_check = -1e9
-                    if settings.demo: self.start_show(self.now() - (0 if self.sim else start) + 0.5)   # the demo show
-                    continue
+                    self.want_settings = True
+            if self.want_settings:                                     # (held on the countdown, or on a screen)
+                self.want_settings = False
+                settings = vacation_settings.Settings(self)
+                if settings.run():                                         # saved: pick up the new settings
+                    self.conf = apps.read_settings(self.conf_path, self.device_path); self.load_conf(); days = cards = None; last_check = -1e9
+                if settings.demo: self.start_show(self.now() - (0 if self.sim else start) + 0.5)   # the demo show
+                continue
             # the module's next screen, every so often (not in the middle of a fireworks show, or a press)
-            if self.playlist and t >= next_map and not self.show and hold_start is None:
+            # (a tap shows it even during a fireworks show; on its own timer, it waits for the show to end)
+            if self.playlist and t >= next_map and (not self.show or next_map < 0) and hold_start is None:
                 clock0 = 0 if self.sim else start
                 def countdown_frame(): self.fx.vfx_frame(int((self.now() - clock0) * 1000) & 0x3fffffff)
-                cls, secs = self.playlist[self.next_screen % len(self.playlist)]; self.next_screen += 1
                 self.fade(0, countdown_frame)                      # the countdown fades out,
-                cls(self).run(secs)                                # the screen fades in and out by itself,
+                for _ in self.playlist:                            # the screens: each fades in and out by itself;
+                    cls, secs = self.playlist[self.next_screen % len(self.playlist)]; self.next_screen += 1
+                    self.screen_tapped = False
+                    cls(self).run(secs)                            # a tap on one goes to the next, and from the
+                    if not self.screen_tapped or self.want_settings: break    # last back to the countdown
                 self.fade(256, countdown_frame)                    # and the countdown comes back
                 next_map = self.now() - (0 if self.sim else start) + self.countdown_secs
                 frames = busy = 0; last_log = self.now()           # (the frame-rate log is about the countdown only)
@@ -299,14 +373,15 @@ class App:
                     "self-check ok" if ok else "SELF-CHECK FAILED (%d so far): the CPU is making mistakes" % errors), flush=True)
                 if os.environ.get("VACATION_STATS"): print("   ", self.fx.vfx_stats().decode(), flush=True)
                 frames = 0; busy = 0; last_log = now
+            self.update_backlight()
             spare = 1.0 / FPS - (time.monotonic() - now)
             if spare > 0: time.sleep(spare)
         self.fx.vfx_close()
 
 
-# (shared by the countdown apps, so switching between them keeps the time; where it was before apps)
-CLOCK_FILE = os.path.join(os.path.dirname(DATA) if DATA else "/apps/data", "countdown", "clock")
-OLD_CLOCK_FILE = os.path.join(apps.OLD_DATA, "clock")
+# (shared by every app, so switching between them keeps the time; where it was before)
+CLOCK_FILE = os.path.join(os.path.dirname(DATA) if DATA else "/apps/data", "system", "clock")
+OLD_CLOCK_FILES = [os.path.join(os.path.dirname(CLOCK_FILE), "..", "countdown", "clock"), os.path.join(apps.OLD_DATA, "clock")]
 
 
 def stop_splash():
@@ -335,7 +410,7 @@ def save_clock():
 
 def restore_clock():
     saved = 0
-    for f in (CLOCK_FILE, OLD_CLOCK_FILE):
+    for f in [CLOCK_FILE] + OLD_CLOCK_FILES:
         try: saved = max(saved, int(open(f).read().strip()))
         except (OSError, ValueError): pass
     if not saved: return

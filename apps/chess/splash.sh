@@ -12,17 +12,19 @@
 CONF=$APP_DATA/fbclock.conf
 [ -r "$CONF" ] || CONF=fbclock.conf
 
-# the saved settings (the last line for a key wins)
+# the saved settings (the last line for a key wins; the device's brightness, shared by every app, after
+# the clock's own)
 DAY= NIGHT= ROT=
-if [ -r "$CONF" ]; then
+for F in "$CONF" "${APP_DATA%/*}/device.conf"; do
+	[ -r "$F" ] || continue
 	while IFS='=' read -r KEY VALUE; do
 		case "$KEY" in
 			DAY_BRIGHTNESS) DAY=$VALUE ;;
 			NIGHT_BRIGHTNESS) NIGHT=$VALUE ;;
 			ROTATE) ROT=$VALUE ;;
 		esac
-	done < "$CONF"
-fi
+	done < "$F"
+done
 
 # start at the dimmer of the two saved brightness levels (the clock sets the right one once it
 # knows whether it's day or night)

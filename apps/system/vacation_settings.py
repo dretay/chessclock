@@ -31,14 +31,18 @@ def rgb(c): return (c[0] << 16) | (c[1] << 8) | c[2]
 PICKER = os.environ.get("APP_PICKER") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "pick")   # the app picker (picker.py; APP_PICKER: the previewer's)
 
 
+DEVICE = os.environ.get("APP_DEVICE") or os.path.join(os.path.dirname(os.path.abspath(__file__)), "device")   # device settings
+
+
 def has_picker(): return os.access(PICKER, os.X_OK) and not os.environ.get("VACATION_SIM_CLOCK")
 
 
-def open_picker():
-    """Settings > Apps: the picker, in a session of its own (it stops this app, so it mustn't be its child)."""
+def start_system(path):
+    """Settings > Apps or Device: the system screen, in a session of its own (it stops this app, so it
+    mustn't be its child)."""
     import subprocess
-    try: subprocess.Popen([PICKER], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    except OSError as e: print("settings: no app picker: %s" % e, flush=True)
+    try: subprocess.Popen([path], start_new_session=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError as e: print("settings: couldn't start %s: %s" % (path, e), flush=True)
 
 
 def write_conf_value(path, key, value):
@@ -56,8 +60,10 @@ def write_conf_value(path, key, value):
 
 
 class Settings:
-    def __init__(self, app):
-        self.app, self.fx = app, app.fx
+    def __init__(self, app, kind="app"):
+        """kind "app": an app's own Settings (the trip date, fireworks, theme; Device › and Apps ›);
+        "device": the device's (today's date and time, display, WiFi: device.py, Settings > Device ›)."""
+        self.app, self.fx, self.kind = app, app.fx, kind
         c = app.conf
         try: sail = datetime.date.fromisoformat(c.get("TRIP_DATE") or c.get("SAIL_DATE", ""))
         except ValueError: sail = datetime.date.today() + datetime.timedelta(days=100)
@@ -76,14 +82,18 @@ class Settings:
         self.countdown = (mod.meta.get("countdown") or {}) if mod else {}
         self.clock_changed = False
         self.demo = False                  # a fireworks show as soon as Settings closes (Fireworks page)
+        self.bright = [app.day_bright, app.night_bright]   # Display page: day and night brightness (percent)
         self.page = 1; self.pressed = None
         # WiFi (pages 4 and 5)
         self.wpa = None; self.nets = []; self.job = None; self.scanning = False
         self.wifi_state = ("off", ""); self.wifi_msg = ""; self.next_status = 0.0
         self.joining = None                # (ssid, give up at) while connecting
         self.join_ssid = ""; self.typed = ""; self.kb_layer = "letters"; self.kb_shift = False; self.keys = []
+        dev = kind == "device"
+        self.rows1 = L.PAGE1_ROWS_DEVICE if dev else L.PAGE1_ROWS_APP
+        self.b1, self.s1 = (L.PAGE1_BUTTONS_DEVICE, L.PAGE1_SPLITS_DEVICE) if dev else (L.PAGE1_BUTTONS_APP, L.PAGE1_SPLITS_APP)
         self.cols1 = {}
-        for _, top, cols in L.PAGE1_ROWS: self.cols1.update(L.columns(cols, top))
+        for _, top, cols in self.rows1: self.cols1.update(L.columns(cols, top))
         self.cols2 = L.columns(L.PAGE2_ROW_B[2], L.PAGE2_ROW_B[1])
         self.ids = {}; self.txt = Text(self.fx)
 
@@ -214,6 +224,7 @@ class Settings:
     # ---------------------------------------------------------------- pages
     def draw_header(self):
         box = (420, 14, L.W - 20, 62); self.bg(box)
+        if self.kind == "device": return                                  # (no trip: nothing to count)
         n = self.days_left()
         if n > 0:
             suffix = " day to go" if n == 1 else " days to go"
@@ -238,7 +249,8 @@ class Settings:
 
     def draw_button(self, name):
         if name == "apps": x0, y0, x1, y1 = box = L.PAGE1_APPS
-        else: x0, y0, x1, y1 = box = {1: L.PAGE1_BUTTONS, 2: L.PAGE2_BUTTONS, 3: L.PAGE3_BUTTONS, 4: L.WIFI_BUTTONS, 5: L.KB_BUTTONS}[self.page][name]
+        else: x0, y0, x1, y1 = box = {1: self.b1, 2: L.PAGE2_BUTTONS, 3: L.PAGE3_BUTTONS, 4: L.WIFI_BUTTONS, 5: L.KB_BUTTONS,
+                                      6: L.PAGE6_BUTTONS}[self.page][name]
         self.bg((x0 - 2, y0 - 2, x1 + 2, y1 + 2)); hot = self.pressed == name; cx = (x0 + x1) // 2
         if name in ("save", "kb_join"):
             self.round(box, 14, (238, 206, 138) if hot else L.GOLD, 255)
@@ -255,7 +267,7 @@ class Settings:
             self.round(box, 12, (255, 255, 255), 40 if hot else 0, (255, 255, 255), 70)
             if name in ("prev", "next"):
                 self.text("button", "‹" if name == "prev" else "›", cx, y0 + 30, L.IVORY if self.pages() > 1 else L.DIM, "m"); return
-            label = {"calibrate": "Touch", "fireworks": "Fireworks ›", "theme": "Theme ›", "wifi": "WiFi ›", "demo": "Demo show", "apps": "Apps ›",
+            label = {"calibrate": "Touch", "display": "Display ›", "touch": "Calibrate touch", "device": "Device ›", "fireworks": "Fireworks ›", "theme": "Theme ›", "wifi": "WiFi ›", "demo": "Demo show", "apps": "Apps ›",
                      "rescan": "Rescan", "forget": "Forget network"}[name]
             self.text("small", label, cx, y0 + 25, L.DIM, "m")
 
@@ -276,23 +288,51 @@ class Settings:
 
     def show_dim(self): return self.mode not in ("show", "both")
 
+    def bchip_box(self, row, i):
+        y = L.PAGE6_ROWS[row][1]; x = L.CHIP_X0 + i * (L.CHIP_W + L.CHIP_GAP)
+        return (x, y, x + L.CHIP_W, y + L.CHIP_H)
+
+    def draw_bchip(self, row, i):
+        """Display page: a brightness choice (the chosen one gold)."""
+        box = self.bchip_box(row, i); value, label = L.PAGE6_ROWS[row][2][i]
+        on, hot = self.bright[row] == value, self.pressed == ("bchip", row, i)
+        self.under_panel((box[0] - 1, box[1] - 1, box[2] + 1, box[3] + 1))
+        if on: self.round(box, 12, L.GOLD, 255)
+        else: self.round(box, 12, (255, 255, 255), 60 if hot else 18, (255, 255, 255), 70)
+        self.text("chip", label, (box[0] + box[2]) // 2, box[1] + 32, L.DARK if on else L.IVORY, "m")
+
+    def draw_display_page(self):
+        self.text("title", "Display", 36, 58, L.IVORY)
+        self.panel(L.PAGE6_PANEL)
+        for row, (label, y, opts) in enumerate(L.PAGE6_ROWS):
+            self.text("label", label, 40, y + 34, L.IVORY)
+            for i in range(len(opts)): self.draw_bchip(row, i)
+        self.text("small", "brightness", 40, L.PAGE6_ROWS[0][1] + 56, L.DIM)
+        a, b = self.app.night_start, self.app.night_end
+        hm = lambda m: "%d%s%s" % ((m // 60) % 12 or 12, ":%02d" % (m % 60) if m % 60 else "", " AM" if m < 720 else " PM")
+        self.txt.draw("small", "%s to %s" % (hm(a), hm(b)), 40, L.PAGE6_ROWS[1][1] + 56, L.DIM)
+        self.text("small", "every app shares these", L.W // 2, 300, L.DIM, "m")
+        for b in L.PAGE6_BUTTONS: self.draw_button(b)
+
     def draw_page(self):
         self.bg((0, 0, L.W, L.H))
         if self.page == 1:
-            self.text("title", "Settings", 36, 58, L.IVORY)
-            for k, (label, top, _) in enumerate(L.PAGE1_ROWS):
-                if k == 0: label = self.countdown.get("date_label", label)        # the module's: "Sail date", "Park day"
+            self.text("title", "Device" if self.kind == "device" else "Settings", 36, 58, L.IVORY)
+            for label, top, _ in self.rows1:
+                if self.kind == "app": label = self.countdown.get("date_label", label)   # the app's: "Sail date", "Park day"
                 self.panel((20, top, L.W - 20, top + 148)); self.txt.draw("label", label, 40, top + 84, L.IVORY)
-            self.text("small", "date & time", 40, 345, L.DIM)
+                if self.kind == "device": self.text("small", "date & time", 40, top + 109, L.DIM)
             for k in self.cols1: self.draw_col(k)
-            for b in L.PAGE1_BUTTONS: self.draw_button(b)
-            if has_picker(): self.draw_button("apps")
+            for b in self.b1: self.draw_button(b)
+            if self.kind == "app" and has_picker(): self.draw_button("apps")
         elif self.page == 4:
             self.draw_wifi_page()
         elif self.page == 5:
             self.draw_keyboard_page()
         elif self.page == 3:
             self.draw_theme_page()
+        elif self.page == 6:
+            self.draw_display_page()
         else:
             self.text("title", "Fireworks", 36, 58, L.IVORY)
             self.panel(L.PAGE2_PANEL_A)
@@ -312,16 +352,24 @@ class Settings:
     def hit(self, x, y):
         """Generous on purpose: a resistive screen's aim drifts."""
         if self.page == 1:
-            if y >= 372: return next(name for edge, name in L.PAGE1_SPLITS if x < edge)
+            if y >= 372: return next(name for edge, name in self.s1 if x < edge)
             ax0, _, ax1, ay1 = L.PAGE1_APPS
-            if y < ay1 + 12 and ax0 - 12 <= x < ax1 + 12 and has_picker(): return "apps"
-            for _, top, cols in L.PAGE1_ROWS:
+            if self.kind == "app" and y < ay1 + 12 and ax0 - 12 <= x < ax1 + 12 and has_picker(): return "apps"
+            for _, top, cols in self.rows1:
                 if top <= y < top + 148:
                     for c in cols:
                         if c and self.cols1[c[0]][0] - 6 <= x < self.cols1[c[0]][2] + 6:
                             return ("up", c[0]) if y < top + 74 else ("down", c[0])
             return None
         if self.page == 4: return self.hit_wifi(x, y)
+        if self.page == 6:
+            if y >= 382: return "back" if x < 268 else "touch" if x < 532 else "save"
+            x0, y0, x1, y1 = L.PAGE6_PANEL
+            if y0 <= y < y1 and x >= L.CHIP_X0 - 20:
+                row = 0 if y < (L.PAGE6_ROWS[0][1] + L.CHIP_H + L.PAGE6_ROWS[1][1]) // 2 else 1
+                n = len(L.PAGE6_ROWS[row][2]); i = (x - L.CHIP_X0 + L.CHIP_GAP // 2) // (L.CHIP_W + L.CHIP_GAP)
+                return ("bchip", row, max(0, min(n - 1, i)))
+            return None
         if self.page == 5: return self.hit_keyboard(x, y)
         if self.page == 3:
             if y >= 400:
@@ -356,9 +404,11 @@ class Settings:
             self.step(target[1], 1 if target[0] == "up" else -1)
             self.draw_col(target[1], self.page == 2 and self.show_dim())
             if self.page == 1:
-                for k in ("sd", "td"): self.draw_col(k)
+                for k in ("sd", "td"):                                # (a month's length changed: its day too;
+                    if k in self.cols1: self.draw_col(k)              #  only the columns this kind of page has)
             self.draw_header()
         elif isinstance(target, tuple) and target[0] == "chip": self.draw_chip(target[1], target[2])
+        elif isinstance(target, tuple) and target[0] == "bchip": self.draw_bchip(target[1], target[2])
         elif isinstance(target, tuple) and target[0] == "opt": self.draw_opt(target[1])
         elif isinstance(target, tuple) and target[0] == "net": self.draw_net_row(target[1])
         elif isinstance(target, tuple) and target[0] == "key": self.draw_key(target[1])
@@ -393,11 +443,19 @@ class Settings:
                 for k in self.cols2: self.draw_col(k, self.show_dim())
             else: self.draw_chip(target[1], target[2])
             return None
+        if isinstance(target, tuple) and target[0] == "bchip":
+            row, i = target[1], target[2]
+            if again:
+                self.bright[row] = L.PAGE6_ROWS[row][2][i][0]
+                self.app.bright_preview = self.bright[row]               # (see it at once, on the screen itself)
+                for j in range(len(L.PAGE6_ROWS[row][2])): self.draw_bchip(row, j)
+            else: self.draw_bchip(row, i)
+            return None
         if target: self.draw_button(target)
         if not again: return None
         if target in ("save", "cancel"): return target
         if target == "demo": self.demo = not self.demo; self.draw_button("demo"); return None
-        if target == "apps": return "apps"
+        if target in ("apps", "device"): return target
         if target == "fireworks": self.page = 2; self.draw_page()
         elif target == "theme": self.page = 3; self.draw_page()
         elif target in ("prev", "next"):
@@ -407,8 +465,9 @@ class Settings:
         elif target == "forget" and self.wifi_state[0] != "off": self.start_job("forget", lambda w: w.forget())
         elif target == "kb_cancel": self.page = 4; self.draw_page()
         elif target == "kb_join": self.join(self.join_ssid, self.typed)
-        elif target == "back": self.page = 1; self.draw_page()
-        elif target == "calibrate": self.calibrate(); self.draw_page()
+        elif target == "back": self.page = 1; self.app.bright_preview = None; self.draw_page()
+        elif target == "display": self.page = 6; self.draw_page()
+        elif target in ("calibrate", "touch"): self.calibrate(); self.draw_page()
         return None
 
     def run(self):
@@ -444,8 +503,9 @@ class Settings:
             if now - last_touch > IDLE_SECS: result = "cancel"
             app.tick()
         if self.wpa: self.wpa.close()
-        if result == "apps":
-            if not self.opening_apps():                                   # the picker stopped us: leave its screen be
+        app.bright_preview = None                                         # (back to the day or night level)
+        if result in ("apps", "device"):
+            if not self.opening(result):                                  # it stopped us: leave its screen be
                 fx.vfx_ui_close(); return False
             result = "cancel"                                             # (it didn't start: back to the countdown)
         if result == "save": self.save()
@@ -453,16 +513,16 @@ class Settings:
         fx.vfx_ui_close()
         return result == "save"
 
-    def opening_apps(self, wait=30.0):
-        """Settings > Apps: say so, start the picker, and stay as we are until it stops this app (it
-        takes a few seconds to start; S99app's stop sets app.running to False); True if it didn't, after
-        wait seconds."""
-        box = (L.W // 2 - 170, L.H // 2 - 50, L.W // 2 + 170, L.H // 2 + 50)
+    def opening(self, what, wait=30.0):
+        """Settings > Apps or Device: say so, start the system screen (the picker, device settings), and
+        stay as we are until it stops this app (it takes a few seconds to start; S99app's stop sets
+        app.running to False); True if it didn't, after wait seconds."""
+        box = (L.W // 2 - 200, L.H // 2 - 50, L.W // 2 + 200, L.H // 2 + 50)
         self.round(box, 18, (8, 14, 30), 240, L.GOLD, 160)
-        self.text("label", "Opening apps...", L.W // 2, box[1] + 50, L.IVORY, "m")
+        self.text("label", "Opening apps..." if what == "apps" else "Opening device settings...", L.W // 2, box[1] + 50, L.IVORY, "m")
         self.text("small", "one moment", L.W // 2, box[1] + 78, L.DIM, "m")
         self.fx.vfx_ui_flush()
-        open_picker()
+        start_system(PICKER if what == "apps" else DEVICE)
         until = self.app.now() + wait
         while self.app.running and self.app.now() < until: self.app.tick()
         return self.app.running
@@ -472,7 +532,8 @@ class Settings:
         box = (L.W // 2 - 170, L.H // 2 - 50, L.W // 2 + 170, L.H // 2 + 50)
         self.round(box, 18, (8, 14, 30), 240, L.GOLD, 160)
         self.text("label", "Saved" if saved else "No changes", L.W // 2, box[1] + 50, L.GOLD if saved else L.IVORY, "m")
-        self.text("small", "fireworks!" if self.demo else "back to the countdown", L.W // 2, box[1] + 78, L.DIM, "m")
+        self.text("small", "fireworks!" if self.demo else "back to the app" if self.kind == "device" else "back to the countdown",
+                  L.W // 2, box[1] + 78, L.DIM, "m")
         self.fx.vfx_ui_flush()
         until = self.app.now() + 0.7
         while self.app.now() < until: self.app.tick()
@@ -715,7 +776,7 @@ class Settings:
             x_min = (ax + dx) / 2 - 60 * px; y_min = (ay + by) / 2 - 60 * py
             cal = {"TOUCH_X_MIN": round(x_min), "TOUCH_X_MAX": round(x_min + L.W * px), "TOUCH_Y_MIN": round(y_min),
                    "TOUCH_Y_MAX": round(y_min + L.H * py), "TOUCH_SWAP_XY": int(swap)}
-            for key, v in cal.items(): write_conf_value(app.conf_path, key, v)
+            for key, v in cal.items(): write_conf_value(app.device_path or app.conf_path, key, v)   # (every app's)
             tp.cfg.update(cal)
             print("settings: touch calibrated:", cal, flush=True)
         self.draw_target(3, "Calibrated" if ok else "That didn't look right: nothing changed")
@@ -725,6 +786,8 @@ class Settings:
     # ---------------------------------------------------------------- saving
     def save(self):
         v, path = self.v, self.app.conf_path
+        if self.kind == "device":                                         # today's date and time, the display
+            self.save_device(); print("settings: saved", flush=True); return
         write_conf_value(path, "TRIP_DATE", "%04d-%02d-%02d" % (v["sy"], v["sm"], v["sd"]))
         write_conf_value(path, "FIREWORKS_MODE", self.mode)
         write_conf_value(path, "FIREWORKS_EVERY_MIN", self.rate)
@@ -732,9 +795,16 @@ class Settings:
             val = "|".join(sorted(self.theme_pick)) if self.theme.get("type") == "many" else next(iter(self.theme_pick), "")
             write_conf_value(path, self.theme["key"], val)
         write_conf_value(path, "FIREWORKS_SHOW_TIME", "%02d:%02d" % (v["fh"] % 12 + (12 if v["fa"] else 0), v["fm"]))
+        print("settings: saved", flush=True)
+
+    def save_device(self):
+        """The device's settings (every app's): the brightness (device.conf), and the clock if it was changed."""
+        v = self.v
+        if self.bright != [self.app.day_bright, self.app.night_bright]:
+            dev = self.app.device_path or self.app.conf_path
+            write_conf_value(dev, "DAY_BRIGHTNESS", self.bright[0]); write_conf_value(dev, "NIGHT_BRIGHTNESS", self.bright[1])
         if self.clock_changed:
             h = v["hh"] % 12 + (12 if v["ap"] else 0)
             stamp = "%04d-%02d-%02d %02d:%02d:00" % (v["ty"], v["tm"], v["td"], h, v["mi"])
             if self.app.sim: print("settings: (preview) would set the clock to", stamp, flush=True)
             else: os.system("date -s '%s' >/dev/null" % stamp); self.app.save_clock()
-        print("settings: saved", flush=True)

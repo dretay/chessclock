@@ -20,17 +20,31 @@ a defaults.conf (its own settings' first values).
 import importlib.util, json, os, shutil, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+SYSTEM = os.environ.get("SYSTEM_DIR") or os.path.join(os.path.dirname(HERE), "system")   # (the system package: /apps/system)
+if SYSTEM not in sys.path: sys.path.insert(0, SYSTEM)
+from sysapps import DEVICE_CONF, DEVICE_KEYS, read_conf, device_path, read_settings, manifest_path, installed   # noqa: E402
+
 API = 2                                  # the app.json "api" this runtime understands (also in the API file)
 CONF = "countdown.conf"                  # each app's settings, in its APP_DATA
 OLD_DATA = "/apps/data/vacation"         # where every trip's settings and data were before apps
 APP_KEYS = ("MODULE",)                   # settings that meant something only before apps
 
 
-def manifest_path(app_dir):
-    for name in ("app.json", "module.json"):
-        p = os.path.join(app_dir, name)
-        if os.path.isfile(p): return p
-    return None
+def ensure_device(app, conf_path):
+    """Make device.conf the first time: the touch calibration and CPU clock from this app's settings,
+    the brightness from the chess clock's (it had the only brightness settings)."""
+    path = device_path(app.data_dir)
+    if os.path.exists(path): return path
+    mine, chess = read_conf(conf_path), read_conf(os.path.join(os.path.dirname(path), "chess", "fbclock.conf"))
+    lines = ["# The device's own settings, shared by every app (Settings > Display in a countdown app;",
+             "# the chess clock's brightness sliders). KEY=VALUE lines."]
+    for k in DEVICE_KEYS:
+        v = mine.get(k) if k.startswith("TOUCH_") or k == "CPU_MHZ" else chess.get(k)
+        if v not in (None, ""): lines.append("%s=%s" % (k, v))
+    with open(path + ".tmp", "w") as f: f.write("\n".join(lines) + "\n")
+    os.replace(path + ".tmp", path)
+    print("countdown: device settings started in %s" % path, flush=True)
+    return path
 
 
 class App:
@@ -108,19 +122,3 @@ def settings_file(app, old_data=OLD_DATA):
     return path
 
 
-def installed(root="/apps"):
-    """Every app in root that can be started (has a run), for the picker: [(id, name, folder)], by name."""
-    out = []
-    for d in sorted(os.listdir(root)) if os.path.isdir(root) else []:
-        p = os.path.join(root, d)
-        if d.startswith(".") or not os.access(os.path.join(p, "run"), os.X_OK): continue
-        name = d
-        mp = manifest_path(p)
-        if mp:
-            try:
-                meta = json.load(open(mp))
-                if meta.get("kind") == "runtime": continue
-                name = meta.get("name", d)
-            except (OSError, ValueError): pass
-        out.append((d, name, p))
-    return sorted(out, key=lambda a: a[1].lower())

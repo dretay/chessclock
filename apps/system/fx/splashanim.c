@@ -64,7 +64,10 @@ int main(int argc, char **argv) {
 
     /* the patch: the dots and a pixel around them, clipped; what's under it, kept */
     int x0 = cx - (int)R - 2, x1 = cx + (DOTS - 1) * GAP + (int)R + 3, y0 = cy - (int)R - 2, y1 = cy + (int)R + 3;
-    if (x0 < 0) x0 = 0; if (y0 < 0) y0 = 0; if (x1 > w) x1 = w; if (y1 > h) y1 = h;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > w) x1 = w;
+    if (y1 > h) y1 = h;
     if (x1 <= x0 || y1 <= y0) return 1;
     const int pw = x1 - x0, ph = y1 - y0;
     uint8_t *under = malloc((size_t)pw * ph * 4);

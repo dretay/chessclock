@@ -34,8 +34,29 @@ pixel format, using only shell built-ins (starting programs is slow on this CPU)
 
 **The CPU clock** is 600 MHz, set at the start of boot by `S00app` (the F1C100s's own is 408 MHz;
 600 ran cleanly in testing, and the countdown's log reports a `self-check` once a minute). For
-another speed, put its MHz (a multiple of 24) in `/apps/data/cpu_mhz`; `setcpu MHZ` changes it until
-the next reboot, and `devmem 0x01C20000` shows it (24 MHz x (bits 8-12, plus 1)).
+another speed, set `CPU_MHZ` (a multiple of 24) in the device's settings, `/apps/data/device.conf`;
+`setcpu MHZ` changes it until the next reboot, and `devmem 0x01C20000` shows it (24 MHz x (bits 8-12,
+plus 1)).
+
+**Security.** No network logins: the board has no ssh server (not even in the WiFi build), and root has
+no usable password. The consoles (UART0, and the micro-USB port as a USB serial port) give a root shell
+straight away: whoever can plug a cable into the board can use it, as with any appliance. Apps install
+only through `modinstall` with a trusted signature, or over USB by the developer; `app lock` goes
+further and runs only signed apps ([apps](apps.md)).
+
+**Surviving power cuts and hangs.** The base system is mounted read-only (`ro` in the boot script's
+kernel arguments, and nothing remounts it), so pulling the plug can't damage it; `rw` makes it writable
+for changes by hand, `ro` (or a reboot) undoes that. What it used to write lives on the apps partition,
+which stays writable (apps install while it runs): WiFi networks (`/apps/data/wifi`), the random seed
+(`/apps/data/system/seedrng`); logs, `/tmp` and `/run` are in memory. The hardware watchdog
+(`S01watchdog`: BusyBox's `watchdog`, fed every 4 s) reboots the board if the kernel hangs or the
+system is too starved to run it (within 16 s), and `panic=5` reboots after a kernel panic; S99app
+restarts an app that exits.
+
+**The device's settings**, shared by every app: `/apps/data/device.conf` (touch calibration,
+`DAY_BRIGHTNESS`, `NIGHT_BRIGHTNESS` (percent), `NIGHT_START`, `NIGHT_END` (HH:MM, default 21:00 to
+07:00), `CPU_MHZ`, `CATALOG_URL`). Settings > Display in a countdown app sets the brightness and
+calibrates touch; the chess clock's sliders set the brightness too.
 
 **The apps** run as `/etc/init.d/S99app` starts them (`run`, restarted if it exits; and an
 optional background `service`): [apps](apps.md).

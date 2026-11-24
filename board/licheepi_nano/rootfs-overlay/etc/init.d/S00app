@@ -5,15 +5,19 @@
 # as early as possible.
 #
 # The CPU clock: 600 MHz (the F1C100s's own is 408; 600 ran cleanly in testing, and the countdown's
-# log reports a "self-check" each minute), or the MHz in /apps/data/cpu_mhz (a multiple of 24;
-# 408 for the chip's own). Set before the splash, so the rest of the boot is quicker too.
+# log reports a "self-check" each minute), or CPU_MHZ in the device's settings, /apps/data/device.conf
+# (a multiple of 24; 408 for the chip's own). Set before the splash, so the rest of the boot is quicker.
+# Also makes the folders the read-only base system keeps its few writable things in (/apps/data/system).
 #
 
 case "$1" in
 	start)
 		mount -t ext4 -o noatime /dev/mmcblk0p3 /apps 2>/dev/null
+		mkdir -p /apps/data/system/seedrng
 		MHZ=600
-		[ -r /apps/data/cpu_mhz ] && read -r MHZ < /apps/data/cpu_mhz
+		if [ -r /apps/data/device.conf ]; then
+			while IFS='=' read -r KEY VALUE; do [ "$KEY" = CPU_MHZ ] && [ -n "$VALUE" ] && MHZ=$VALUE; done < /apps/data/device.conf
+		fi
 		case "$MHZ" in [1-9][0-9][0-9]) setcpu "$MHZ" >/dev/null ;; esac
 		A=
 		[ -r /apps/current ] && read -r A < /apps/current

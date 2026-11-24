@@ -18,6 +18,7 @@ image: `tools/board/deploy.py` puts it on the board, signed or not. The image co
 | `castle` | [apps/castle](../apps/castle) | the Magic Kingdom countdown, with live ride waits ([countdown apps](countdown.md)) |
 | `cruise` | [apps/cruise](../apps/cruise) | the Disney cruise countdown, with the fleet map and live AIS ([countdown apps](countdown.md)) |
 | `countdown` | [apps/countdown](../apps/countdown/README.md) | the runtime the countdown apps run on (never started by itself) |
+| `system` | `apps/system` | what every app shares: the drawing library, Settings' pages, **Device settings** (date and time, display, touch, WiFi), the app picker and Get apps; the countdown runtime runs on it, and the chess clock uses its screens |
 
 ## On the board
 
@@ -40,9 +41,14 @@ image: `tools/board/deploy.py` puts it on the board, signed or not. The image co
 | `app log` | follow its log |
 | `modinstall APP.tar.gz` | check a signed app and install it (below) |
 
-**The app picker** (Settings > Apps in every app; `/apps/countdown/pick`) shows every installed app
+**Device settings** (Settings > Device › in every app; `/apps/system/device`) are the device's, shared
+by every app: today's date and time, Display (day and night brightness; Calibrate touch) and WiFi. An
+app's own Settings keep only its own (a countdown's trip date, fireworks and theme; the chess clock's
+rotation).
+
+**The app picker** (Settings > Apps in every app; `/apps/system/pick`) shows every installed app
 that has a `run`, with its `icon.rgb.gz` and name; a tap does `app NAME`. It's the countdown runtime's,
-so the chess clock shows its Apps button only when that's installed.
+so the chess clock shows its Apps and Device buttons only when the system package is installed.
 
 ## What an app is
 
@@ -122,8 +128,29 @@ and the ways to get a bad one in.
 
 **What signing doesn't do:** an app is a program running as root. The signature proves who made it
 and that it wasn't changed; it doesn't limit what it can do. That's the right trade while every app
-is yours. **Not done yet:** a catalog (a signed index of apps to download, e.g. from GitHub releases),
-installing from Settings over WiFi, and refusing unsigned apps.
+is yours.
+
+**Locking to signed apps:** `app lock` on the board (`/apps/data/locked`): from then on S99app starts
+only an app whose `.signature` checks out against the trusted keys, and its runtime's
+(`modinstall --verify-installed`), else the first one that does; the picker shows only those;
+`deploy.py` without `--signed` refuses. `app unlock` undoes it; `app` lists which apps are signed.
+
+## The catalog (Get apps)
+
+```sh
+brew install gh && gh auth login                 # once: the GitHub CLI
+tools/apps/publish.py countdown castle cruise chess
+```
+
+`publish.py` packs and signs each app, makes a GitHub release `ID-VERSION` with its tarball and
+`.sig` on this repository (refusing a version that's already published: bump app.json's), and updates
+the catalog: `catalog.json` (each app's latest version and where to get it), signed the way an app is
+(`catalog.json.sig`), on the release `catalog`. On the board, with WiFi: Settings > Apps > **Get
+apps ›** downloads the catalog, checks it with `modinstall` (signed by a trusted key, unchanged), and
+lists each app with Install, Update or Installed; a tap downloads the app (its runtime first if it's
+missing or too old) and installs it with `modinstall`, which checks it again. `CATALOG_URL` in
+`/apps/data/device.conf` points elsewhere. `tools/test/test_catalog.py` runs it all against a local
+server.
 
 **Keys:** the private key never goes in the repository (`*.pem` is ignored); `trusted.keys` can hold
 several, so a new key can be added in one base-system update and the old one removed in a later one.

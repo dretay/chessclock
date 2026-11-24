@@ -63,15 +63,35 @@ def main():
             return dst, meta
 
         good, meta = packed("castle")
+        system, smeta = packed("system")
         runtime, rmeta = packed("countdown")
         expect("--check, a good app", True, run(tmp, "--check", good), "ok: castle")
         expect("an app before its runtime", False, run(tmp, good), "isn't installed: install it first")
+        expect("the countdown runtime before the system", False, run(tmp, runtime), "isn't installed: install it first")
+        expect("install the system package", True, run(tmp, system), "installed system")
         expect("install the runtime", True, run(tmp, runtime), "installed countdown")
         expect("install the app", True, run(tmp, good), "installed castle")
         want = sorted(rel for rel, _ in layout.files("castle")) + [".signature", "MANIFEST.json"]
         got = sorted(os.path.relpath(os.path.join(d, f), os.path.join(mods, "castle"))
                      for d, _, fs in os.walk(os.path.join(mods, "castle")) for f in fs)
         expect("  every file, and nothing else", sorted(want) == got, (0, "%d files" % len(got)))
+        def verify(d):
+            r = subprocess.run([os.path.join(tmp, "modinstall"), "--keys", os.path.join(tmp, "trusted.keys"),
+                                "--verify-installed", os.path.join(mods, d)], capture_output=True, text=True)
+            return r.returncode, (r.stdout + r.stderr).strip()
+        expect("--verify-installed, a signed app", True, verify("castle"), "signed: castle")
+        sig = os.path.join(mods, "castle", ".signature"); keep = open(sig).read()
+        open(sig, "w").write(keep.replace("version " + meta["version"], "version 9.9.9"))
+        expect("--verify-installed, an edited .signature", False, verify("castle"), "signature doesn't match")
+        open(sig, "w").write(keep)
+        rsig = os.path.join(mods, "countdown", ".signature"); rkeep = open(rsig).read(); os.remove(rsig)
+        expect("--verify-installed, its runtime unsigned", False, verify("castle"), "isn't signed")
+        open(rsig, "w").write(rkeep)
+        ssig = os.path.join(mods, "system", ".signature"); skeep = open(ssig).read(); os.remove(ssig)
+        expect("--verify-installed, its runtime's runtime unsigned", False, verify("castle"), "system isn't signed")
+        open(ssig, "w").write(skeep)
+        os.makedirs(os.path.join(mods, "dev")); open(os.path.join(mods, "dev", "app.json"), "w").write("{}")
+        expect("--verify-installed, an unsigned app", False, verify("dev"), "isn't signed")
         expect("install it again (same version)", True, run(tmp, good), "was " + meta["version"])
         expect("  the old one kept", os.path.isdir(os.path.join(mods, ".old-castle")), (0, ""))
 

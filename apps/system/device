@@ -1,0 +1,9 @@
+#!/bin/sh
+# Settings > Device ›, in every app: stop the app, show the device's settings (device.py), then start the
+# app again. Started detached (in its own session) by the app, which this stops; logs to
+# /apps/data/system/device.log.
+R=$(cd "$(dirname "$0")" && pwd)
+mkdir -p /apps/data/system
+/etc/init.d/S99app stop >/dev/null 2>&1
+(cd "$R" && python3 -u device.py >>/apps/data/system/device.log 2>&1)
+exec /etc/init.d/S99app start

@@ -86,6 +86,9 @@ def nm(lat1, lon1, lat2, lon2):
     return 2 * 3440.065 * math.asin(min(1.0, math.sqrt(a)))
 
 
+ESTIMATE_AFTER = 15 * 60        # a report older than this, under way: estimate where the ship is now
+
+
 def eta_time(eta, ref):
     """An AIS ETA ("MM-DD HH:MM", UTC as AIS sends it, no year) as unix time: the year that puts it nearest ref."""
     try:
@@ -238,6 +241,9 @@ class MapScreen:
         """The followed ship's AIS details, as (text, colour) lines."""
         if s is None: return [("No position reported yet", L.DIM)]
         lines = [(dms(s.lat, "N", "S") + "   " + dms(s.lon, "E", "W"), L.IVORY)]
+        if getattr(s, "estimated", None):                                 # (no recent report: where it should be)
+            age, how = s.estimated
+            lines.append(("Estimated · last heard %s ago" % span(age / 3600), L.GOLD))
         status = s.status.lower() if s.status else ("under way" if s.speed > 0.5 else "stopped")
         if s.speed > 0.5:
             lines.append(("%.0f kn · course %03.0f° %s" % (s.speed, s.heading % 360, COMPASS[int((s.heading % 360 + 22.5) // 45) % 8]), L.IVORY))
@@ -262,7 +268,7 @@ class MapScreen:
             if due:
                 t = time.localtime(due)                                        # (the board's own time zone)
                 eta = "Due %d %s %d:%02d %s" % (t.tm_mday, MONTHS[t.tm_mon - 1], t.tm_hour % 12 or 12, t.tm_min, "PM" if t.tm_hour >= 12 else "AM")
-                if arrive and due > now:                                       # early or late, at this speed
+                if arrive and due > now and not getattr(s, "estimated", None):   # early or late, at this speed (not from an estimate: it's made from the ETA)
                     late = (arrive - due) / 3600
                     off = span(abs(late)) if abs(late) < 2 else "%d h" % round(abs(late))   # (whole hours from 2 h: the card is narrow)
                     eta += " · on time" if abs(late) < 0.25 else " · %s %s" % (off, "late" if late > 0 else "early")
@@ -283,6 +289,28 @@ class MapScreen:
         self.text("label", self.follow, x0 + 16, CARD_Y0 + 34, L.GOLD if self.follow == self.mine else L.IVORY, halo=False)
         y = CARD_Y0 + 58
         for t, col in lines: self.text("small", t, x0 + 16, y, col, halo=False); y += 22
+
+    def estimate(self, s, now):
+        """Where a ship under way should be by now, when its last report is old (aisstream hears ships at
+        sea only now and then): toward the destination it declared, arriving at its ETA; else on its last
+        course and speed, for at most 3 h. Its real report joins its trail; s.estimated says so."""
+        if not s.when or now - s.when < ESTIMATE_AFTER: return
+        if (s.status or "").lower() in ("moored", "at anchor") or s.speed < 1: return
+        port = self.port_named(s.dest) if s.dest else None
+        due = eta_time(s.eta, s.when) if s.eta else None
+        real = (s.lat, s.lon, s.when)
+        if port and due and due > s.when:
+            f = min(1.0, (now - s.when) / (due - s.when))
+            lat, lon = s.lat + (port[1] - s.lat) * f, s.lon + (port[2] - s.lon) * f
+            how = "on its way to %s" % port[0] if f < 1 else "arrived at %s" % port[0]
+            if f >= 1: s.speed = 0.0
+        else:
+            hours = min(3.0, (now - s.when) / 3600); d = s.speed * hours / 60          # (degrees of latitude)
+            h = math.radians(s.heading)
+            lat = s.lat + d * math.cos(h); lon = s.lon + d * math.sin(h) / max(0.2, math.cos(math.radians(lat)))
+            how = "on its last course"
+        s.trail = s.trail + [real]
+        s.lat, s.lon, s.estimated = lat, lon, (now - s.when, how)
 
     def port_named(self, dest):
         """The chart's port for an AIS destination ("NASSAU", "Port Canaveral", "US PCV"...), if it knows it."""
@@ -401,6 +429,9 @@ class MapScreen:
         path = os.environ.get("VACATION_SHIPS") or (live if os.path.exists(live) else os.path.join(os.path.dirname(self.map_dir), "ships_example.csv"))
         if not os.path.exists(path): path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ships_example.csv")
         self.ships, example = read_ships(path)
+        if not example:                                                   # (old reports: where they should be by now)
+            now = time.time()
+            for sh in self.ships.values(): self.estimate(sh, now)
         # NASA's Earth by day (Blue Marble) or at night (Black Marble, the city lights), with the ship picture's
         # day and night
         if fx.vfx_ui_open_blank(app.ui_dir.encode()) != 0: return False
@@ -411,7 +442,10 @@ class MapScreen:
         app.fade(256, lambda: self.pulse(((app.now() - start) % 2.0) / 2.0))      # (drawn in the dark: fade it in)
         while app.running and app.now() - start < seconds:
             now = app.now()
-            if tp and any(ev == "up" for ev, x, y in tp.poll(now)): break       # a tap: back to the countdown
+            # a tap: back to the countdown; held (as on the countdown): Settings
+            if hasattr(app, "screen_touch"):
+                if app.screen_touch(now): break
+            elif tp and any(ev == "up" for ev, x, y in tp.poll(now)): break
             self.pulse(((now - start) % 2.0) / 2.0)
             app.tick(); app.tick()                          # ~12 updates a second is plenty
         app.fade(0, lambda: self.pulse(((app.now() - start) % 2.0) / 2.0))

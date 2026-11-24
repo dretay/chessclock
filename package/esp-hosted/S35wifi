@@ -1,7 +1,8 @@
 #!/bin/sh
 #
 # WiFi through the ESP32 on SPI1: load the esp32_spi driver, then once wlan0
-# appears, wpa_supplicant, DHCP and network time, and the ssh server. All in
+# appears, wpa_supplicant, DHCP and network time (no ssh: the board is only
+# reached over USB and its serial console). All in
 # the background, so a missing or unplugged ESP32 doesn't hold up the boot.
 #
 # The saved networks are on the apps partition (/apps/data/wifi), so flashing a

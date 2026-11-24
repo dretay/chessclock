@@ -22,6 +22,7 @@ import glob, hashlib, json, os, shutil, subprocess, sys, tempfile
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 APPS = os.path.join(REPO, "apps")
 APP = os.path.join(APPS, "countdown")                     # the runtime
+SYSTEM = os.path.join(APPS, "system")                     # (its drawing library, Settings, the picker)
 OUT = os.path.join(REPO, "build", "test")
 W, H = 800, 480
 SCENE_FILES = ("day.rgb.gz", "dusk.rgb.gz", "night.rgb.gz", "lights.bin.gz", "cards.bin.gz", "theme.json")
@@ -72,7 +73,7 @@ def render(mods, out):
     os.makedirs(out, exist_ok=True)
     tmp = tempfile.mkdtemp(prefix="vacation-check-")
     lib = os.path.join(tmp, "libvacfx.so")
-    r = subprocess.run(["cc", "-O2", "-shared", "-fPIC", "-o", lib, os.path.join(APP, "fx", "vacfx.c"), "-lz"], capture_output=True, text=True)
+    r = subprocess.run(["cc", "-O2", "-shared", "-fPIC", "-o", lib, os.path.join(SYSTEM, "fx", "vacfx.c"), "-lz"], capture_output=True, text=True)
     if r.returncode: fail("compiling the drawing library: %s" % r.stderr[-400:]); return {}
     F = W * H * 4; hashes = {}
     for mod in mods:
@@ -105,17 +106,17 @@ def render(mods, out):
 
 
 def check_picker(out):
-    """The app picker (apps/countdown/picker.py) over the apps here: drawn, and a tap on the cruise picks it."""
+    """The app picker (apps/system/picker.py) over the apps here: drawn, and a tap on the cruise picks it."""
     from PIL import Image
     tmp = tempfile.mkdtemp(prefix="picker-check-")
     lib = os.path.join(tmp, "libvacfx.so")
-    subprocess.run(["cc", "-O2", "-shared", "-fPIC", "-o", lib, os.path.join(APP, "fx", "vacfx.c"), "-lz"], check=True)
+    subprocess.run(["cc", "-O2", "-shared", "-fPIC", "-o", lib, os.path.join(SYSTEM, "fx", "vacfx.c"), "-lz"], check=True)
     names = [json.load(open(p))["name"] for p in glob.glob(os.path.join(APPS, "*", "app.json"))
              if os.access(os.path.join(os.path.dirname(p), "run"), os.X_OK)]
     i = sorted(names, key=str.lower).index("Disney cruise")
     x = 20 + (i % 3) * 260 + 120
     open(os.path.join(tmp, "taps"), "w").write("1.0 %d 240 0.1\n" % x)
-    r = subprocess.run([sys.executable, os.path.join(APP, "picker.py")], capture_output=True, text=True,
+    r = subprocess.run([sys.executable, os.path.join(SYSTEM, "picker.py")], capture_output=True, text=True,
                        env=dict(os.environ, PICKER_APPS=APPS, PICKER_CURRENT="castle", PICKER_TIMEOUT="3", VACATION_LIB=lib,
                                 VACATION_FB=os.path.join(tmp, "fb.raw"), VACATION_TOUCH_SCRIPT=os.path.join(tmp, "taps")))
     if r.returncode or r.stdout.strip() != "cruise": fail("picker: tapped the cruise, got %r %s" % (r.stdout.strip(), r.stderr[-300:]))
@@ -146,6 +147,9 @@ def main():
     r = subprocess.run([sys.executable, os.path.join(REPO, "tools", "test", "test_modinstall.py")], capture_output=True, text=True)
     if r.returncode: fail("modinstall:\n" + "\n".join(l for l in (r.stdout + r.stderr).splitlines() if not l.startswith("ok")))
     else: print("modinstall: installs signed apps, refuses the rest (%d checks)" % r.stdout.count("\nok"))
+    r = subprocess.run([sys.executable, os.path.join(REPO, "tools", "test", "test_catalog.py")], capture_output=True, text=True)
+    if r.returncode: fail("catalog:\n" + "\n".join(l for l in (r.stdout + r.stderr).splitlines() if not l.startswith("ok")))
+    else: print("catalog: a signed catalog loads and installs (runtime first), a changed one is refused")
     now = render(mods, os.path.join(OUT, "now"))
     check_picker(os.path.join(OUT, "now"))
     if "--save" in args:

@@ -50,18 +50,19 @@ def shell(port, cmd, secs=30):
     return out.decode("utf-8", "replace")
 
 
-def send_piece(port, data, dst):
+def send_piece(port, data, dst, rate=None):
     """One piece into dst as raw bytes; True if its checksum matches."""
     want = hashlib.md5(data).hexdigest()
     n_marker[0] += 1
     k = n_marker[0]
     port.reset_input_buffer()
-    port.write(("stty raw -echo; echo GO-%d-$((40+2)); head -c %d > %s; stty -raw echo; echo GOT-%d-$((40+2))\n"
-                % (k, len(data), dst, k)).encode())
+    # (GO only once dst could be made: data sent after a failed redirect would reach the shell as commands)
+    port.write(("stty raw -echo; if : > %s; then echo GO-%d-$((40+2)); head -c %d > %s; fi; stty -raw echo; echo GOT-%d-$((40+2))\n"
+                % (dst, k, len(data), dst, k)).encode())
     if ("GO-%d-42" % k).encode() not in boardlib.read_until(port, ("GO-%d-42" % k).encode(), 10):
-        sys.exit("board did not start receiving; nothing sent")
+        sys.exit("the board couldn't write %s (a read-only folder?); nothing sent" % dst)
     time.sleep(0.05)
-    rate, step = RATE, STEP
+    rate, step = rate or RATE, STEP
     t0, sent = time.time(), 0
     while sent < len(data):
         port.write(data[sent:sent + step])
@@ -82,17 +83,21 @@ def send_piece(port, data, dst):
 def push_bytes(port, raw, dst, label):
     t0 = time.time()
     pieces = [raw[i:i + PIECE] for i in range(0, len(raw), PIECE)] or [b""]
-    tmp = dst if len(pieces) == 1 else "/tmp/xfer.part"
+    # (each piece lands beside dst, on its own filesystem: /tmp is memory, which the board has little of,
+    # and a board short of memory drops bytes)
+    tmp = dst if len(pieces) == 1 else dst + ".part"
+    rate = RATE
     for n, piece in enumerate(pieces):
         for attempt in range(TRIES):
-            if send_piece(port, piece, tmp):
+            if send_piece(port, piece, tmp, rate):
                 break
-            sys.stderr.write("\n  piece %d arrived damaged, sending again\n" % (n + 1))
+            rate = max(rate / 2, 64 * 1024)                   # (damaged: slower from here on)
+            sys.stderr.write("\n  piece %d arrived damaged, sending again at %d KB/s\n" % (n + 1, rate / 1024))
         else:
             print("FAILED: %s" % label)
             return False
         if len(pieces) > 1:
-            shell(port, "cat /tmp/xfer.part %s %s; rm /tmp/xfer.part" % (">" if n == 0 else ">>", dst))
+            shell(port, "cat %s %s %s; rm %s" % (tmp, ">" if n == 0 else ">>", dst, tmp))
         sys.stderr.write("\r  %3d%%" % (100 * (n + 1) // len(pieces)))
         sys.stderr.flush()
     ok = hashlib.md5(raw).hexdigest() in shell(port, "md5sum %s" % dst, 60)
@@ -139,9 +144,11 @@ def push_folder(port, changed, dst):
     with tarfile.open(fileobj=buf, mode="w", format=tarfile.USTAR_FORMAT) as tar:
         for r, p in changed:
             tar.add(p, arcname=r)
-    if not push_bytes(port, buf.getvalue(), "/root/xfer.tar", "%s (%d files)" % (dst, len(changed))):
+    # (staged beside dst, on its own filesystem: the base system is read-only, and /tmp is memory)
+    stage = "%s/.%s.xfer.tar" % (os.path.dirname(dst.rstrip("/")) or "/", os.path.basename(dst.rstrip("/")))
+    if not push_bytes(port, buf.getvalue(), stage, "%s (%d files)" % (dst, len(changed))):
         return False
-    shell(port, "mkdir -p %s && tar -xf /root/xfer.tar -C %s; rm -f /root/xfer.tar" % (dst, dst), 120)
+    shell(port, "mkdir -p %s && tar -xf %s -C %s; rm -f %s" % (dst, stage, dst, stage), 120)
     return True
 
 

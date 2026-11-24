@@ -16,9 +16,9 @@ if [ -e /dev/fb0 ] && [ -d "$FB" ]; then
 	if [ -f "$IMG" ] && [ "$STRIDE" -eq $((W * BPP / 8)) ]; then
 		zcat "$IMG" > /dev/fb0
 		# the dots after "Starting", pulsing (the countdown runtime's splashanim) until the app draws
-		if [ -x /apps/countdown/splashanim ] && [ -r splash/dots ]; then
+		if [ -x /apps/system/splashanim ] && [ -r splash/dots ]; then
 			read -r DX DY < splash/dots
-			/apps/countdown/splashanim "$DX" "$DY" </dev/null >/dev/null 2>&1 &
+			/apps/system/splashanim "$DX" "$DY" </dev/null >/dev/null 2>&1 &
 		fi
 	fi
 fi

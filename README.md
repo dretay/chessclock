@@ -29,7 +29,7 @@ custom board with the 64 MB F1C200s is designed in [hardware/protoboard](hardwar
 | 5 V USB power supply and micro-USB cable | the micro-USB port is also the development tools' fast serial line, when plugged into a computer |
 | *Optional:* the [3D-printed enclosure](hardware/enclosure) | picture frame, back cover and desk cradle |
 | *Optional:* an ESP32 | for WiFi ([wifi](docs/wifi.md)) |
-| *Optional:* a 3.3 V USB-serial adapter | the console on the Nano's UART0, 115200 baud (login `root` / `root`) |
+| *Optional:* a 3.3 V USB-serial adapter | the console on the Nano's UART0, 115200 baud (a root shell straight away: no password) |
 
 The board has no battery-backed clock: the countdown apps keep the time on the SD card across
 power cuts (the chess clock asks for it again), and with WiFi it's set from the network.
@@ -65,7 +65,7 @@ tools/preview/preview.py castle                  # or try them on the Mac first,
 | Path | |
 |---|---|
 | `board/licheepi_nano/`, `configs/`, `package/` | the Buildroot `BR2_EXTERNAL` tree: kernel config, patches and device tree, U-Boot, the SD card layout, the root filesystem overlay (the app launcher), WiFi's package (Buildroot itself is unmodified) |
-| `apps/` | the apps, one folder each (`app.json`, `run`): `chess`, `castle`, `cruise`, and `countdown` (the runtime the countdowns run on) |
+| `apps/` | the apps, one folder each (`app.json`, `run`): `chess`, `castle`, `cruise`; `countdown` (the runtime the countdowns run on) and `system` (what every app shares: the drawing library, Settings, Device settings, the picker) |
 | `tools/board/` | talking to the board over serial: deploy, push, run, flash the card |
 | `tools/build/` | incremental builds in a container |
 | `tools/preview/` | the apps live on the Mac, in a window of their own, the mouse as the touchscreen |
