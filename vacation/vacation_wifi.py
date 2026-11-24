@@ -3,7 +3,7 @@ see package/esp-hosted).
 
 Talks to wpa_supplicant over its control socket (/var/run/wpa_supplicant/wlan0), the way wpa_cli
 does, so nothing else has to start: on the 32 MB board a separate program costs more than this.
-Networks are saved in /etc/wpa_supplicant.conf by wpa_supplicant itself (SAVE_CONFIG); the
+Networks are saved in /apps/data/wifi/wpa_supplicant.conf by wpa_supplicant itself (SAVE_CONFIG); the
 password is stored as its hashed key (PSK), never as typed.
 
 VACATION_WIFI_FAKE=1: pretend (a few made-up networks), for previews on a desktop.

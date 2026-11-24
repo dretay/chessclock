@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Pack a vacation-countdown module for publishing: a tarball of exactly what goes on the board, a
-manifest of its files' SHA-256s, and (with a key) an Ed25519 signature.
+manifest of its files' SHA-256s, and (with a key) a signed statement for the board's modinstall.
 
     tools/modules/pack.py NAME [--key KEY.pem] [--themes "a b"]
     -> build/modules/NAME-VERSION.tar.gz (+ .sig with --key)
@@ -12,13 +12,13 @@ rule; tools/test/check.py checks it against install.sh. The tarball is reproduci
 owned by root, timestamps 0. MANIFEST.json inside it: the module's id, name, version and api, and
 each file's size and SHA-256.
 
-Signing: an Ed25519 key (`openssl genpkey -algorithm ed25519 -out module-signing.pem`; keep it
-private, out of the repository), and OpenSSL 1.1.1 or newer (not macOS's LibreSSL):
-    openssl pkeyutl -sign -inkey KEY.pem -rawin -in NAME-VERSION.tar.gz -out NAME-VERSION.tar.gz.sig
-which is what --key does. Its public half (`openssl pkey -in KEY.pem -pubout`) is what a board
-would check with (`openssl pkeyutl -verify -pubin -inkey PUB.pem -rawin -in TAR -sigfile SIG`).
+Signing (--key): the Ed25519 key tools/modules/keygen.sh made, and OpenSSL 3.0 or newer (not
+macOS's LibreSSL; OPENSSL picks one). The .sig is a short statement, signed: the module's id, name,
+version and api, and the tarball's size and SHA-512 (the format: package/modinstall/src/modinstall.c).
+The board checks it against the public keys in its /etc/modules/trusted.keys, then the tarball against
+it: `modinstall NAME-VERSION.tar.gz`.
 """
-import fnmatch, gzip, hashlib, io, json, os, subprocess, sys, tarfile
+import fnmatch, getpass, gzip, hashlib, io, json, os, subprocess, sys, tarfile, tempfile
 
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 MODULES = os.path.join(REPO, "vacation", "modules")
@@ -49,8 +49,61 @@ def files(name, themes=()):
     return sorted(out), meta
 
 
+OPENSSL = os.environ.get("OPENSSL", "openssl")
+
+
+_passphrases = {}
+
+
+def openssl(args, key):
+    """Run OpenSSL on KEY, asking for its passphrase (if it has one) only the first time: it goes to
+    OpenSSL through a pipe (-passin fd:N), never on a command line or in the environment."""
+    if "ENCRYPTED" not in open(key).read(200):
+        return subprocess.run([OPENSSL, *args], stdout=subprocess.PIPE)
+    if key not in _passphrases: _passphrases[key] = getpass.getpass("Passphrase for %s: " % key)
+    r, w = os.pipe()
+    try:
+        os.write(w, _passphrases[key].encode() + b"\n"); os.close(w)
+        res = subprocess.run([OPENSSL, *args, "-passin", "fd:%d" % r], stdout=subprocess.PIPE, pass_fds=(r,))
+    finally:
+        os.close(r)
+    if res.returncode: _passphrases.pop(key, None)                      # (a wrong one: ask again next time)
+    return res
+
+
+def public_key(key):
+    """The raw 32-byte Ed25519 public key of a private key file (PEM)."""
+    r = openssl(["pkey", "-in", key, "-pubout", "-outform", "DER"], key)
+    if r.returncode or len(r.stdout) != 44: sys.exit("can't read the key %s (wrong passphrase? an Ed25519 key, OpenSSL 3.0 or newer?)" % key)
+    return r.stdout[-32:]
+
+
+def statement(tar, meta, pub):
+    """The lines the signature covers (modinstall's format)."""
+    data = open(tar, "rb").read()
+    return ("licheepi-module 1\nid %s\nname %s\nversion %s\napi %d\nsize %d\nsha512 %s\nkey %s\n" % (
+        meta["id"], meta.get("name", meta["id"]).replace("\n", " "), meta["version"], meta.get("api", 1),
+        len(data), hashlib.sha512(data).hexdigest(), pub[:8].hex())).encode()
+
+
+def sign(tar, meta, key):
+    """Write TAR.sig: the statement, and its Ed25519 signature by KEY (OpenSSL asks for its passphrase)."""
+    text = statement(tar, meta, public_key(key))
+    with tempfile.TemporaryDirectory() as tmp:
+        msg, sig = os.path.join(tmp, "statement"), os.path.join(tmp, "sig")
+        open(msg, "wb").write(text)
+        if openssl(["pkeyutl", "-sign", "-inkey", key, "-rawin", "-in", msg, "-out", sig], key).returncode:
+            sys.exit("signing failed (OpenSSL 3.0 or newer, an Ed25519 key?)")
+        raw = open(sig, "rb").read()
+    assert len(raw) == 64
+    open(tar + ".sig", "wb").write(text + b"sig " + raw.hex().encode() + b"\n")
+    return tar + ".sig"
+
+
 def pack(name, key=None, themes=()):
     entries, meta = files(name, themes)
+    assert meta.get("id") == name, "module.json's id (%s) must be its folder's name (%s)" % (meta.get("id"), name)
+    assert all(c.isdigit() or c == "." for c in str(meta.get("version", ""))), "version: numbers and dots"
     manifest = {k: meta.get(k) for k in ("id", "name", "version", "api")}
     manifest["files"] = {rel: {"size": os.path.getsize(p), "sha256": hashlib.sha256(open(p, "rb").read()).hexdigest()}
                          for rel, p in entries}
@@ -67,11 +120,7 @@ def pack(name, key=None, themes=()):
     with open(out, "wb") as f:
         with gzip.GzipFile(fileobj=f, mode="wb", compresslevel=9, mtime=0, filename="") as gz: gz.write(raw.getvalue())
     print("%s: %d files, %d bytes" % (os.path.relpath(out, REPO), len(entries), os.path.getsize(out)))
-    if key:
-        r = subprocess.run(["openssl", "pkeyutl", "-sign", "-inkey", key, "-rawin", "-in", out, "-out", out + ".sig"],
-                           capture_output=True, text=True)
-        if r.returncode: sys.exit("signing failed (OpenSSL 1.1.1 or newer, an Ed25519 key?): " + r.stderr.strip())
-        print("signed:", os.path.relpath(out + ".sig", REPO))
+    if key: print("signed:", os.path.relpath(sign(out, meta, key), REPO))
     return out
 
 

@@ -37,8 +37,9 @@ optional background `service`): [apps](apps.md).
 
 **Memory.** The F1C100s has 32 MB, about 26 MB of it free for programs: the apps draw straight into
 the framebuffer, never holding more of a screen than they must (the vacation countdown's drawing is
-a small C library, `vacation/fx/vacfx.c`, called from Python). The F1C200s (64 MB) is the protoboard's,
-for WiFi alongside the countdown.
+a small C library, `vacation/fx/vacfx.c`, called from Python). With WiFi too, it takes swap: a 32 MB
+file on the apps partition (`/etc/init.d/S01swap`), used only under pressure ([wifi](wifi.md)). The
+F1C200s (64 MB) is the protoboard's.
 
 **USB power.** With the board's micro-USB port plugged into a computer, that also powers the board:
 switching a bench supply off no longer resets it. A cable or adapter without the 5 V wire avoids it.

@@ -42,6 +42,7 @@ redo busybox 'rm -rf "$OUT"/build/busybox-*' board/licheepi_nano/busybox.fragmen
 redo uboot 'rm -rf "$OUT"/build/uboot-*' board/licheepi_nano/uboot.fragment
 redo bootscript 'rm -f "$OUT"/build/host-uboot-tools-*/.stamp_built "$OUT"/build/host-uboot-tools-*/.stamp_*installed' board/licheepi_nano/boot.cmd
 redo esp-hosted 'rm -rf "$OUT"/build/esp-hosted-*' package/esp-hosted
+redo modinstall 'rm -rf "$OUT"/build/modinstall-*' package/modinstall
 redo python3 'rm -rf "$OUT"/build/python3-3*' configs/licheepi_nano_defconfig      # (and wifi=, for its TLS)
 # linux-firmware's install is cheap and depends on the kernel config: always
 rm -f "$OUT"/build/linux-firmware-*/.stamp_built "$OUT"/build/linux-firmware-*/.stamp_*installed

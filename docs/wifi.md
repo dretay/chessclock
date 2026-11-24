@@ -6,9 +6,12 @@ The Nano has no radio of its own: WiFi comes from an **ESP32 on its SPI bus**, r
 network time and ssh.
 
 **Memory:** WiFi costs about 4 MB of the Nano's 32 MB (the network stack and `cfg80211` built into the
-kernel, and the driver's buffers, none of it given back). The vacation countdown and WiFi together
-don't fit on a 32 MB Nano; they're meant for the F1C200s (64 MB) on the protoboard
-([hardware/protoboard](../hardware/protoboard)). The kernel without WiFi is a separate build.
+kernel, and the driver's buffers, none of it given back), and the vacation countdown alone uses about
+22 MB of the 27 MB left. They fit together with swap: a 32 MB file on the apps partition
+(`/apps/swapfile`, made at the first boot by `S01swap`), which the kernel moves the countdown's idle
+memory to under pressure; and the modules' fetchers run briefly and exit rather than staying in
+memory. The F1C200s (64 MB) on the protoboard ([hardware/protoboard](../hardware/protoboard)) needs
+none of that. The kernel without WiFi is a separate build.
 
 ## Building and flashing
 
@@ -53,7 +56,8 @@ the driver (`reset-gpios`, `handshake-gpios`, `data-ready-gpios`, `spi-max-frequ
 ## On the board
 
 `S35wifi` starts it all in the background (`/var/log/wifi.log`): the driver, then wpa_supplicant,
-DHCP, network time and ssh. Networks go in `/etc/wpa_supplicant.conf`. To add one without typing
+DHCP, network time and ssh. Networks are saved in `/apps/data/wifi/wpa_supplicant.conf` (on the apps
+partition, so flashing a new base system keeps them). To add one without typing
 the password into anything that logs it:
 
 ```sh

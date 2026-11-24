@@ -74,18 +74,60 @@ no key) into `/apps/data/vacation/castle/waits.json`, else `waits_example.json`.
 rides the board shows (`RIDES`); `SHOW_NAME` the fireworks show it names (Happily Ever After); `PARK`
 another park's ThemeParks.wiki id.
 
-## Packing and signing
+## Packing, signing and installing
 
 ```sh
-tools/modules/pack.py castle [--key module-signing.pem]    # -> build/modules/castle-0.1.0.tar.gz (+ .sig)
+tools/modules/keygen.sh                          # once: the signing key (~/.config/licheepi-nano/), and its
+                                                 #   public half into the base system's trusted keys
+tools/modules/pack.py castle --key ~/.config/licheepi-nano/module-signing.pem
+                                                 # -> build/modules/castle-0.1.0.tar.gz and .tar.gz.sig
 ```
 
-The tarball holds exactly what `vacation/install.sh` puts on the board (`tools/test/check.py`
-checks they agree), with a `MANIFEST.json` of each file's SHA-256, and is reproducible. `--key`
-signs it with an Ed25519 key (OpenSSL 1.1.1 or newer; the key never goes in the repository, `*.pem`
-is ignored). The plan: publish these (e.g. as GitHub release files) with a catalog, and have the
-board check the signature against the public key in its base image before installing one (the board
-has OpenSSL 1.1.1's library; its `openssl` command is a Buildroot option away).
+Over USB, in one go (pack, sign, copy, `modinstall`, restart the app):
+
+```sh
+tools/board/deploy_module.py --use castle        # --use: and switch to it; [--force] older versions; [--key KEY]
+```
+
+Or by hand, on the board, with the two files copied over (to `/apps/data/`, not RAM-backed `/tmp`):
+
+```sh
+modinstall --check castle-0.1.0.tar.gz           # only check it
+modinstall castle-0.1.0.tar.gz                   # check it and install it; then /etc/init.d/S99app restart
+```
+
+**The tarball** holds exactly what `vacation/install.sh` puts on the board (`tools/test/check.py`
+checks they agree), with a `MANIFEST.json` of each file's SHA-256, and is reproducible.
+
+**The `.sig`** is a short signed statement: the module's id, name, version and api, the tarball's size
+and SHA-512, the signing key's id, and an Ed25519 signature over those lines. `modinstall`
+(`package/modinstall`, in the base system; Ed25519 from [Monocypher](https://monocypher.org)):
+
+1. checks the statement's signature against the keys in `/etc/modules/trusted.keys`, which only a
+   new base system changes;
+2. checks the tarball's size and SHA-512 against the statement, before reading anything in it;
+3. refuses an older version than the installed one (`--force` allows it) and an api newer than the
+   app's (`API` in `vacation/modules.py`);
+4. unpacks into `modules/.staging-ID`: regular files and folders only, all under `ID/`, no `..`,
+   no links, size-limited;
+5. swaps it in with one rename, keeping the previous version in `modules/.old-ID`, and records the
+   statement as `ID/.signature`.
+
+It needs a few KB of memory whatever the module's size. `tools/test/test_modinstall.py` tries a good
+module and the ways to get a bad one in (changed tarball or statement, untrusted key, downgrade,
+paths out of the folder, links).
+
+**What signing doesn't do:** a module is Python running as root, inside the app (its screens) and
+beside it (its service). The signature proves who made it and that it wasn't changed; it doesn't limit
+what it can do. That's the right trade while every module is yours.
+
+**Not done yet:** a catalog (a signed index of modules to download, e.g. from GitHub releases),
+installing from Settings over WiFi, and refusing unsigned modules (now: `tools/board/deploy_app.py`
+still copies modules straight from the repository, as the developer's way in; a module installed that
+way has no `.signature`).
+
+**Keys:** the private key never goes in the repository (`*.pem` is ignored); `trusted.keys` can hold
+several, so a new key can be added in one base-system update and the old one removed in a later one.
 
 ## Generated art in the repository
 

@@ -1,0 +1,35 @@
+#!/bin/sh
+#
+# Swap: a 32 MB file on the apps partition (/apps/swapfile), made the first time. The countdown and
+# WiFi together need more than the Nano's 32 MB, though much of the countdown's memory is Python
+# loaded once and seldom touched again: the kernel moves that out to the SD card under pressure, and
+# the WiFi and the module's fetcher fit. Nothing is written while there's no pressure.
+# In the background, so the boot isn't held up (making the file takes a few seconds, once).
+#
+
+F=/apps/swapfile
+MB=32
+
+case "$1" in
+	start)
+		[ -e /proc/swaps ] || exit 0                    # (a kernel without swap)
+		grep -q " /apps " /proc/mounts || exit 0
+		(
+			if [ ! -f "$F" ] || [ "$(wc -c < "$F")" -ne $((MB * 1048576)) ]; then
+				rm -f "$F" "$F.tmp"
+				dd if=/dev/zero of="$F.tmp" bs=1048576 count=$MB 2>/dev/null &&
+					chmod 600 "$F.tmp" && mkswap "$F.tmp" >/dev/null && mv "$F.tmp" "$F" || { rm -f "$F.tmp"; exit 0; }
+			fi
+			swapon "$F" 2>/dev/null
+		) </dev/null >/dev/null 2>&1 &
+		;;
+	stop)
+		swapoff "$F" 2>/dev/null
+		;;
+	restart|reload)
+		;;
+	*)
+		echo "Usage: $0 {start|stop}"
+		exit 1
+		;;
+esac

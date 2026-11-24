@@ -1,5 +1,15 @@
 #!/bin/sh
-# The castle module's background job: ride wait times from ThemeParks.wiki (waits.py) into
-# $MODULE_DATA/waits.json for the wait-times screen. The app's service starts it (in this folder,
-# with MODULE_DATA set), on a kernel with WiFi.
-exec python3 -u waits.py
+# The castle module's background job: ride wait times from ThemeParks.wiki into $MODULE_DATA/waits.json
+# for the wait-times screen. The app's service starts it (in this folder, with MODULE_DATA set), on a
+# kernel with WiFi. waits.py fetches once and exits each time (its Python and TLS need memory the
+# countdown and WiFi barely leave): every 5 minutes, waiting longer after each failure (1 minute,
+# doubling, up to 15), and every 10 seconds until there's network time.
+retry=60
+while true; do
+	python3 -u waits.py --once
+	case $? in
+		0) retry=60; sleep 300 ;;
+		2) sleep 10 ;;
+		*) sleep $retry; retry=$((retry * 2)); [ $retry -gt 900 ] && retry=900 ;;
+	esac
+done

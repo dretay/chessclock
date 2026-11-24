@@ -8,7 +8,8 @@
 1. every module's module.json: parses, and the files it names are there (its screens, its default
    scene with everything the drawing library loads, an executable service if it has one);
 2. every Python file of the app and its modules compiles; and each module's files as vacation/install.sh
-   lays them out are exactly what tools/modules/pack.py packs (one rule, two places);
+   lays them out are exactly what tools/modules/pack.py packs (one rule, two places); and modinstall
+   (tools/test/test_modinstall.py) installs a signed module and refuses tampered or unsafe ones;
 3. renders, per module: the countdown at noon and at 10 PM, and its screens (with their example data),
    on the preview clock (VACATION_SIM_CLOCK: the same frames every run), as PNGs, with the frames'
    SHA-256 in hashes.json. --compare reports which differ (and writes a diff image of each).
@@ -128,6 +129,9 @@ def compare(now, name):
 def main():
     args = sys.argv[1:]
     mods = check_modules(); check_python(); check_packing(mods)
+    r = subprocess.run([sys.executable, os.path.join(REPO, "tools", "test", "test_modinstall.py")], capture_output=True, text=True)
+    if r.returncode: fail("modinstall:\n" + "\n".join(l for l in (r.stdout + r.stderr).splitlines() if not l.startswith("ok")))
+    else: print("modinstall: installs a signed module, refuses the rest (%d checks)" % r.stdout.count("\nok"))
     now = render(mods, os.path.join(OUT, "now"))
     if "--save" in args:
         name = args[args.index("--save") + 1]; dst = os.path.join(OUT, name)

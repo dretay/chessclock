@@ -42,3 +42,6 @@ sim-out/
 # app folders laid out by tools/board/deploy_app.py, and the vacation library built for a desktop
 /build/
 /vacation/fx/libvacfx.*
+
+# the tools' Python environment (docs/tools.md)
+.venv/

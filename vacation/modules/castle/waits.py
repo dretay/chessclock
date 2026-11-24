@@ -1,10 +1,13 @@
 """Live ride wait times for the castle's screen (board.py), from ThemeParks.wiki, into
 $MODULE_DATA/waits.json.
 
-The castle module's service (the app's own service starts it, on a kernel with WiFi): every few
-minutes the park's live data (each ride's status and standby wait, the shows' times), and every hour
-its schedule (opening hours). ThemeParks.wiki's API is free and needs no key. PARK in vacation.conf
-picks the park (an entity id; default Magic Kingdom).
+The castle module's service (the app's own service starts it, on a kernel with WiFi) runs this with
+--once every few minutes: the park's live data (each ride's status and standby wait, the shows'
+times), and its schedule (opening hours) when the one it has is over an hour old; then it exits, so
+its Python and TLS take memory only for the seconds of a fetch (the countdown and WiFi leave little).
+Exit status: 0 fetched, 1 couldn't (the service waits longer each time), 2 no network time yet.
+Without --once it loops by itself (for trying it on a desktop). ThemeParks.wiki's API is free and
+needs no key. PARK in vacation.conf picks the park (an entity id; default Magic Kingdom).
 
 waits.json, written whole each time (the screen just rereads it):
     {"park": "Magic Kingdom", "updated": unix time, "example": false,
@@ -23,10 +26,26 @@ CONF_FILE = os.path.join(APP_DATA, "vacation.conf")
 API = "https://api.themeparks.wiki/v1/entity/"
 MAGIC_KINGDOM = "75ea578a-adc8-4116-a54d-dccb60765ef9"
 CA_FILE = "/etc/ssl/certs/ca-certificates.crt"           # Buildroot's ca-certificates
-LIVE_EVERY, SCHEDULE_EVERY = 5 * 60, 60 * 60
+STATE = os.path.join(DATA, ".waits-state")              # between runs: {"hours", "hours_at", "said", "said_at"}
+LIVE_EVERY, SCHEDULE_EVERY, LOG_EVERY = 5 * 60, 60 * 60, 60 * 60
 
 
-def log(*a): print("waits:", *a, flush=True)
+def load_state():
+    try: return json.load(open(STATE))
+    except (OSError, ValueError): return {}
+
+
+def save_state(state):
+    os.makedirs(DATA, exist_ok=True)
+    with open(STATE + ".tmp", "w") as f: json.dump(state, f)
+    os.replace(STATE + ".tmp", STATE)
+
+
+def log(state, text):
+    """Log a line when it's news (or hourly), so a fetch every few minutes doesn't fill the SD card's log."""
+    now = time.time()
+    if text != state.get("said") or now - state.get("said_at", 0) >= LOG_EVERY:
+        print("waits:", text, flush=True); state["said"], state["said_at"] = text, now
 
 
 def read_conf():
@@ -85,27 +104,36 @@ def write(data):
     os.replace(tmp, OUT)
 
 
+def fetch_once(park, state):
+    """One fetch into waits.json: 0 fetched, 1 failed, 2 no network time yet (TLS needs it)."""
+    if time.time() < 1.7e9:                                        # (before 2023)
+        log(state, "waiting for the clock (network time)"); return 2
+    try:
+        if time.time() - state.get("hours_at", 0) >= SCHEDULE_EVERY or not state.get("hours"):
+            state["hours"], state["hours_at"] = today_hours(get(park + "/schedule")), time.time()
+        data = snapshot(park, get(park + "/live"), state.get("hours"))
+        write(data)
+    except (OSError, ValueError) as e:                             # (urllib's errors are OSErrors)
+        log(state, "can't fetch: %s" % e); return 1
+    up = sum(1 for r in data["rides"] if r["status"] == "OPERATING")
+    log(state, "%s: %d rides open of %d" % (data["park"], up, len(data["rides"])))
+    return 0
+
+
 def main():
     park = read_conf().get("PARK") or MAGIC_KINGDOM
-    hours, next_schedule, wait, said = None, 0.0, 30, None
+    if "--once" in sys.argv[1:]:
+        state = load_state()
+        status = fetch_once(park, state)
+        save_state(state)
+        return status
+    state, wait = {}, 30
     while True:
-        if time.time() < 1.7e9:                                    # before 2023: no network time yet (TLS needs it)
-            if said != "clock": log("waiting for the clock (network time)"); said = "clock"
-            time.sleep(10); continue
-        try:
-            if time.time() >= next_schedule:
-                hours = today_hours(get(park + "/schedule")); next_schedule = time.time() + SCHEDULE_EVERY
-            data = snapshot(park, get(park + "/live"), hours)
-            write(data)
-            up = sum(1 for r in data["rides"] if r["status"] == "OPERATING")
-            log("%s: %d rides open of %d" % (data["park"], up, len(data["rides"])))
-            said, wait = None, 30
-            time.sleep(LIVE_EVERY)
-        except (OSError, ValueError) as e:                         # (urllib's errors are OSErrors)
-            if said != str(e): log("can't fetch: %s" % e); said = str(e)
-            time.sleep(wait + random.uniform(0, wait / 2)); wait = min(wait * 2, 900)
-
+        status = fetch_once(park, state)
+        if status == 0: wait = 30; time.sleep(LIVE_EVERY)
+        elif status == 2: time.sleep(10)
+        else: time.sleep(wait + random.uniform(0, wait / 2)); wait = min(wait * 2, 900)
 
 if __name__ == "__main__":
-    try: main()
+    try: sys.exit(main())
     except KeyboardInterrupt: sys.exit(0)

@@ -1,1 +1,2 @@
 source "$BR2_EXTERNAL_LICHEEPI_NANO_PATH/package/esp-hosted/Config.in"
+source "$BR2_EXTERNAL_LICHEEPI_NANO_PATH/package/modinstall/Config.in"

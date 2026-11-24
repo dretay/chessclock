@@ -1,12 +1,17 @@
 #!/bin/sh
 #
 # WiFi through the ESP32 on SPI1: load the esp32_spi driver, then once wlan0
-# appears, wpa_supplicant (networks in /etc/wpa_supplicant.conf), DHCP and
-# network time, and the ssh server. All in the background, so a missing or
-# unplugged ESP32 doesn't hold up the boot.
+# appears, wpa_supplicant, DHCP and network time, and the ssh server. All in
+# the background, so a missing or unplugged ESP32 doesn't hold up the boot.
+#
+# The saved networks are on the apps partition (/apps/data/wifi), so flashing a
+# new base system keeps them; the first time, it starts from a copy of
+# /etc/wpa_supplicant.conf (no networks: add them in Settings > WiFi).
 #
 
 LOG=/var/log/wifi.log
+CONF=/etc/wpa_supplicant.conf
+grep -q " /apps " /proc/mounts && CONF=/apps/data/wifi/wpa_supplicant.conf
 
 start_wifi() {
 	modprobe esp32_spi || { echo "wifi: no esp32_spi driver"; return 1; }
@@ -16,7 +21,11 @@ start_wifi() {
 		sleep 1
 	done
 	ip link set wlan0 up
-	wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant.conf -P /var/run/wpa_supplicant.pid
+	if [ ! -f "$CONF" ]; then
+		mkdir -p "$(dirname "$CONF")"
+		(umask 077 && cp /etc/wpa_supplicant.conf "$CONF")
+	fi
+	wpa_supplicant -B -i wlan0 -c "$CONF" -P /var/run/wpa_supplicant.pid
 	udhcpc -b -i wlan0 -p /var/run/udhcpc.wlan0.pid -x hostname:licheepi-nano
 	ntpd -p pool.ntp.org                          # keeps the clock right once the network is up
 	echo "wifi: wlan0 up"

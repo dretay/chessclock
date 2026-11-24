@@ -1,6 +1,12 @@
 # Development tools
 
-`pip install -r tools/requirements.txt` (pyserial, Pillow) first.
+The tools need pyserial and Pillow. Homebrew's Python won't take packages directly, so give the
+project a virtualenv of its own (ignored by git), and activate it in each new terminal:
+
+```sh
+python3 -m venv .venv && .venv/bin/pip install -r tools/requirements.txt     # once
+source .venv/bin/activate                                                    # then python3 is this one
+```
 
 ## Talking to the board — `tools/board/`
 
@@ -12,6 +18,7 @@ port by name.
 | Tool | |
 |---|---|
 | `deploy_app.py [--use] NAME` | put an app (`chess`, `vacation`) on the board without reflashing: lays it out with its own `install.sh` (compiling its C for the board, with the build tree's compiler) and copies the changed files |
+| `deploy_module.py [--force] [--use] NAME` | pack, sign and install a module (`castle`, `cruise`; `--use`: and show it): the signed route, through the board's `modinstall` ([modules](modules.md)) |
 | `push_to_board.py LOCAL REMOTE` | copy files or folders to the board, checksum-verified, skipping unchanged ones, the app stopped meanwhile |
 | `run_on_board.py "COMMAND" ...` | run shell commands on the board and print the output (logs in first if needed) |
 | `flash_sd.sh [--all] [--uboot] DIR` | write a build to the SD card (macOS): see [building](building.md) |
@@ -43,6 +50,11 @@ Makes the vacation countdown's scenes and Settings text on a desktop: the cruise
 (`cruise/`, from a photo) and Caribbean map, the castle (`castle/`, from a 3D model in Blender, with
 a local Stable Diffusion detail pass), the pre-drawn text (`build_ui.py`). Its
 [README](../tools/themegen/README.md); and the castle's `tools/themegen/castle/build_castle.sh`.
+
+## Modules — `tools/modules/`
+
+`keygen.sh` (the signing key, once) and `pack.py NAME [--key KEY]` (a module's tarball and signed
+statement, for `modinstall` on the board): [modules](modules.md).
 
 ## WiFi — `tools/wifi/`
 
