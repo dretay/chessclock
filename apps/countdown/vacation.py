@@ -58,7 +58,7 @@ def lighting(hour):
 
 
 # the drawing library's scene effects (vfx_effects): theme.json lists the ones its scene has
-EFFECTS = {"water": 1, "wake": 2, "smoke": 4, "gulls": 8, "dolphins": 16, "raft": 32}
+EFFECTS = {"water": 1, "wake": 2, "smoke": 4, "gulls": 8, "dolphins": 16, "raft": 32, "twinkle": 64}
 
 FADE_SECS = 0.6                                     # countdown <-> a module's screen
 
@@ -124,12 +124,18 @@ class App:
         # the scene's own effects (theme.json "effects"; all of them when it doesn't say: the ship's)
         if "effects" in s:
             self.fx.vfx_effects(sum(EFFECTS.get(e, 0) for e in s["effects"]))
+        water = s.get("water") or {}                     # (a scene's own water, water.raw.gz: how strong, how fast)
+        self.fx.vfx_water(int(float(water.get("strength", 1.0)) * 256), int(float(water.get("speed", 1.0)) * 256))
+        show = s.get("show") or {}                       # (the lights' show: theme.json "show", else every pattern)
+        prog = [int(v) for v in show.get("program", [])]
+        self.fx.vfx_twinkle_program((ctypes.c_int * max(1, len(prog)))(*prog), len(prog), int(float(show.get("secs", 12)) * 1000))
         # (the ship's own places: its funnels' tops for the smoke, its bow and stern for the wake; a scene
         # without those effects leaves them out)
         stacks = s.get("stacks", [[-50, -50], [-50, -50]])
         self.fx.vfx_scene(s["horizon"], *stacks[0], *stacks[1], int(s.get("smoke_scale", 0.8) * 256), int(s.get("fireworks_scale", 0.85) * 256),
                           *s.get("bow", [799, 479]), *s.get("stern", [0, 479]), c["center_x"], c["top"], c["gap"], c["label_gap"])
-        if c.get("scale3"): self.fx.vfx_cards_scale3(int(c["scale3"] * 256))     # (three digits: smaller cards)
+        self.fx.vfx_cards_scale(int(float(c.get("scale", 1.0)) * 256))         # (the countdown's size: theme.json cards.scale)
+        if c.get("scale3"): self.fx.vfx_cards_scale3(int(c["scale3"] * 256))     # (three digits: smaller cards, of those)
         tube = [v for pt in s.get("tube", []) for v in pt]
         mast = s.get("mast", [-1, 0])
         self.fx.vfx_ambient(mast[0], mast[1], int(s.get("ambient_scale", 1.0) * 256), len(tube) // 2, (ctypes.c_int * max(1, len(tube)))(*tube))
@@ -138,6 +144,9 @@ class App:
         self.screen_press, self.want_settings, self.screen_tapped = None, False, False
         self.load_conf()
         self.fixed_hour = float(os.environ["VACATION_HOUR"]) if "VACATION_HOUR" in os.environ else None
+        # in the previewer: its live controls (the time-of-day slider, fireworks), without a restart
+        self.live_path = os.path.join(os.environ["PREVIEW_DIR"], "live.json") if os.environ.get("PREVIEW_DIR") else None
+        self.live_at, self.live = 0.0, {}
         self.daylapse = float(os.environ.get("VACATION_DAYLAPSE", "0"))
         self.log_every = float(os.environ.get("VACATION_LOG_SECS", "60"))
         # a preview steps time exactly one frame per frame, and can record every frame
@@ -255,7 +264,23 @@ class App:
             if k >= 1: break
         self.fade_lvl = to
 
+    def live_controls(self, t):
+        """The previewer's live.json, when it's changed: {"hour": h or null, "fireworks": n, "show": n}
+        (counters: each new value fires once). True if the hour changed."""
+        try: at = os.path.getmtime(self.live_path)
+        except (OSError, TypeError): return False
+        if at == self.live_at: return False
+        self.live_at = at
+        try: new = json.load(open(self.live_path))
+        except (OSError, ValueError): return False
+        old, self.live = self.live, new
+        if old and new.get("fireworks", 0) != old.get("fireworks", 0): self.fx.vfx_fireworks(random.randint(4, 7))
+        if old and new.get("show", 0) != old.get("show", 0): self.start_show(t)
+        if new.get("pattern", -1) != old.get("pattern", -1): self.fx.vfx_twinkle_pin(int(new.get("pattern", -1)))
+        return new.get("hour") != old.get("hour") or not old
+
     def hour(self, t):
+        if self.live.get("hour") is not None: return float(self.live["hour"]) % 24
         if self.fixed_hour is not None:
             return (self.fixed_hour + (t / self.daylapse * 24 if self.daylapse else 0)) % 24
         lt = time.localtime(); return lt.tm_hour + lt.tm_min / 60 + lt.tm_sec / 3600
@@ -293,7 +318,8 @@ class App:
         while self.running:
             now = self.now(); t = now - (0 if self.sim else start)
             t_ms = int(t * 1000) & 0x3fffffff           # wraps every 12 days; the drawing copes with one odd frame
-            if t - last_check >= (0.2 if self.daylapse else 2.0):
+            moved = self.live_path is not None and self.live_controls(t)
+            if moved or t - last_check >= (0.2 if self.daylapse else 2.0):
                 last_check = t
                 h = self.hour(t); night = self.night = self.set_light(h)
                 wall = self.wall(); left = (self.departure - wall).total_seconds()
@@ -347,7 +373,8 @@ class App:
                 continue
             # the module's next screen, every so often (not in the middle of a fireworks show, or a press)
             # (a tap shows it even during a fireworks show; on its own timer, it waits for the show to end)
-            if self.playlist and t >= next_map and (not self.show or next_map < 0) and hold_start is None:
+            # (the previewer's "Stay on the scene": no screens by themselves, a tap still brings one)
+            if self.playlist and t >= next_map and (not self.show or next_map < 0) and hold_start is None and (next_map < 0 or not self.live.get("stay")):
                 clock0 = 0 if self.sim else start
                 def countdown_frame(): self.fx.vfx_frame(int((self.now() - clock0) * 1000) & 0x3fffffff)
                 self.fade(0, countdown_frame)                      # the countdown fades out,

@@ -1,0 +1,379 @@
+{
+ "park": "EPCOT",
+ "updated": 1795566159.227668,
+ "example": true,
+ "hours": [
+  "2026-11-24T09:00:00-05:00",
+  "2026-11-24T21:00:00-05:00"
+ ],
+ "rides": [
+  {
+   "name": "Advanced Training Lab",
+   "status": "CLOSED",
+   "wait": null,
+   "updated": 1795561200.643
+  },
+  {
+   "name": "American Heritage Gallery",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795528800.826
+  },
+  {
+   "name": "Awesome Planet",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795528913.866
+  },
+  {
+   "name": "Beauty and the Beast Sing-Along",
+   "status": "CLOSED",
+   "wait": null,
+   "updated": 1795563060.541
+  },
+  {
+   "name": "Bijutsu-kan Gallery",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795528800.975
+  },
+  {
+   "name": "Bruce's Shark World",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795528800.869
+  },
+  {
+   "name": "Canada Far and Wide in Circle-Vision 360",
+   "status": "OPERATING",
+   "wait": 15,
+   "updated": 1795528855.735
+  },
+  {
+   "name": "Disney and Pixar Short Film Festival",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795566092.206
+  },
+  {
+   "name": "Frozen Ever After",
+   "status": "OPERATING",
+   "wait": 65,
+   "updated": 1795565283.765
+  },
+  {
+   "name": "Gallery of Arts and History",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795528800.917
+  },
+  {
+   "name": "Gran Fiesta Tour Starring The Three Caballeros",
+   "status": "OPERATING",
+   "wait": 5,
+   "updated": 1795565707.869
+  },
+  {
+   "name": "Guardians of the Galaxy: Cosmic Rewind",
+   "status": "OPERATING",
+   "wait": 90,
+   "updated": 1795562829.09
+  },
+  {
+   "name": "House of the Whispering Willows",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795528800.75
+  },
+  {
+   "name": "ImageWorks - The \"What If\" Labs",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795528800.928
+  },
+  {
+   "name": "Impressions de France",
+   "status": "OPERATING",
+   "wait": 25,
+   "updated": 1795564856.908
+  },
+  {
+   "name": "Journey Into Imagination With Figment",
+   "status": "OPERATING",
+   "wait": 10,
+   "updated": 1795566092.244
+  },
+  {
+   "name": "Journey of Water, Inspired by Moana",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795527052.769
+  },
+  {
+   "name": "Kidcot Fun Stops",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795532400.613
+  },
+  {
+   "name": "Living with the Land",
+   "status": "OPERATING",
+   "wait": 25,
+   "updated": 1795566092.252
+  },
+  {
+   "name": "Mexico Folk Art Gallery",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795528800.947
+  },
+  {
+   "name": "Mission: SPACE",
+   "status": "OPERATING",
+   "wait": 15,
+   "updated": 1795565824.935
+  },
+  {
+   "name": "Palais du Cin\u00e9ma",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795527000.267
+  },
+  {
+   "name": "Project Tomorrow: Inventing the Wonders of the Future",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795528800.794
+  },
+  {
+   "name": "Reflections of China",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795528914.051
+  },
+  {
+   "name": "Remy's Ratatouille Adventure",
+   "status": "OPERATING",
+   "wait": 50,
+   "updated": 1795565824.907
+  },
+  {
+   "name": "SeaBase Aquarium",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795527000.295
+  },
+  {
+   "name": "Soarin' Across America",
+   "status": "OPERATING",
+   "wait": 30,
+   "updated": 1795565824.926
+  },
+  {
+   "name": "Spaceship Earth",
+   "status": "OPERATING",
+   "wait": 20,
+   "updated": 1795565635.239
+  },
+  {
+   "name": "Stave Church Gallery",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795528800.886
+  },
+  {
+   "name": "Test Track",
+   "status": "OPERATING",
+   "wait": 105,
+   "updated": 1795564911.96
+  },
+  {
+   "name": "The American Adventure",
+   "status": "OPERATING",
+   "wait": null,
+   "updated": 1795535100.315
+  },
+  {
+   "name": "The Seas with Nemo & Friends",
+   "status": "OPERATING",
+   "wait": 5,
+   "updated": 1795566092.196
+  },
+  {
+   "name": "Turtle Talk With Crush",
+   "status": "OPERATING",
+   "wait": 15,
+   "updated": 1795566092.234
+  }
+ ],
+ "shows": [
+  {
+   "name": "Meet Pluto Near EPCOT Main Entrance",
+   "times": [
+    "2026-11-24T09:00:00-05:00",
+    "2026-11-24T09:30:00-05:00",
+    "2026-11-24T10:00:00-05:00",
+    "2026-11-24T10:30:00-05:00",
+    "2026-11-24T11:00:00-05:00",
+    "2026-11-24T11:30:00-05:00",
+    "2026-11-24T12:00:00-05:00",
+    "2026-11-24T13:45:00-05:00",
+    "2026-11-24T14:15:00-05:00",
+    "2026-11-24T14:45:00-05:00",
+    "2026-11-24T15:15:00-05:00",
+    "2026-11-24T15:45:00-05:00"
+   ]
+  },
+  {
+   "name": "Meet Anna and Elsa at Royal Sommerhus",
+   "times": [
+    "2026-11-24T09:15:00-05:00"
+   ]
+  },
+  {
+   "name": "JAMMitors",
+   "times": [
+    "2026-11-24T08:30:00-05:00",
+    "2026-11-24T09:30:00-05:00",
+    "2026-11-24T10:30:00-05:00",
+    "2026-11-24T11:30:00-05:00",
+    "2026-11-24T13:00:00-05:00",
+    "2026-11-24T14:00:00-05:00",
+    "2026-11-24T15:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Luminous The Symphony of Us",
+   "times": [
+    "2026-11-24T21:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Rose & Crown Pub Musician",
+   "times": [
+    "2026-11-24T07:00:00-05:00",
+    "2026-11-24T13:30:00-05:00",
+    "2026-11-24T14:15:00-05:00",
+    "2026-11-24T16:00:00-05:00",
+    "2026-11-24T18:00:00-05:00",
+    "2026-11-24T19:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Meet One of the Three Caballeros in Mexico",
+   "times": [
+    "2026-11-24T09:30:00-05:00",
+    "2026-11-24T10:00:00-05:00",
+    "2026-11-24T10:30:00-05:00",
+    "2026-11-24T11:00:00-05:00",
+    "2026-11-24T11:30:00-05:00",
+    "2026-11-24T12:00:00-05:00",
+    "2026-11-24T12:30:00-05:00",
+    "2026-11-24T14:10:00-05:00",
+    "2026-11-24T14:40:00-05:00",
+    "2026-11-24T15:10:00-05:00",
+    "2026-11-24T15:40:00-05:00",
+    "2026-11-24T16:10:00-05:00"
+   ]
+  },
+  {
+   "name": "Meet Beloved Disney Pals at Mickey & Friends",
+   "times": [
+    "2026-11-24T09:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Meet the Legendary Warrior in China",
+   "times": [
+    "2026-11-24T11:15:00-05:00",
+    "2026-11-24T12:25:00-05:00",
+    "2026-11-24T14:20:00-05:00",
+    "2026-11-24T15:30:00-05:00"
+   ]
+  },
+  {
+   "name": "Sergio",
+   "times": [
+    "2026-11-24T11:50:00-05:00",
+    "2026-11-24T12:35:00-05:00",
+    "2026-11-24T13:20:00-05:00",
+    "2026-11-24T14:15:00-05:00",
+    "2026-11-24T15:10:00-05:00",
+    "2026-11-24T15:55:00-05:00",
+    "2026-11-24T16:40:00-05:00"
+   ]
+  },
+  {
+   "name": "Entertainment at Germany Gazebo",
+   "times": [
+    "2026-11-24T12:40:00-05:00",
+    "2026-11-24T13:30:00-05:00",
+    "2026-11-24T14:35:00-05:00",
+    "2026-11-24T15:55:00-05:00",
+    "2026-11-24T17:00:00-05:00",
+    "2026-11-24T18:05:00-05:00"
+   ]
+  },
+  {
+   "name": "Meet Figment Inside ImageWorks",
+   "times": [
+    "2026-11-24T09:00:00-05:00",
+    "2026-11-24T13:45:00-05:00"
+   ]
+  },
+  {
+   "name": "Voices of Liberty",
+   "times": [
+    "2026-11-24T11:15:00-05:00",
+    "2026-11-24T12:00:00-05:00",
+    "2026-11-24T12:45:00-05:00",
+    "2026-11-24T13:30:00-05:00",
+    "2026-11-24T14:15:00-05:00",
+    "2026-11-24T15:00:00-05:00",
+    "2026-11-24T15:45:00-05:00"
+   ]
+  },
+  {
+   "name": "Command Performance",
+   "times": [
+    "2026-11-24T15:00:00-05:00",
+    "2026-11-24T16:15:00-05:00",
+    "2026-11-24T17:30:00-05:00",
+    "2026-11-24T19:00:00-05:00",
+    "2026-11-24T20:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Meet Princess Aurora in France",
+   "times": [
+    "2026-11-24T10:45:00-05:00",
+    "2026-11-24T11:55:00-05:00",
+    "2026-11-24T13:50:00-05:00",
+    "2026-11-24T15:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Mariachi Cobre",
+   "times": [
+    "2026-11-24T11:15:00-05:00",
+    "2026-11-24T12:00:00-05:00",
+    "2026-11-24T12:45:00-05:00",
+    "2026-11-24T13:30:00-05:00",
+    "2026-11-24T15:00:00-05:00",
+    "2026-11-24T15:45:00-05:00",
+    "2026-11-24T16:30:00-05:00"
+   ]
+  },
+  {
+   "name": "\u00a1Celebraci\u00f3n Encanto!",
+   "times": [
+    "2026-11-24T09:45:00-05:00",
+    "2026-11-24T10:45:00-05:00",
+    "2026-11-24T11:45:00-05:00",
+    "2026-11-24T13:30:00-05:00",
+    "2026-11-24T14:30:00-05:00",
+    "2026-11-24T15:30:00-05:00"
+   ]
+  }
+ ]
+}

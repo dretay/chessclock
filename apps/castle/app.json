@@ -1,9 +1,13 @@
 {
   "id": "castle",
   "name": "Magic Kingdom",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "runtime": "countdown",
-  "api": 2,
+  "api": 3,
+  "park": {
+    "id": "75ea578a-adc8-4116-a54d-dccb60765ef9",
+    "show": "Happily Ever After"
+  },
   "exclude": [
     "scenes/*/preview.png",
     "splash/preview.png"
@@ -16,7 +20,8 @@
   "screens": [
     {
       "id": "waits",
-      "file": "board.py",
+      "from": "runtime",
+      "file": "parks/board.py",
       "class": "WaitsScreen",
       "enabled": "WAITS",
       "secs": "WAITS_SECS"

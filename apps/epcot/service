@@ -1,0 +1,4 @@
+#!/bin/sh
+# EPCOT's background job: its park's ride wait times (the countdown runtime's, shared by the
+# park apps: ../countdown/parks/service; the park is app.json's "park").
+exec ../countdown/parks/service

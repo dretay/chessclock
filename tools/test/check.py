@@ -52,7 +52,8 @@ def check_modules():
         if not (os.path.exists(os.path.join(scene, "mask.raw.gz")) or os.path.exists(os.path.join(scene, "ship.raw.gz"))):
             fail("%s: scene %s has no mask.raw.gz" % (name, sc.get("default")))
         for s in m.get("screens", []):
-            if not os.path.exists(os.path.join(d, s.get("file", ""))): fail("%s: screen %s: no %s" % (name, s.get("id"), s.get("file")))
+            where = os.path.join(APPS, "countdown") if s.get("from") == "runtime" else d       # (a screen the runtime has: the parks' board)
+            if not os.path.exists(os.path.join(where, s.get("file", ""))): fail("%s: screen %s: no %s" % (name, s.get("id"), s.get("file")))
         svc = os.path.join(d, "service")
         if os.path.exists(svc) and not os.access(svc, os.X_OK): fail("%s: service isn't executable" % name)
         for st in m.get("settings", []):

@@ -22,6 +22,7 @@
   label { display: block; color: var(--dim); font-size: 12px; margin-bottom: 4px; }
   select, input[type=datetime-local] { width: 100%; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; font: inherit; }
   .row { display: flex; align-items: center; gap: 8px; }
+  input[type=range] { width: 100%; accent-color: var(--gold); }
   .row label { margin: 0; color: var(--text); font-size: 14px; }
   button { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; font: inherit; cursor: pointer; }
   button:hover { border-color: var(--gold); }
@@ -45,15 +46,26 @@
       <select id="app"></select>
     </div>
     <div id="timebox">
-      <label for="hour">Time of day</label>
-      <select id="hour">
-        <option value="">Live (this Mac's clock)</option>
-        <option value="9">Morning (9 AM)</option>
-        <option value="12">Noon</option>
-        <option value="18.5">Dusk (6:30 PM)</option>
-        <option value="20">Evening (8 PM)</option>
-        <option value="22">Night (10 PM)</option>
+      <label for="hour">Time of day <span id="hourtext" class="note"></span></label>
+      <input type="range" id="hour" min="0" max="24" step="0.05" value="12">
+      <div class="row" style="margin-top:6px">
+        <input type="checkbox" id="livehour"><label for="livehour">This Mac's clock</label>
+      </div>
+      <div class="row" style="margin-top:8px"><button id="fireworks">Fireworks</button><button id="show">Nightly show</button></div>
+      <label for="pattern" style="margin-top:12px">Lights' show</label>
+      <select id="pattern">
+        <option value="-1">All the patterns in turn</option>
+        <option value="3">Spin: a rainbow turning round</option><option value="4">Rise: bands climbing</option>
+        <option value="7">Spiral</option><option value="8">Comet</option><option value="5">Wash: one colour, breathing</option>
+        <option value="9">Heartbeat</option><option value="6">Sparkle</option><option value="0">Waves</option>
+        <option value="1">Rings</option><option value="2">Blink</option>
       </select>
+      <label for="editmode" style="margin-top:12px">Edit the lights</label>
+      <div class="row">
+        <select id="editmode"><option value="">Off</option><option value="erase">Erase (drag over them)</option><option value="add">Add (click where)</option></select>
+        <button id="undo">Undo</button>
+      </div>
+      <p class="note" id="erasenote"></p>
     </div>
     <div id="datebox">
       <label for="now">Pretend it's</label>
@@ -83,13 +95,18 @@ async function frame() {
       for (let i = 0; i < src.length; i += 4) { d[i] = src[i + 2]; d[i + 1] = src[i + 1]; d[i + 2] = src[i]; d[i + 3] = 255; }
       ctx.putImageData(img, 0, 0);
     }
+    if (stroke.length) {                          // (the stroke being drawn, over the picture)
+      ctx.fillStyle = "rgba(255, 60, 60, 0.35)";
+      for (const [x, y, r] of stroke) { ctx.beginPath(); ctx.arc(x, y, r, 0, 2 * Math.PI); ctx.fill(); }
+    }
   } catch (e) {}
   setTimeout(frame, 40);
 }
 frame();
 
-// the mouse as the touchscreen
-let down = false, lastMove = 0;
+// the mouse as the touchscreen (or, erasing lights, a brush)
+let down = false, lastMove = 0, stroke = [];
+const BRUSH = 10;
 function pos(e) {
   const r = canvas.getBoundingClientRect();
   return [Math.round((e.clientX - r.left) * 800 / r.width), Math.round((e.clientY - r.top) * 480 / r.height)];
@@ -98,16 +115,53 @@ function send(kind, e) {
   const [x, y] = pos(e);
   fetch("/touch", { method: "POST", body: `${kind} ${Math.max(0, Math.min(799, x))} ${Math.max(0, Math.min(479, y))}` });
 }
-canvas.addEventListener("pointerdown", e => { down = true; canvas.setPointerCapture(e.pointerId); send("down", e); });
-canvas.addEventListener("pointermove", e => { if (down && e.timeStamp - lastMove > 40) { lastMove = e.timeStamp; send("move", e); } });
-canvas.addEventListener("pointerup", e => { if (down) { down = false; send("up", e); } });
+function editing() { return $("editmode").value; }
+async function lightsCall(body) {
+  const r = await (await fetch("/lights", { method: "POST", body: JSON.stringify(body) })).json();
+  $("erasenote").textContent = r.error ? r.error : `${r.lights} lights · ${r.edits} edits (Undo takes the last back)`;
+}
+canvas.addEventListener("pointerdown", e => {
+  down = true; canvas.setPointerCapture(e.pointerId);
+  if (editing() === "erase") stroke = [[...pos(e), BRUSH]];
+  else if (!editing()) send("down", e);
+});
+canvas.addEventListener("pointermove", e => {
+  if (!down) return;
+  if (editing() === "erase") { stroke.push([...pos(e), BRUSH]); return; }
+  if (!editing() && e.timeStamp - lastMove > 40) { lastMove = e.timeStamp; send("move", e); }
+});
+canvas.addEventListener("pointerup", e => {
+  if (!down) return; down = false;
+  const m = editing();
+  if (m === "erase") { const s = stroke; stroke = []; if (s.length) lightsCall({ erase: s }); }
+  else if (m === "add") lightsCall({ add: [pos(e)] });
+  else send("up", e);
+});
 canvas.addEventListener("pointercancel", e => { if (down) { down = false; send("up", e); } });
 
 // the controls
 const $ = id => document.getElementById(id);
 function control(c) { fetch("/control", { method: "POST", body: JSON.stringify(c) }); }
 $("app").onchange = () => control({ app: $("app").value });
+function clock(h) { const m = Math.round(h * 60) % 1440; return `${(Math.floor(m / 60) % 12) || 12}:${String(m % 60).padStart(2, "0")} ${m >= 720 ? "PM" : "AM"}`; }
+let hourSent = 0;
+function showHour() { $("hourtext").textContent = $("livehour").checked ? "(now)" : clock(+$("hour").value); }
+$("hour").oninput = () => {                       // (as it's dragged: the scene follows, no restart)
+  $("livehour").checked = false; showHour();
+  const t = Date.now(); if (t - hourSent > 80) { hourSent = t; control({ hour: $("hour").value }); }
+};
 $("hour").onchange = () => control({ hour: $("hour").value });
+$("livehour").onchange = () => { showHour(); control({ hour: $("livehour").checked ? "" : $("hour").value }); };
+$("fireworks").onclick = () => control({ fireworks: true });
+function toNight() { $("livehour").checked = false; $("hour").value = 22; showHour(); control({ hour: "22" }); }
+$("editmode").onchange = () => {                   // (night, so the lights show)
+  const m = editing();
+  if (m) toNight();
+  $("erasenote").textContent = m === "erase" ? "Drag over lights to rub them out." : m === "add" ? "Click where a light should go." : "";
+};
+$("pattern").onchange = () => { if (+$("pattern").value >= 0) toNight(); control({ pattern: $("pattern").value }); };
+$("undo").onclick = () => lightsCall({ undo: true });
+$("show").onclick = () => control({ show: true });
 $("now").onchange = () => control({ now: $("now").value ? $("now").value : "" });
 $("today").onclick = () => { $("now").value = ""; control({ now: "" }); };
 $("service").onchange = () => control({ service: $("service").checked });
@@ -121,7 +175,7 @@ async function state() {
     const opts = s.apps.map(([id, name]) => `<option value="${id}">${name}</option>`).join("");
     if (sel.dataset.opts !== opts) { sel.innerHTML = opts; sel.dataset.opts = opts; }
     if (document.activeElement !== sel) sel.value = s.app;
-    if (first) { $("hour").value = s.hour; $("now").value = s.now; first = false; }
+    if (first) { $("livehour").checked = s.hour === ""; if (s.hour !== "") $("hour").value = s.hour; showHour(); $("now").value = s.now; first = false; }
     $("service").checked = s.service;
     $("svcbox").classList.toggle("disabled", !s.has_service);
     $("timebox").classList.toggle("disabled", !s.countdown);

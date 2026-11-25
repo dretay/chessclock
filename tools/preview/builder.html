@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scene Builder</title>
+<style>
+  :root {
+    --bg: #14161b; --panel: #1d2027; --line: #2c313b; --text: #e8e4d8; --dim: #9aa0ab;
+    --gold: #e2be78; --coral: #ec846c;
+  }
+  * { box-sizing: border-box; }
+  html, body { overflow-x: hidden; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  main { padding: 14px 14px 40px; display: flex; flex-direction: column; gap: 16px; max-width: 100%; min-width: 0; }
+  main > *, section > * { min-width: 0; }
+  /* the scene's name under a heading: its own line, cut short if it's long (a photo's name has no spaces to break at) */
+  h2 .note { display: block; margin-top: 2px; text-transform: none; letter-spacing: 0; font-weight: 400;
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* a checkbox and its words: side by side, the words wrapping under themselves */
+  label.check { display: flex; align-items: flex-start; gap: 7px; color: var(--dim); font-size: 12px; cursor: pointer; }
+  label.check input { flex: none; margin: 2px 0 0; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0; }
+  h1 span { color: var(--gold); }
+  h2 { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--dim); margin: 0 0 8px; }
+  section { display: flex; flex-direction: column; gap: 8px; }
+  .note { color: var(--dim); font-size: 12px; margin: 0; }
+  .busy { background: #2a2617; border: 1px solid #4d4426; color: var(--gold); border-radius: 8px; padding: 8px 10px; }
+  .error { background: #2b1a17; border: 1px solid #5a2c24; color: var(--coral); border-radius: 8px; padding: 8px 10px; }
+  .drop { border: 1.5px dashed var(--line); border-radius: 10px; padding: 16px 12px; text-align: center; color: var(--dim); cursor: pointer; }
+  .drop.over { border-color: var(--gold); color: var(--text); background: #1f1d17; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .card.current { border-color: var(--gold); }
+  .card img { display: block; width: 100%; aspect-ratio: 2424 / 496; object-fit: cover; background: #000; }
+  .card .bar { display: flex; align-items: center; gap: 6px; padding: 6px 8px; }
+  .card .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag { color: var(--gold); font-size: 11px; }
+  button { background: #262a33; color: var(--text); border: 1px solid var(--line); border-radius: 7px; padding: 5px 9px; font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--gold); }
+  button.primary { background: var(--gold); color: #1b1710; border-color: var(--gold); font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  input[type=number] { width: 54px; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font: inherit; }
+  select { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font: inherit; }
+  .effect { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+  .effect h3 { margin: 0; font-size: 13px; font-weight: 600; }
+  .patterns { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
+  .patterns label { display: flex; gap: 5px; align-items: center; }
+  .off { opacity: .5; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Scene <span id="appname"></span></h1>
+  <label class="check"><input type="checkbox" id="stay" checked><span>Stay on the scene (the app's other screens wait; a tap still shows them)</span></label>
+  <div class="row note">Zoom <button id="zout">−</button><button id="zin">+</button><button id="zfit">Fit</button></div>
+  <p class="note" style="margin-top:-10px">Or the mouse wheel or a pinch on the picture; the middle button, or two fingers, to move around.</p>
+  <div id="status"></div>
+
+  <section id="photos">
+    <h2>Photos</h2>
+    <label class="drop" id="drop">
+      Drop a photo here, or click to choose one
+      <input type="file" id="file" accept="image/*" hidden>
+    </label>
+    <label class="check"><input type="checkbox" id="findorb"><span>Find lights on a sphere in it (like EPCOT's)</span></label>
+    <div id="cards"></div>
+  </section>
+
+  <section id="device">
+    <h2>On the device</h2>
+    <div class="effect">
+      <label class="check"><input type="checkbox" id="isigned"><span>Signed (packed and signed with your key: for a board locked to signed apps)</span></label>
+      <div class="row"><button id="install" class="primary">Install on the device</button></div>
+      <p class="note" id="installnote">The app's kept scene, with the system and runtime it runs on, over USB (only what changed is copied); then it's the app that runs.</p>
+    </div>
+  </section>
+
+  <section id="layout">
+    <h2>Layout <span class="note" id="layoutfor"></span></h2>
+    <div class="effect">
+      <h3>On the picture</h3>
+      <div class="row">
+        <button id="mcards">Move countdown</button><button id="mhorizon">Move horizon</button><button id="mdone">Done</button>
+      </div>
+      <p class="note" id="layoutnote">Drag on the picture: the countdown's outline, or the horizon (fireworks go up from it; below it is never sky).</p>
+      <div class="row note">Across <input type="number" id="lx"> Down <input type="number" id="ly"> Gap <input type="number" id="lgap"></div>
+      <div class="row note">Size <input type="number" id="lsize" min="40" max="130" step="5"> % &nbsp;3 digits <input type="number" id="l3" min="50" max="100"> %</div>
+      <div class="row note">Horizon <input type="number" id="lh" min="40" max="470"> <button id="lset">Set</button></div>
+      <div class="row"><button id="see3">See it with 3 digits</button><button id="today">Back to today</button></div>
+    </div>
+  </section>
+
+  <section id="effects">
+    <h2>Effects <span class="note" id="effectsfor"></span></h2>
+    <div class="effect" id="orb">
+      <h3>Lights on a sphere</h3>
+      <p class="note" id="orbstate"></p>
+      <div class="row">
+        <button id="orbauto">Find automatically</button>
+        <button id="orbshow">Show all</button>
+        <button id="orboff">Remove</button>
+      </div>
+      <div class="row note">Circle <input type="number" id="cx" title="centre x"> <input type="number" id="cy" title="centre y">
+        <input type="number" id="cr" title="radius"> <button id="orbset">Set</button></div>
+      <h3 style="margin-top:4px">The show</h3>
+      <div class="patterns" id="patterns"></div>
+      <div class="row note">Each <input type="number" id="secs" min="2" max="120" step="1"> seconds <button id="showset">Set</button></div>
+      <div class="row note">Watch one: <select id="hold"></select></div>
+      <h3 style="margin-top:4px">Edit lights</h3>
+      <div class="row">
+        <select id="editmode"><option value="">Off</option><option value="erase">Erase: drag over them</option><option value="add">Add: click where</option></select>
+        <button id="undo">Undo</button>
+      </div>
+      <p class="note" id="editnote"></p>
+    </div>
+    <div class="effect" id="win">
+      <h3>Window lights</h3>
+      <p class="note" id="winstate">Paint the glass that glows at night; each patch is a window, switching on and off on its own.</p>
+      <div class="row"><button id="wauto">Find automatically</button><button id="wshow">Show all</button><button id="wclear">Clear all</button></div>
+      <div class="row">
+        <button id="wpaint">Paint</button><button id="wrect">Rectangle</button><button id="werase">Erase</button><button id="wdone">Done</button>
+      </div>
+      <div class="row note">Brush <select id="wbrush"><option value="1">Fine</option><option value="3">Small</option><option value="6" selected>Medium</option><option value="10">Large</option></select>
+        <button id="wundo">Undo</button></div>
+      <div class="row note">Light <select id="wcolour"><option value="255,168,80">Warm</option><option value="255,200,120">Lamplight</option>
+        <option value="255,238,210">White</option><option value="180,210,255">Cool</option></select> <button id="wcset">Set</button></div>
+    </div>
+    <div class="effect" id="water">
+      <h3>Water</h3>
+      <p class="note" id="waterstate">Paint where there's water (a lake, the sea, a fountain): it ripples, gently or choppily.</p>
+      <div class="row"><button id="qauto">Find automatically</button><button id="qshow">Show all</button><button id="qclear">Clear all</button></div>
+      <div class="row">
+        <button id="qpaint">Paint</button><button id="qrect">Rectangle</button><button id="qerase">Erase</button><button id="qdone">Done</button>
+      </div>
+      <div class="row note">Brush <select id="qbrush"><option value="3">Fine</option><option value="6">Small</option><option value="12" selected>Medium</option><option value="24">Large</option></select>
+        <button id="qundo">Undo</button></div>
+      <div class="row note">Ripple <select id="qstrength"><option value="0.5">Gentle</option><option value="1" selected>Normal</option><option value="1.8">Choppy</option></select>
+        Pace <select id="qspeed"><option value="0.6">Slow</option><option value="1" selected>Normal</option><option value="1.6">Fast</option></select>
+        <button id="qset">Set</button></div>
+    </div>
+    <div class="effect">
+      <h3>Fireworks</h3>
+      <p class="note">Every scene has them at night, going up from its horizon into open sky.</p>
+      <div class="row"><button id="fw">Some now</button><button id="show">The nightly show</button></div>
+    </div>
+    <p class="note">Coming as effects any scene can have: water shimmer, stars, fireflies, falling leaves or snow.</p>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const PATTERNS = [["spin", 3, "Spin"], ["rise", 4, "Rise"], ["spiral", 7, "Spiral"], ["comet", 8, "Comet"], ["wash", 5, "Wash"],
+                  ["heartbeat", 9, "Heartbeat"], ["sparkle", 6, "Sparkle"], ["waves", 0, "Waves"], ["rings", 1, "Rings"], ["blink", 2, "Blink"]];
+const native = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.preview;
+let S = null, sheetsAt = Date.now();
+
+async function post(path, body) {
+  try { return await (await fetch(path, { method: "POST", body: typeof body === "string" || body instanceof Blob ? body : JSON.stringify(body) })).json(); }
+  catch (e) { return { error: String(e) }; }
+}
+function act(body) { return post("/builder/do", Object.assign({ name: S ? S.showing : "" }, body)).then(r => { if (r.error) say(r.error); refresh(); }); }
+function control(c) { return post("/control", c); }
+function say(msg) { $("status").innerHTML = msg ? `<div class="error">${msg}</div>` : ""; }
+
+// ---- photos: dropped or chosen, each a trial
+async function upload(file) {
+  if (!file) return;
+  flashWhenDone(...($("findorb").checked ? ["sky", "orb"] : ["sky"]));
+  const r = await post(`/builder/upload?name=${encodeURIComponent(file.name)}&orb=${$("findorb").checked ? "auto" : ""}`, file);
+  if (r.error) say(r.error);
+  refresh();
+}
+$("file").onchange = () => upload($("file").files[0]);
+const drop = $("drop");
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", e => { e.preventDefault(); drop.classList.remove("over"); upload(e.dataTransfer.files[0]); });
+window.builderUpload = () => { flashWhenDone(...($("findorb").checked ? ["sky", "orb"] : ["sky"])); refresh(); };   // (the window's own drop, onto the picture)
+
+function card(name, label, current, tags) {
+  const div = document.createElement("div");
+  div.className = "card" + (current ? " current" : "");
+  div.innerHTML = `<img src="/builder/sheet?name=${encodeURIComponent(name)}&t=${sheetsAt}" alt="">
+    <div class="bar"><span class="name" title="${label}">${label}</span><span class="tag">${tags}</span></div>
+    <div class="bar"></div>`;
+  const bar = div.querySelectorAll(".bar")[1];
+  const b = (text, fn, cls) => { const e = document.createElement("button"); e.textContent = text; if (cls) e.className = cls; e.onclick = fn; bar.appendChild(e); return e; };
+  if (!current) b("Show", () => act({ action: "use", name }));
+  if (name) {
+    b("Keep in the app", () => { if (confirm(`Make "${label}" the app's scene?`)) act({ action: "keep", name }); }, "primary");
+    b("Delete", () => { if (confirm(`Delete the trial "${label}"?`)) act({ action: "delete", name }); });
+  }
+  return div;
+}
+
+function render(s) {
+  $("appname").textContent = "· " + s.name;
+  $("status").innerHTML = s.busy ? `<div class="busy">${s.busy}…</div>` : s.error ? `<div class="error">${s.error}</div>` : "";
+  for (const id of ["photos", "effects", "layout"]) $(id).classList.toggle("off", !s.countdown);
+  $("install").disabled = !!s.busy;
+  if (s.install) $("installnote").textContent = s.install;
+  if (!s.countdown) { $("cards").innerHTML = '<p class="note">This app has no scene to build (the countdown apps do).</p>'; return; }
+  const cards = $("cards"); cards.innerHTML = "";
+  if (s.kept) cards.appendChild(card("", "The scene in the app", !s.showing, !s.showing ? "showing" : "in the app"));
+  for (const t of s.trials) cards.appendChild(card(t.name, t.name, t.current, t.current ? "showing" : "trial"));
+  if (!s.kept && !s.trials.length) cards.insertAdjacentHTML("beforeend", '<p class="note">No photos yet: drop one above.</p>');
+  // layout, for the scene showing
+  $("layoutfor").textContent = s.showing ? `· ${s.showing}` : "· the app's scene";
+  if (document.activeElement.type !== "number") {
+    const k = s.cards || {};
+    $("lx").value = k.center_x ?? 170; $("ly").value = k.top ?? 16; $("lgap").value = k.gap ?? 12;
+    $("l3").value = Math.round((k.scale3 ?? 0.82) * 100); $("lh").value = s.horizon ?? "";
+    $("lsize").value = Math.round((k.scale ?? 1) * 100);
+  }
+  // effects, for the scene showing
+  $("effectsfor").textContent = s.showing ? `· ${s.showing}` : "· the app's scene";
+  const c = s.conf || {}, o = c.orb;
+  $("orbstate").textContent = o ? `${s.lights} lights, on the circle at ${o.cx}, ${o.cy}, radius ${o.r}.` : "None in this scene.";
+  if (document.activeElement.type !== "number") {
+    $("cx").value = o ? o.cx : ""; $("cy").value = o ? o.cy : ""; $("cr").value = o ? o.r : "";
+    $("secs").value = (c.show && c.show.secs) || 12;
+  }
+  const prog = (c.show && c.show.program && c.show.program.length) ? c.show.program : PATTERNS.map(p => p[0]);
+  if (!$("patterns").contains(document.activeElement))
+    $("patterns").innerHTML = PATTERNS.map(([n, , t]) => `<label><input type="checkbox" value="${n}" ${prog.includes(n) ? "checked" : ""}> ${t}</label>`).join("");
+  for (const id of ["orboff", "orbshow", "showset", "undo", "editmode", "hold"]) $(id).disabled = !o;
+  const photoScene = !!(c && c.photo);
+  for (const id of ["wauto", "wpaint", "wrect", "werase", "wdone", "wcset", "wundo"]) $(id).disabled = !photoScene;
+  $("wshow").disabled = !photoScene || !(s.windows_found || s.window_edits);
+  $("wclear").disabled = !photoScene || !(s.windows_found || s.window_edits);
+  for (const id of ["qauto", "qpaint", "qrect", "qerase", "qdone", "qset", "qundo"]) $(id).disabled = !photoScene;
+  $("qshow").disabled = !photoScene || !(s.water_found || s.water_edits);
+  $("qclear").disabled = !photoScene || !(s.water_found || s.water_edits);
+  if (!photoScene) $("waterstate").textContent = "Painting works on a scene made from a photo (the cruise's sea is its own, automatic).";
+  else if (!["qpaint", "qrect", "qerase"].some(id => $(id).classList.contains("primary")))
+    $("waterstate").textContent = (s.water_found ? "Water found automatically (a guess: check it), " : "") + (s.water_edits ? `${s.water_edits} edits of yours.`
+      : s.water_found ? "touch it up with Paint or Erase." : "Find it automatically, or paint where there's water.");
+  if (c && c.water && document.activeElement.tagName !== "SELECT") {
+    $("qstrength").value = String(c.water.strength ?? 1); $("qspeed").value = String(c.water.speed ?? 1);
+  }
+  if (!photoScene) $("winstate").textContent = "Painting works on a scene made from a photo.";
+  else if (!["wpaint", "wrect", "werase"].some(id => $(id).classList.contains("primary")))
+    $("winstate").textContent = (s.windows_found ? "Windows found automatically, " : "") + (s.window_edits ? `${s.window_edits} edits of yours (Undo takes the last back).`
+      : s.windows_found ? "touch them up with Paint, Rectangle or Erase." : "Find them automatically, or paint the glass that glows at night.");
+}
+$("hold").innerHTML = `<option value="-1">All in turn</option>` + PATTERNS.map(([, id, t]) => `<option value="${id}">${t}</option>`).join("");
+
+// ---- the lights
+function night() { return control({ hour: "22" }); }
+$("orbauto").onclick = () => { flashWhenDone("orb"); act({ action: "orb", mode: "auto" }); };
+$("orboff").onclick = () => act({ action: "orb", mode: "off" });
+$("orbset").onclick = () => act({ action: "orb", mode: [+$("cx").value, +$("cy").value, +$("cr").value] });
+$("showset").onclick = () => {
+  const program = [...$("patterns").querySelectorAll("input:checked")].map(e => e.value);
+  if (!program.length) return say("Pick at least one pattern.");
+  act({ action: "show", program, secs: +$("secs").value || 12 }).then(night);
+};
+$("hold").onchange = () => { if (+$("hold").value >= 0) night(); control({ pattern: $("hold").value }); };
+// the picture's mode, one at a time: erase or add lights, move the countdown, set the horizon
+function setMode(m) {
+  if (native) {
+    const c = (S && S.cards) || {}, size = (S && S.card_size) || [138, 192], k = c.scale || 1;   // (the outline: the cards at their size)
+    const brush = m.startsWith("q") ? +$("qbrush").value : +$("wbrush").value;
+    native.postMessage({ editMode: m, cardW: Math.round(size[0] * k), cardH: Math.round(size[1] * k), gap: c.gap || 12, brush });
+  }
+  for (const id of ["wpaint", "wrect", "werase", "qpaint", "qrect", "qerase"]) $(id).classList.toggle("primary", m === id);
+  if (["qpaint", "qrect", "qerase"].includes(m)) {
+    control({ hour: "12" });                          // (water shows best by day)
+    $("waterstate").textContent = !native ? "In a browser, painting needs the App Preview window." : m === "qrect" ? "Drag a box over the water on the picture."
+      : m === "qpaint" ? "Paint over the water on the picture." : "Brush over painted water to take it off.";
+  }
+  if (["wpaint", "wrect", "werase"].includes(m)) {
+    night();
+    $("winstate").textContent = !native ? "In a browser, painting needs the App Preview window." : m === "wrect" ? "Drag a box over each window on the picture."
+      : m === "wpaint" ? "Paint over the glass on the picture." : "Brush over painted glass to take it off.";
+  }
+  $("editmode").value = m === "erase" || m === "add" ? m : "";
+  $("mcards").classList.toggle("primary", m === "cards"); $("mhorizon").classList.toggle("primary", m === "horizon");
+  $("editnote").textContent = !(m === "erase" || m === "add") ? "" : !native ? "In a browser: use the preview page's Edit lights."
+    : m === "erase" ? "Drag over lights on the picture to rub them out." : "Click on the picture where a light should go.";
+  if (!native && (m === "cards" || m === "horizon")) $("layoutnote").textContent = "In a browser: type the numbers below.";
+}
+$("editmode").onchange = () => { const m = $("editmode").value; if (m) night(); setMode(m); };
+$("mcards").onclick = () => setMode("cards");
+$("mhorizon").onclick = () => setMode("horizon");
+$("mdone").onclick = () => setMode("");
+for (const id of ["wpaint", "wrect", "werase"]) $(id).onclick = () => setMode(id);
+$("wdone").onclick = () => setMode("");
+$("wbrush").onchange = () => { const on = ["wpaint", "werase"].find(id => $(id).classList.contains("primary")); if (on) setMode(on); };
+$("wcset").onclick = () => post("/windows", { colour: $("wcolour").value.split(",").map(Number) }).then(r => { if (r.error) say(r.error); night(); refresh(); });
+$("wauto").onclick = () => (flashWhenDone("windows"), post("/windows", { auto: true })).then(r => { if (r.error) say(r.error); night(); refresh(); });
+$("wclear").onclick = () => confirm("Clear all the windows, found and painted?") && post("/windows", { clear_auto: true }).then(r => { if (r.error) say(r.error); refresh(); });
+for (const id of ["qpaint", "qrect", "qerase"]) $(id).onclick = () => setMode(id);
+$("qdone").onclick = () => setMode("");
+$("qbrush").onchange = () => { const on = ["qpaint", "qerase"].find(id => $(id).classList.contains("primary")); if (on) setMode(on); };
+$("qauto").onclick = () => (flashWhenDone("water"), post("/water", { auto: true })).then(r => { if (r.error) say(r.error); control({ hour: "12" }); refresh(); });
+$("qclear").onclick = () => confirm("Clear all the water, found and painted?") && post("/water", { clear_auto: true }).then(r => { if (r.error) say(r.error); refresh(); });
+$("qset").onclick = () => post("/water", { strength: +$("qstrength").value, speed: +$("qspeed").value }).then(r => { if (r.error) say(r.error); refresh(); });
+$("qundo").onclick = () => post("/water", { undo: true }).then(r => { if (r.error) say(r.error); refresh(); });
+$("wundo").onclick = () => post("/windows", { undo: true }).then(r => { if (r.error) say(r.error); refresh(); });
+window.layoutChanged = () => refresh();             // (from the window, after a drag)
+$("lset").onclick = () => act({ action: "layout", cards: { center_x: +$("lx").value, top: +$("ly").value, gap: +$("lgap").value,
+                                                         scale: Math.max(40, Math.min(130, +$("lsize").value || 100)) / 100, scale3: +$("l3").value / 100 } });
+// (one Set for the numbers: the horizon too, when it's changed: that one repacks the scene)
+const _lset = $("lset").onclick;
+$("lset").onclick = () => { _lset(); if (S && +$("lh").value && +$("lh").value !== S.horizon) act({ action: "layout", horizon: +$("lh").value }); };
+$("see3").onclick = () => {                         // (150 days before the trip: three digits)
+  if (!S || !S.trip) return say("No trip date in this app's settings to count from.");
+  const d = new Date(S.trip + "T12:00"); d.setDate(d.getDate() - 150);
+  const p = n => String(n).padStart(2, "0");
+  control({ now: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T12:00`, hour: "12" });
+};
+$("today").onclick = () => control({ now: "" });
+$("undo").onclick = () => post("/lights", { undo: true }).then(r => { $("editnote").textContent = r.error || `${r.lights} lights · ${r.edits} edits`; refresh(); });
+window.lightsChanged = r => { $("editnote").textContent = r.error || `${r.lights} lights · ${r.edits} edits`; refresh(); };   // (from the window)
+$("fw").onclick = () => { night(); control({ fireworks: true }); };
+$("show").onclick = () => { night(); control({ show: true }); };
+
+$("stay").onchange = () => control({ stay: $("stay").checked });
+control({ stay: true });                            // (building a scene: stay on it)
+
+// ---- on the device
+// the key's passphrase, asked when it's needed: the window's own dialog (its text hidden); in a browser, a prompt
+let passWaiter = null;
+window.passphraseGiven = v => { if (passWaiter) { const w = passWaiter; passWaiter = null; w(v); } };
+function askPassphrase() {
+  if (!native) return Promise.resolve(window.prompt("Passphrase for your signing key:"));
+  return new Promise(resolve => { passWaiter = resolve; native.postMessage({ askPassphrase: true }); });
+}
+async function waitIdle() { for (;;) { const s = await (await fetch("/builder/state")).json(); if (!s.busy) return s; await new Promise(r => setTimeout(r, 700)); } }
+$("install").onclick = async () => {
+  if (S && S.showing) {
+    if (!confirm(`The device gets the app's kept scene, not this trial. Keep "${S.showing}" in the app first?`)) return;
+    const r = await post("/builder/do", { action: "keep", name: S.showing });
+    if (r.error) return say(r.error);
+    await waitIdle();
+  }
+  const signed = $("isigned").checked;
+  let passphrase = "";
+  if (signed) { passphrase = await askPassphrase(); if (passphrase === null || passphrase === undefined) return; }   // (cancelled)
+  const r = await post("/builder/install", { signed, passphrase });
+  passphrase = "";                                   // (not kept, here or anywhere)
+  if (r.error) say(r.error);
+  refresh();
+};
+
+// ---- what was found, flashed over the picture (the window only)
+let pendingFlash = [];
+function flash(...kinds) { if (native) for (const k of kinds) native.postMessage({ flash: k }); }
+function flashWhenDone(...kinds) { pendingFlash = kinds; }
+$("orbshow").onclick = () => flash("orb");
+$("wshow").onclick = () => { night(); flash("windows"); };
+$("qshow").onclick = () => flash("water");
+$("zin").onclick = () => native && native.postMessage({ zoom: "in" });
+$("zout").onclick = () => native && native.postMessage({ zoom: "out" });
+$("zfit").onclick = () => native && native.postMessage({ zoom: "fit" });
+
+// ---- keeping up
+let last = "", wasBusy = false;
+async function refresh() {
+  try {
+    const s = await (await fetch("/builder/state")).json(); S = s;
+    if (wasBusy && !s.busy) {                          // (a scene just made: its pictures again; what was found, shown)
+      sheetsAt = Date.now();
+      if (pendingFlash.length) { const k = pendingFlash; pendingFlash = []; setTimeout(() => flash(...k), 1500); }
+    }
+    wasBusy = !!s.busy;
+    const key = JSON.stringify(s) + sheetsAt;
+    if (key !== last) { last = key; render(s); }
+  } catch (e) {}
+}
+setInterval(refresh, 1000); refresh();
+</script>
+</body>
+</html>

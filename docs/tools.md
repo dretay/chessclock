@@ -22,8 +22,44 @@ Saving a file in the app or the runtime restarts it (the drawing library is reco
 `fx/vacfx.c` changes). Its menus: **App** (the apps ⌘1–3, Restart ⌘R), **Time** (morning, noon, dusk,
 evening, night; Pretend It's… ⌘D, e.g. the trip's last day), **Data** (the app's background job with
 the Mac's network ⌘L: live ride waits, the ships' schedules),
-**View** (actual or double size, Keep on Top ⌘T, the log ⌘J, a screenshot to the Desktop ⌘S).
-Closing the window stops the preview. `--browser` (or no `swiftc`) shows the same in a page at
+**View** (actual or double size, Keep on Top ⌘T, the log ⌘J, the Controls ⌘K, a screenshot to the
+Desktop ⌘S). Its **Controls** panel (and the page's): a time-of-day slider the scene follows as it's
+dragged (no restart), "This Mac's clock", Fireworks / Nightly show buttons, the lights' show (all
+the patterns in turn, or one held), and Edit lights: Erase (drag over them) or Add (click), with Undo,
+on the photo being tried or the app's own scene.
+Closing the window stops the preview.
+
+"Find automatically" (the sky, water, where windows can be) asks an image model what each pixel is
+(`tools/themegen/segment.py`: SegFormer-B2, trained on ADE20K: sky, tree, building, water, sea...), in the
+AI environment `tools/themegen/work/aienv` (PyTorch: the castle's detail pass uses it too), on the Mac's
+GPU, a few seconds; the model, about 100 MB, is downloaded once. Without that environment, the finders go
+by colour and texture (rougher: trees can pass for windows, reflections hide water). "Clear all": the
+found and the painted, for that effect.
+
+Zoom the picture to work on small things (windows): the mouse wheel or a pinch (around the pointer), or
+View › Zoom In / Out / to Fit (⌥⌘= ⌥⌘- ⌥⌘0),
+and move around by dragging the picture (with nothing to paint or place; a click is still a tap), Option-
+dragging or middle-button dragging (in any mode), two fingers on a trackpad, or the arrow keys; painting, boxes and taps all
+work zoomed. After "Find automatically" (or a
+new photo), what was found is outlined over the picture for a few seconds (Show all: everything for that effect,
+found and painted). "Stay on
+the scene" (Controls, and the Scene Builder, which turns it on): the app's other screens wait.
+
+The **Scene Builder** panel (View › Scene Builder ⌘B; `tools/preview/builder.html`, in the window, or at
+http://localhost:8800/builder): drop a photo on it (or on the picture) and it becomes a trial scene,
+dusk and night made from it, the lights on a sphere found if that box is ticked; each trial a card
+(its day, dusk and night) to show, keep in the app, or delete. Its layout: drag the countdown's outline or
+the horizon on the picture (or type them), the countdown's size (40% to 130%) and three digits' size, and "See it with 3 digits" (150 days
+before the trip); for any countdown app, a photo's scene or not. Its effects, for the scene showing:
+lights on a sphere (found, a circle given, or removed; the show's patterns and how long each; one
+held to watch; erasing and adding lights on the picture), and On the device: Install on the device
+(tools/board/deploy.py over USB: the app's kept scene with the system and runtime it runs on, then the
+app that runs; Signed asks for the key's passphrase then, in a dialog, and keeps it nowhere), window lights (found automatically in the
+photo, dark windows in a plain wall or lit ones at dusk, a guess to touch up; or painted on the picture,
+brush or box, or erased; the light's colour), water (found automatically, a guess, or painted on the
+picture: it ripples, gentle to choppy, slow to fast; the cruise's sea stays its own), fireworks. The same from the command line:
+`python3 tools/themegen/photo_scene.py PHOTO epcot --try --orb auto`; `--list epcot`, `--keep NAME
+epcot`, `--back epcot` ([countdown apps](countdown.md#scenes)). `--browser` (or no `swiftc`) shows the same in a page at
 http://localhost:8800. Settings > Apps opens the real app
 picker. Each app keeps its own settings and data in `build/preview/data/`. The chess clock's DejaVu
 fonts are copied once from the board's build tree (`tools/build/build.sh` first, or `FBCLOCK_FONTS`).
@@ -67,15 +103,18 @@ A difference is reported with a diff image beside the render. (Needs a C compile
 
 Makes the countdown apps' scenes, pictures and Settings text on a desktop: the cruise's ship
 (`cruise/`, from a photo) and Caribbean map, the castle (`castle/`, from a 3D model in Blender, with
-a local Stable Diffusion detail pass), the pre-drawn text (`build_ui.py`). Its
+a local Stable Diffusion detail pass), the pre-drawn text (`build_ui.py`); `photo_scene.py PHOTO APP` (an app's whole scene from one
+daytime photo) and `scene_pack.py WORK OUT` (any scene's pictures: day, dusk, night, mask, windows,
+twinkle lights, into what the device loads): [countdown apps](countdown.md#scenes). Its
 [README](../tools/themegen/README.md); and the castle's `tools/themegen/castle/build_castle.sh`.
 
 ## Apps — `tools/apps/`
 
 `layout.py NAME [DEST]` (an app's files as they go on the board: the one rule the image, deploy and
 packing share), `pack.py NAME [--key KEY]` (its tarball and signed statement, for `modinstall`),
-`publish.py NAME ...` (pack, sign, and publish to the catalog on GitHub Releases) and `keygen.sh` (the
-signing key, once): [apps](apps.md).
+`publish.py NAME ...` (pack, sign, and publish to the catalog on GitHub Releases), `keygen.sh` (the
+signing key, once), and `new.py ID --name NAME [--park PARK]` (a new countdown app, running at once on
+a placeholder scene: [countdown apps](countdown.md)): [apps](apps.md).
 
 ## WiFi — `tools/wifi/`
 

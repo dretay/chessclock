@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Put apps on the board over USB (see docs/apps.md), without reflashing.
 
-    tools/board/deploy.py [--signed [--key KEY]] [--use NAME] [--force] NAME [NAME ...]
+    tools/board/deploy.py [--signed [--key KEY] [--passphrase-stdin]] [--use NAME] [--force] NAME [NAME ...]
     e.g. tools/board/deploy.py castle                       (quick: the files that changed, unsigned)
          tools/board/deploy.py --signed countdown castle    (packed, signed, installed by modinstall)
          tools/board/deploy.py --use cruise cruise          (... and switch to it)
@@ -14,7 +14,9 @@ tools/apps/layout.py (compiled for the board in the build container where it nee
   an app installed this way has no .signature, and the next signed install says "was an unsigned copy".
 - --signed: packed and signed (tools/apps/pack.py; OpenSSL asks for the key's passphrase once; KEY
   default ~/.config/licheepi-nano/module-signing.pem from tools/apps/keygen.sh), copied to
-  /apps/data/packages, and installed by the board's modinstall (it checks the signature against the
+  /apps/data/packages, and installed by the board's modinstall (--passphrase-stdin: the passphrase as
+  one line on stdin instead, for the previewer's Install button; never on a command line or in the
+  environment) (it checks the signature against the
   board's trusted keys; --force: even an older version). A runtime goes before the apps on it.
 
 The app that's running is stopped first (the board drops bytes when it's busy) and started again at
@@ -68,9 +70,9 @@ def main():
         if flag not in a: return None
         i = a.index(flag); v = a[i + 1] if i + 1 < len(a) else None; del a[i:i + 2]; return v
     key, use = option("--key"), option("--use")
-    signed, force = "--signed" in a, "--force" in a
+    signed, force, pass_stdin = "--signed" in a, "--force" in a, "--passphrase-stdin" in a
     names = [x for x in a if not x.startswith("-")]
-    if not names or len(names) != len(a) - signed - force: sys.exit(__doc__)
+    if not names or len(names) != len(a) - signed - force - pass_stdin: sys.exit(__doc__)
     import layout
     for n in names:
         if not os.path.isfile(os.path.join(REPO, "apps", n, "app.json")): sys.exit("no app %s in apps/" % n)
@@ -83,6 +85,8 @@ def main():
 
     if signed:
         import pack
+        if pass_stdin:                                                         # (the previewer's: one line on stdin, not a prompt)
+            pack._passphrases[key] = sys.stdin.readline().rstrip("\n")
         packages = [pack.pack(n, key) for n in names]
     else:
         staged = [layout.layout(n) for n in names]

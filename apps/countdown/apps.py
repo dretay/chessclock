@@ -15,6 +15,9 @@ a defaults.conf (its own settings' first values).
   of its effects the scene has ("effects"; all of them, the ship's, if it doesn't say).
 - screens: shown in turn with the countdown, each for its "secs" setting (seconds) while its
   "enabled" setting isn't 0. A screen is a class taking the App, with run(seconds) (see the cruise's map.py).
+  Its "file" is in the app's folder, or with "from": "runtime" in this runtime's (api 3): parks/board.py,
+  the wait-times board any park app can show (with "park": {"id": ThemeParks.wiki id, "show": tonight's
+  show's name} in its app.json, and `exec ../countdown/parks/service` as its service).
 - data and settings: its own folder, APP_DATA (/apps/data/<id>): countdown.conf, and whatever it fetches.
 """
 import importlib.util, json, os, sys
@@ -24,7 +27,8 @@ SYSTEM = os.environ.get("SYSTEM_DIR") or os.path.join(os.path.dirname(HERE), "sy
 if SYSTEM not in sys.path: sys.path.insert(0, SYSTEM)
 from sysapps import DEVICE_CONF, DEVICE_KEYS, read_conf, device_path, read_settings, manifest_path, installed   # noqa: E402
 
-API = 2                                  # the app.json "api" this runtime understands (also in the API file)
+API = 3                                  # the app.json "api" this runtime understands (also in the API file):
+                                         # 3 added screens from the runtime ("from": "runtime": the parks' wait times)
 CONF = "countdown.conf"                  # each app's settings, in its APP_DATA
 OLD_DATA = "/apps/data/vacation"         # where every trip's settings and data were before apps
 APP_KEYS = ("MODULE",)                   # settings that meant something only before apps
@@ -63,7 +67,10 @@ class App:
         os.makedirs(self.data_dir, exist_ok=True)
 
     def scene_dir(self, conf):
-        """The scene's folder: THEME from the settings if the app has it, else its default."""
+        """The scene's folder: THEME from the settings if the app has it, else its default. (VACATION_SCENE_DIR:
+        another folder altogether, a scene being tried in the previewer: tools/themegen/photo_scene.py --try.)"""
+        trial = os.environ.get("VACATION_SCENE_DIR")
+        if trial and os.path.isdir(trial): return trial
         sc = self.meta.get("scene", {})
         base = os.path.join(self.dir, sc.get("dir", "scenes"))
         name = conf.get("THEME") or sc.get("default", "")
@@ -75,7 +82,7 @@ class App:
         if self.dir not in sys.path: sys.path.insert(0, self.dir)          # (so a screen can import its own files)
         out = []
         for spec in self.meta.get("screens", []):
-            path = os.path.join(self.dir, spec["file"])
+            path = os.path.join(HERE if spec.get("from") == "runtime" else self.dir, spec["file"])
             try:
                 loader = importlib.util.spec_from_file_location("%s_%s" % (self.id, spec["id"]), path)
                 mod = importlib.util.module_from_spec(loader); loader.loader.exec_module(mod)

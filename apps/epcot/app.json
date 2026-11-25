@@ -1,0 +1,51 @@
+{
+  "id": "epcot",
+  "name": "EPCOT",
+  "version": "0.1.0",
+  "runtime": "countdown",
+  "api": 3,
+  "park": {
+    "id": "47f90d2c-e191-4239-a466-5892ef59a88b",
+    "show": "Luminous The Symphony of Us"
+  },
+  "exclude": [
+    "scenes/*/preview.png",
+    "splash/preview.png"
+  ],
+  "scene": {
+    "engine": "scene",
+    "dir": "scenes",
+    "default": "epcot"
+  },
+  "screens": [
+    {
+      "id": "waits",
+      "from": "runtime",
+      "file": "parks/board.py",
+      "class": "WaitsScreen",
+      "enabled": "WAITS",
+      "secs": "WAITS_SECS"
+    }
+  ],
+  "settings": [
+    {
+      "key": "RIDES",
+      "label": "Rides",
+      "note": "on the wait times (none picked: all of them)",
+      "type": "many",
+      "options_from": "waits.json"
+    }
+  ],
+  "short_names": {
+    "Guardians of the Galaxy: Cosmic Rewind": "Cosmic Rewind",
+    "Canada Far and Wide in Circle-Vision 360": "Canada Far and Wide",
+    "Journey Into Imagination With Figment": "Journey Into Imagination",
+    "Gran Fiesta Tour Starring The Three Caballeros": "Gran Fiesta Tour",
+    "The Seas with Nemo & Friends": "The Seas with Nemo"
+  },
+  "countdown": {
+    "date_label": "Park day",
+    "after": "Already there",
+    "time": "09:00"
+  }
+}

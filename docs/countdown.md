@@ -47,7 +47,7 @@ The service writes, the screen reads: a dead network shows as old data, never a 
 
 ## Scenes
 
-A scene folder holds what the drawing library (`apps/countdown/fx/vacfx.c`) loads: `day.rgb.gz`,
+A scene folder holds what the drawing library (`apps/system/fx/vacfx.c`) loads: `day.rgb.gz`,
 `dusk.rgb.gz`, `night.rgb.gz` (800x480 raw RGB plates, blended by the time of day), `mask.raw.gz`
 (255 where it isn't sky: no water there, and fireworks go behind it), `lights.bin.gz` (the windows'
 light: pixels, their light, their window, so windows switch one at a time at night), `cards.bin.gz`
@@ -55,16 +55,31 @@ light: pixels, their light, their window, so windows switch one at a time at nig
 `settings_bg.rgb.gz` (the Settings screen's background) and `theme.json`:
 
 - `horizon`: the sea's top (the ship), or where the fireworks go up from;
-- `cards`: where the cards go (`center_x`, `top`, `gap`; `label_gap` -1: no DAYS label);
+- `cards`: where the cards go (`center_x`, `top`, `gap`; `label_gap` -1: no DAYS label), their size
+  (`scale`, 0.4 to 1.3 of the cards as drawn; the last day's colon too), and three digits' size (`scale3`,
+  of that);
+- `water` (with a `water.raw.gz`: how much each pixel ripples, painted or found in the Scene Builder):
+  `{"strength": 1.0, "speed": 1.0}`; without the file, the water is the sea below the horizon, off the
+  ship (the cruise's);
 - `effects`: the library's scene effects it has (`water`, `wake`, `smoke`, `gulls`, `dolphins`,
-  `raft`); without the list, all of them. Fireworks, window light and the cards are every scene's;
+  `raft`, `twinkle`); without the list, all of them. Fireworks, window light and the cards are every
+  scene's. `twinkle`: coloured lights on the subject at night (EPCOT's orb), from the scene's
+  `twinkle.bin.gz` (their places, and each one's place on the sphere), fading in through dusk: a
+  light show, its patterns in turn, crossfading (spin, rise, spiral, comet, wash, heartbeat, sparkle,
+  waves, rings, blink); `show`: `{"program": [...], "secs": 12}` picks and orders them;
 - the ship's own places, for those effects (`stacks`, `bow`, `stern`, `mast`, `tube`, scales), left
   out by a scene without them.
 
 The generators are in `tools/themegen/` ([its README](../tools/themegen/README.md)): the cruise's from a
-photo, the castle's from a 3D model (`tools/themegen/castle/build_castle.sh`).
+photo, the castle's from a 3D model (`tools/themegen/castle/build_castle.sh`). For a new app,
+`photo_scene.py PHOTO APP [--crop X,Y,W,H] [--keep-mask]` makes the whole scene from one daytime photo:
+dusk and night graded from it with their own skies, the sky found by itself (`mask.png` in
+`tools/themegen/work/APP/`, to paint over and keep if it's wrong), packed into the app by
+`scene_pack.py`. Its `scene.json` there holds the rest: the horizon, the greeting, the cards' place,
+and `"orb": {"cx", "cy", "r", "spacing"}` for twinkle lights on a sphere (with `twinkle_mask.png` to
+leave out what's in front of it). With the previewer open on the app, it restarts with the new scene.
 
-## The two so far
+## The apps so far
 
 **The cruise** (`apps/cruise/`): the Disney Dream (`scenes/dream/`; `scenes/dream-blender/` is a
 Blender-rendered version, not installed), the fleet map (`map.py`, its Caribbean chart in `map/`, made
@@ -78,12 +93,25 @@ read" and the map keeps the last schedules. Settings > Theme: the ship the map f
 
 **The castle** (`apps/castle/`): Cinderella Castle at Magic Kingdom (`scenes/magic-kingdom/`, rendered
 from a 3D model: day, dusk and night from one camera, a light AI detail pass over all but the castle,
-parchment cards, the windows' light), with none of the ship's effects; the wait-times board
-(`board.py`); and ride waits, park hours and show times from ThemeParks.wiki (`waits.py`, free, no
-key; fetched every 5 minutes, then it exits, so it takes memory only for the seconds of a fetch) into
-`/apps/data/castle/waits.json`, else `waits_example.json`. Settings > Theme: the rides the board shows
-(`RIDES`); `SHOW_NAME` the fireworks show it names (Happily Ever After); `PARK` another park's
-ThemeParks.wiki id.
+parchment cards, the windows' light), with none of the ship's effects, and the park's wait times.
+
+**EPCOT** (`apps/epcot/`): the park's wait times, on a placeholder scene (a plain sky by day, dusk and
+night) until its art is made.
+
+**The parks' wait times** are the runtime's (`apps/countdown/parks/`, runtime API 3), shared by every
+park app: the board (`board.py`, a screen with `"from": "runtime"` in the app's `app.json`), and ride
+waits, park hours and show times from ThemeParks.wiki (`waits.py`, free, no key; fetched every 5
+minutes by `parks/service`, which the app's own `service` runs, then it exits, so it takes memory only
+for the seconds of a fetch) into `/apps/data/<app>/waits.json`, else the app's `waits_example.json`.
+The park and its night show are the app's `app.json` `"park": {"id": ThemeParks.wiki id, "show": ...}`;
+`"short_names"` shortens long ride names. Settings > Theme: the rides the board shows (`RIDES`);
+`SHOW_NAME` and `PARK` in the app's settings override the show and park.
+
+**A new one:** `python3 tools/apps/new.py ID --name NAME [--park PARK --show SHOW]` (e.g. `new.py epcot
+--name EPCOT --park EPCOT --show "Luminous The Symphony of Us"`) makes the app with a placeholder scene
+and, for a park, its wait times and an example of them; it runs at once in the previewer. Real art goes
+in `tools/themegen/work/ID/` (day, dusk and night pictures from one camera; optional mask.png,
+windows.png, scene.json), packed into the app's scene by `tools/themegen/scene_pack.py`.
 
 ## Checking
 

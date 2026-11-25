@@ -110,7 +110,7 @@ def main():
         shutil.copy(good, bad); pack.sign(bad, dict(meta, api=meta["api"] + 1), key)
         expect("an api newer than the runtime's", False, run(tmp, bad), "needs a newer countdown runtime")
         shutil.copy(runtime, bad); pack.sign(bad, dict(rmeta, version="9.0", provides_api=1), key)
-        expect("a runtime too old for an installed app", False, run(tmp, bad), "needs 2")
+        expect("a runtime too old for an installed app", False, run(tmp, bad), "needs %d" % meta["api"])
         shutil.copy(good, bad); pack.sign(bad, dict(meta, id="data"), key)
         expect("an app called data (the data folder)", False, run(tmp, bad), "isn't a name an app can have")
         os.makedirs(os.path.join(mods, "notes")); open(os.path.join(mods, "notes", "x"), "w").write("mine")

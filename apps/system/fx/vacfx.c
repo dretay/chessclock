@@ -64,6 +64,10 @@ static uint32_t *base;                /* blended plates + window light, XRGB */
 static uint32_t *out;                 /* the frame being built, XRGB */
 static uint32_t *fb; static size_t fb_len; static int fb_stride = W; static int fb_fd = -1;
 static uint8_t *wc;                   /* water: 0 = not water, else how much it ripples (calm under the hull) */
+static uint8_t *wcustom;              /* a scene's own water (water.raw.gz: how much each pixel ripples), else NULL:
+                                         the sea below the horizon, off the ship (the cruise's) */
+static int16_t wx0[H], wx1[H];        /* each row's water: first and last pixel (-1: none), what's redrawn */
+static int water_top = H, water_amp_q8 = 256, water_speed_q8 = 256;
 static uint8_t *ship;                 /* 1 = ship */
 static int16_t wl[W];                 /* waterline (lowest ship pixel) per column, -1 = none */
 static int horizon = 231;
@@ -101,7 +105,7 @@ static int mast_x = -1, mast_y, amb_q8 = 256, ntube; static int tube[32][2];
 static int next_gulls_ms = 5000, next_pod_ms = 10000, next_raft_ms = 8000, raft_start = -1, raft_dur;
 /* which of the scene's own effects run (vfx_effects): the ship has them all; a castle, none of them.
    Fireworks, window lights and the cards are every scene's. */
-enum { FX_WATER = 1, FX_WAKE = 2, FX_SMOKE = 4, FX_GULLS = 8, FX_DOLPHINS = 16, FX_RAFT = 32, FX_ALL = 63 };
+enum { FX_WATER = 1, FX_WAKE = 2, FX_SMOKE = 4, FX_GULLS = 8, FX_DOLPHINS = 16, FX_RAFT = 32, FX_TWINKLE = 64, FX_ALL = 127 };
 static int fx_on = FX_ALL;
 static int hold_lvl, hold_drawn;           /* the press-and-hold bar under the cards */
 
@@ -242,7 +246,7 @@ static inline uint32_t ripple_px(int x, int y, int amp_q8, int amy, int ph1, int
     int fx = (x << 8) + ((((amp_q8 * c) >> 8) * s1) >> 14);
     const int dy = ((((amy * c) >> 8) * s2) + (1 << 21)) >> 22;
     if (fx < 0) fx = 0; else if (fx > (W - 2) << 8) fx = (W - 2) << 8;
-    int yy = y + dy; if (yy <= horizon + 1) yy = horizon + 2; else if (yy > H - 1) yy = H - 1;
+    int yy = y + dy; if (yy < water_top) yy = water_top; else if (yy > H - 1) yy = H - 1;
     const int j = yy * W + (fx >> 8);
     if (!(wc[j] && wc[j + 1])) return base[i];
     const uint32_t a = base[j], b = base[j + 1], f = fx & 255, g = 256 - f;
@@ -251,10 +255,12 @@ static inline uint32_t ripple_px(int x, int y, int amp_q8, int amy, int ph1, int
 static int shadow_row(int y, uint8_t *sh, int *ax, int *bx);
 static void refresh_row(int y, int x0, int x1, int t_ms, uint32_t *dst) {
     const uint32_t *src = base + y * W;
-    if (y < horizon + 2 || !(fx_on & FX_WATER)) { memcpy(dst + x0, src + x0, (size_t)(x1 - x0 + 1) * 4); return; }
-    const int depth_q8 = ((y - horizon) << 8) / (H - horizon);
-    const int amp_q8 = 90 + ((614 * depth_q8) >> 8), amy = (amp_q8 * 115) >> 8;
-    const int ph1 = (int)(((int64_t)y * k1 + (int64_t)t_ms * w1) >> 8), ph2 = (int)(((int64_t)y * k2 - (int64_t)t_ms * w2) >> 8);
+    if (wx0[y] < 0 || !(fx_on & FX_WATER)) { memcpy(dst + x0, src + x0, (size_t)(x1 - x0 + 1) * 4); return; }
+    /* the sea grows toward the viewer; a scene's own water (a lake, a fountain) ripples evenly, as strong as it says */
+    const int depth_q8 = wcustom ? 128 : ((y - horizon) << 8) / (H - horizon);
+    const int amp_q8 = wcustom ? water_amp_q8 : 90 + ((614 * depth_q8) >> 8), amy = (amp_q8 * 115) >> 8;
+    const int64_t tw = (int64_t)t_ms * water_speed_q8 >> 8;
+    const int ph1 = (int)(((int64_t)y * k1 + tw * w1) >> 8), ph2 = (int)(((int64_t)y * k2 - tw * w2) >> 8);
     const uint8_t *wrow = wc + y * W;
     for (int x = x0; x <= x1; x++) dst[x] = wrow[x] ? ripple_px(x, y, amp_q8, amy, ph1, ph2) : src[x];
     /* cloud shadows on the water: darker, and a little bluer */
@@ -389,6 +395,7 @@ static int wl_at(int x) {
     const int c = clampi(x, 0, W - 1); if (wl[c] >= 0) return wl[c];
     return bow_x == stern_x ? bow_y : bow_y + (stern_y - bow_y) * (x - bow_x) / (stern_x - bow_x);
 }
+static void cards_rect(int n, int *a, int *b, int *c, int *d);   /* (below, with the cards) */
 static void step_particles(int dt) {
     const int sc = 256;
     /* hull wash: foam all along the waterline, heaviest at the bow wave, sliding aft */
@@ -447,7 +454,16 @@ static void step_particles(int dt) {
     if (rockets_pending > 0 && (next_rocket_ms -= dt) <= 0) {
         rockets_pending--; next_rocket_ms = rr(rocket_gap_min, rocket_gap_max);
         part_t *p = spawn(P_ROCKET);
-        if (p) { p->x = rr(60, W - 60) << 8; p->y = horizon << 8; p->ty = (int16_t)(horizon * rr(46, 161) / 256);
+        /* where it bursts: a few tries for open sky (not the subject, nor behind the cards: a scene with
+           little sky, like a photo filled by its subject, would hide most of them) */
+        int bx = rr(60, W - 60), by = horizon * rr(46, 161) / 256;
+        { int c0 = 0, c1 = -1, c2 = 0, c3 = -1; if (days >= 0) cards_rect(ndig, &c0, &c1, &c2, &c3);
+          for (int k = 0; k < 24; k++) {                  /* (the usual heights first, then lower, to just above the horizon) */
+              const int x = rr(60, W - 60), y = k < 12 ? horizon * rr(46, 161) / 256 : rr(horizon * 161 / 256, horizon - 24);
+              const int behind_cards = x >= c0 - 30 && x <= c2 + 30 && y >= c1 - 30 && y <= c3 + 30;
+              if (y > 0 && y < H && !ship[y * W + x] && !behind_cards) { bx = x; by = y; break; }
+          } }
+        if (p) { p->x = bx << 8; p->y = horizon << 8; p->ty = (int16_t)by;
                  p->vy = -(260 * fw_q8 + 80 * 256); static const uint32_t C[] = {0xffd278, 0xff7896, 0x8cc8ff, 0xc8ffaa, 0xfffff0, 0xdc96ff};
                  p->col = C[rnd() % 6]; p->life = 10000; }
     }
@@ -619,6 +635,133 @@ static void draw_particles(void) {
     }
 }
 
+/* ---- twinkle: coloured lights on a scene's subject at night (EPCOT's orb), from the scene's optional
+   twinkle.bin.gz: "VTW2", a count, the sphere's circle (cx, cy, r), then each light's x, y and its place
+   on the sphere (how far round, 0..65535 across the whole way round; how high, -16384..16384 pole to
+   pole; how far from the middle of the picture, 0..1024), worked out by scene_pack.py; or "VTW1", just
+   x, y (its place then guessed from the picture). A show: a program of patterns (vfx_twinkle_program),
+   each for a while, crossfading into the next; vfx_twinkle_pin holds one (the previewer's picker).
+   Fading in through dusk; off by day. Only the lights' own few pixels are redrawn. */
+enum { TW_WAVES, TW_RINGS, TW_BLINK, TW_SPIN, TW_RISE, TW_WASH, TW_SPARKLE, TW_SPIRAL, TW_COMET, TW_HEART, TW_PATTERNS };
+static uint16_t *tw_xy, *tw_lon, *tw_d; static int16_t *tw_lat;
+static int tw_n, tw_cx, tw_cy, tw_r = 1;
+static int tw_prog[32] = {TW_SPIN, TW_WAVES, TW_WASH, TW_SPIRAL, TW_RINGS, TW_COMET, TW_RISE, TW_SPARKLE, TW_HEART, TW_BLINK};
+static int tw_nprog = 10, tw_step_ms = 12000, tw_pin = -1;
+static int isqrt(int v);                       /* (below, with the UI's drawing) */
+static const uint32_t tw_pal[8] = {0xff2a3c, 0xff8a1e, 0xffd23c, 0x3cff6e, 0x28d2ff, 0x3c64ff, 0xa040ff, 0xff3cc8};
+static uint32_t tw_mix(uint32_t a, uint32_t b, int t) {   /* t 0..256 */
+    return (uint32_t)lerp_i((a >> 16) & 255, (b >> 16) & 255, t) << 16 | (uint32_t)lerp_i((a >> 8) & 255, (b >> 8) & 255, t) << 8 | (uint32_t)lerp_i(a & 255, b & 255, t);
+}
+static uint32_t tw_hue(int h) { h &= 2047; return tw_mix(tw_pal[h >> 8], tw_pal[((h >> 8) + 1) & 7], h & 255); }   /* 0..2047 round the palette */
+static inline int tw_sin(int ph) { return sin_lut[ph & (LUT - 1)]; }       /* +-16384; LUT steps a turn */
+static void tw_free(void) { free(tw_xy); free(tw_lon); free(tw_lat); free(tw_d); tw_xy = tw_lon = tw_d = NULL; tw_lat = NULL; tw_n = 0; }
+static void tw_load(const char *theme) {
+    char p[600]; snprintf(p, sizeof p, "%s/twinkle.bin.gz", theme);
+    tw_free();
+    if (access(p, F_OK) != 0) return;
+    size_t n; uint8_t *b = gzload(theme, "twinkle.bin.gz", &n);
+    const int v2 = b && n >= 16 && !memcmp(b, "VTW2", 4), v1 = b && n >= 8 && !memcmp(b, "VTW1", 4);
+    if (!v1 && !v2) { free(b); fprintf(stderr, "vacfx: bad twinkle\n"); return; }
+    uint32_t k; memcpy(&k, b + 4, 4);
+    const size_t head = v2 ? 16 : 8, each = v2 ? 10 : 4;
+    if (n < head + (size_t)k * each) { free(b); fprintf(stderr, "vacfx: twinkle file too short\n"); return; }
+    tw_xy = malloc((size_t)k * 4 + 4); tw_lon = malloc((size_t)k * 2 + 2); tw_lat = malloc((size_t)k * 2 + 2); tw_d = malloc((size_t)k * 2 + 2);
+    if (!tw_xy || !tw_lon || !tw_lat || !tw_d) { free(b); tw_free(); return; }
+    tw_n = (int)k;
+    if (v2) {
+        uint16_t c[3]; memcpy(c, b + 8, 6); tw_cx = c[0]; tw_cy = c[1]; tw_r = c[2] ? c[2] : 1;
+        for (int i = 0; i < tw_n; i++) {
+            const uint8_t *q = b + head + (size_t)i * each;
+            memcpy(&tw_xy[2 * i], q, 2); memcpy(&tw_xy[2 * i + 1], q + 2, 2); memcpy(&tw_lon[i], q + 4, 2); memcpy(&tw_lat[i], q + 6, 2); memcpy(&tw_d[i], q + 8, 2);
+        }
+    } else {                                    /* (only x, y: the sphere guessed from them, flat) */
+        memcpy(tw_xy, b + 8, (size_t)k * 4);
+        long sx = 0, sy = 0; for (int i = 0; i < tw_n; i++) { sx += tw_xy[2 * i]; sy += tw_xy[2 * i + 1]; }
+        if (tw_n) { tw_cx = (int)(sx / tw_n); tw_cy = (int)(sy / tw_n); }
+        tw_r = 1; for (int i = 0; i < tw_n; i++) { const int dx = tw_xy[2 * i] - tw_cx, dy = tw_xy[2 * i + 1] - tw_cy, d = isqrt(dx * dx + dy * dy); if (d > tw_r) tw_r = d; }
+        for (int i = 0; i < tw_n; i++) {
+            const int dx = tw_xy[2 * i] - tw_cx, dy = tw_xy[2 * i + 1] - tw_cy;
+            tw_lon[i] = (uint16_t)(32768 + dx * 16384 / tw_r); tw_lat[i] = (int16_t)clampi(-dy * 16384 / tw_r, -16384, 16384);
+            tw_d[i] = (uint16_t)clampi(isqrt(dx * dx + dy * dy) * 1024 / tw_r, 0, 1024);
+        }
+    }
+    free(b);
+}
+/* one light in one pattern at t: its colour (palette 0..2047, or -1 for white) and brightness 0..256 */
+static void tw_pattern(int pat, int i, int t, int *hue, int *br) {
+    const int x = tw_xy[2 * i], lon = tw_lon[i], lat = tw_lat[i], d = tw_d[i];
+    const uint32_t hsh = (uint32_t)i * 2654435761u;
+    switch (pat) {
+    case TW_WAVES:                              /* colour waves sweeping across */
+        *hue = (x - tw_cx) * 6 - t / 6; *br = 160 + tw_sin(x * 5 - t / 3) / 200; break;
+    case TW_RINGS:                              /* rings rippling out from the middle */
+        *hue = d * 2 - t / 5; *br = 160 + tw_sin(d * 3 - t / 2) / 200; break;
+    case TW_BLINK: {                            /* each blinking a colour of its own */
+        const int period = 700 + (int)(hsh >> 22), ph = (t + (int)(hsh & 4095)) % period;
+        *hue = (int)((hsh >> 8) & 7) * 256 + ((t + (int)(hsh & 4095)) / period) * 768; *br = ph < period / 2 ? 256 : 50; break; }
+    case TW_SPIN:                               /* a rainbow turning round the sphere's axis */
+        *hue = (lon >> 4) - t / 3; *br = 190 + tw_sin((lon >> 6) * 4 - t / 2) / 260; break;
+    case TW_RISE: {                             /* bands of light rising from the bottom to the top */
+        const int s = tw_sin((lat >> 4) - t / 3);
+        *hue = (t / 4000) * 512 + (lat >> 6); *br = s > 4000 ? 256 : s > -2000 ? 110 : 30; break; }
+    case TW_WASH:                               /* the whole sphere one colour, changing slowly, breathing */
+        *hue = t / 14; *br = 170 + tw_sin(t / 4) / 220; break;
+    case TW_SPARKLE: {                          /* dim, with lights flashing white here and there */
+        const int slot = (t + (int)(hsh & 1023)) / 140;
+        const uint32_t h2 = (hsh ^ (uint32_t)slot * 2246822519u) >> 24;
+        if (h2 < 10) { *hue = -1; *br = 256; } else { *hue = 1280 + (lat >> 7); *br = 45; }
+        break; }
+    case TW_SPIRAL:                             /* colours spiralling round and up the sphere */
+        *hue = (lon >> 4) + (lat >> 3) - t / 4; *br = 150 + tw_sin((lon >> 6) * 3 + (lat >> 4) - t / 2) / 160; break;
+    case TW_COMET: {                            /* a comet racing round, a fading tail behind it */
+        const int head = (t * 22) & 65535, back = (head - lon) & 65535;   /* how far behind the head */
+        const int band = lat < 0 ? -lat : lat;  /* (brightest round the middle) */
+        *hue = t / 25 + (back >> 7);
+        *br = back < 16384 ? 256 - back / 64 : 25;
+        *br = *br * (256 - clampi(band / 64, 0, 200)) >> 8; break; }
+    case TW_HEART: {                            /* a heartbeat: two quick pulses, a pause, a new colour */
+        const int ph = t % 1300;
+        const int e = ph < 120 ? 256 - ph * 2 : ph < 260 ? 40 : ph < 380 ? 256 - (ph - 260) * 2 : 40;
+        *hue = (t / 1300) * 640 + (d >> 2); *br = clampi(e, 30, 256); break; }
+    default: *hue = 0; *br = 0;
+    }
+    *br = clampi(*br, 0, 256);
+}
+static void draw_twinkle(void) {
+    if (!tw_n || !(fx_on & FX_TWINKLE)) return;
+    const int vis = clampi(night_lvl + dusk_lvl / 3, 0, 256);
+    if (vis < 8) return;
+    const int t = last_t, XF = 1500;            /* (crossfade, ms) */
+    int cur, prev = -1, mix = 256;
+    if (tw_pin >= 0) cur = tw_pin;
+    else {
+        const int step = t / tw_step_ms, into = t % tw_step_ms;
+        cur = tw_prog[step % tw_nprog];
+        if (into < XF && tw_nprog > 1) { prev = tw_prog[(step + tw_nprog - 1) % tw_nprog]; mix = into * 256 / XF; }
+    }
+    for (int i = 0; i < tw_n; i++) {
+        const int x = tw_xy[2 * i], y = tw_xy[2 * i + 1];
+        int hue, br; tw_pattern(cur, i, t, &hue, &br);
+        uint32_t col = hue < 0 ? 0xffffff : tw_hue(hue);
+        if (prev >= 0 && mix < 256) {           /* (into the next pattern) */
+            int h0, b0; tw_pattern(prev, i, t, &h0, &b0);
+            col = tw_mix(h0 < 0 ? 0xffffff : tw_hue(h0), col, mix); br = lerp_i(b0, br, mix);
+        }
+        br = br * vis >> 8;
+        if (br < 4) continue;
+        blob(x << 8, y << 8, 560, 560, col, br * 3 / 4, prof_soft, 1, 0);                /* the glow (on the subject: no clipping) */
+        blob(x << 8, y << 8, 230, 230, tw_mix(col, 0xffffff, 110), br, prof_soft, 1, 0);  /* the bulb */
+        rect_add(nlo, nhi, x - 3, y - 3, x + 3, y + 3);
+    }
+}
+/* the show: patterns (TW_*, as numbers) in turn, each step_ms long (n 0: the default) */
+void vfx_twinkle_program(const int *ids, int n, int step_ms) {
+    if (n > 0) { tw_nprog = 0; for (int k = 0; k < n && k < 32; k++) if (ids[k] >= 0 && ids[k] < TW_PATTERNS) tw_prog[tw_nprog++] = ids[k]; }
+    if (!tw_nprog) { tw_prog[0] = TW_SPIN; tw_nprog = 1; }
+    if (step_ms >= 2000) tw_step_ms = step_ms;
+}
+void vfx_twinkle_pin(int id) { tw_pin = id >= 0 && id < TW_PATTERNS ? id : -1; }
+
 static void ambient_rects(void) {
     if (raft_start >= 0) { int x, y; for (int k = 0; k <= 4; k++) { const int u = clampi((last_t - raft_start) * 256 / raft_dur - k * 4, 0, 256); tube_at(u, &x, &y); rect_add(rlo, rhi, (x >> 8) - 4, (y >> 8) - 4, (x >> 8) + 4, (y >> 8) + 3); } }
     if (mast_x >= 0) { const int len = 9 * amb_q8 >> 8, wid = 4 * amb_q8 >> 8; rect_add(rlo, rhi, mast_x - len - 2, mast_y - 3, mast_x + 1, mast_y + wid + 4); }
@@ -772,6 +915,11 @@ int vfx_open(const char *fbdev, const char *theme) {
     { uint32_t *fill = calloc((size_t)ncell, 4); for (int k = 0; k < nl; k++) cell_list[cell_first[lcell[k]] + fill[lcell[k]]++] = (uint32_t)k; free(fill); }
     cell_on = malloc((size_t)ncell); cell_lvl = malloc((size_t)ncell * 2);
     for (int c = 0; c < ncell; c++) { cell_on[c] = (rnd() % 100) < 62; cell_lvl[c] = cell_on[c] ? 256 : 0; }
+    tw_load(theme);
+    free(wcustom); wcustom = NULL;
+    { char wp[600]; snprintf(wp, sizeof wp, "%s/water.raw.gz", theme);
+      if (access(wp, F_OK) == 0) { size_t wn; uint8_t *w = gzload(theme, "water.raw.gz", &wn);
+          if (w && wn == (size_t)W * H) wcustom = w; else { free(w); fprintf(stderr, "vacfx: bad water\n"); } } }
     uint8_t *cb = gzload(theme, "cards.bin.gz", &n);
     if (!cb || memcmp(cb, "VFC1", 4)) { fprintf(stderr, "vacfx: bad cards\n"); return -1; }
     { uint16_t v; memcpy(&v, cb + 4, 2); card_w = v; memcpy(&v, cb + 6, 2); card_h = v; }
@@ -828,10 +976,19 @@ void vfx_scene(int hz, int s1x, int s1y, int s2x, int s2y, int smoke_scale_q8, i
             wc[y * W + x] = (uint8_t)v;
         }
     }
+    if (wcustom) memcpy(wc, wcustom, W * H);                  /* (a scene's own water instead) */
+    water_top = H;
+    for (int y = 0; y < H; y++) {
+        wx0[y] = wx1[y] = -1;
+        for (int x = 0; x < W; x++) if (wc[y * W + x]) { if (wx0[y] < 0) wx0[y] = (int16_t)x; wx1[y] = (int16_t)x; }
+        if (wx0[y] >= 0 && y < water_top) water_top = y;
+    }
     reblend_row = 0; while (reblend_row < H) reblend_rows(H);
     memcpy(out, base, W * H * 4);
     full_redraw = 1; cards_dirty = 1;
 }
+/* a scene's own water: how strongly it ripples (256: about a pixel) and how fast (256: the sea's pace) */
+void vfx_water(int strength_q8, int speed_q8) { water_amp_q8 = clampi(strength_q8, 0, 1024); water_speed_q8 = clampi(speed_q8, 16, 1024); }
 
 /* time of day: plate weights (0..256 each, summing to 256), window lights, night and dusk amounts */
 void vfx_light(int wday, int wdusk, int wnight, int lights, int night, int dusk) {
@@ -911,6 +1068,40 @@ static void use_small_cards(int on) {
 }
 void vfx_cards_scale3(int q8) { scale3_q8 = clampi(q8, 0, 256); }
 
+/* the countdown's size (theme.json cards.scale, 0.4 to 1.3 of the cards as drawn): the cards, their shadow
+   and the last day's colon, scaled once (the three-digit size, scale3, then applies to these). Called
+   after vfx_open; again with another size, the earlier copies are freed and made afresh. */
+static int scale_q8 = 256, orig_saved, colon_ow, colon_oh, big_owned;
+static cardset_t orig_set; static uint8_t *colon_orig;
+static void free_set(cardset_t *c) { free(c->shadow); c->shadow = NULL; for (int d = 0; d < 10; d++) { free(c->top[d]); free(c->bot[d]); c->top[d] = c->bot[d] = NULL; } }
+void vfx_cards_scale(int q8) {
+    q8 = clampi(q8, 102, 333);
+    if (q8 == scale_q8) return;                                         /* (that size already) */
+    if (!orig_saved) { if (using_small) load_set(&big_set); save_set(&orig_set); colon_orig = colon_img; colon_ow = colon_w; colon_oh = colon_h; orig_saved = 1; }
+    if (small_ready) { free_set(&small_set); small_ready = 0; }      /* (the three-digit copy: made again from the new size) */
+    if (using_small) using_small = 0;
+    if (big_owned) { free_set(&big_set); if (colon_img != colon_orig) free(colon_img); big_owned = 0; }
+    if (q8 == 256) { big_set = orig_set; colon_img = colon_orig; colon_w = colon_ow; colon_h = colon_oh; }
+    else {
+        cardset_t *c = &big_set; const int half = orig_set.h / 2, nh = half * q8 / 256;
+        c->w = orig_set.w * q8 / 256; c->h = nh * 2;
+        c->sox = orig_set.sox * q8 / 256; c->soy = orig_set.soy * q8 / 256; c->sw = orig_set.sw * q8 / 256; c->sh = orig_set.sh * q8 / 256;
+        int ok = c->w > 8 && nh > 4 && (c->shadow = scaled(orig_set.shadow, orig_set.sw, orig_set.sh, c->sw, c->sh)) != NULL;
+        for (int d = 0; ok && d < 10; d++)
+            ok = (c->top[d] = scaled(orig_set.top[d], orig_set.w, half, c->w, nh)) && (c->bot[d] = scaled(orig_set.bot[d], orig_set.w, half, c->w, nh));
+        if (ok && colon_orig) {
+            colon_w = colon_ow * q8 / 256; colon_h = colon_oh * q8 / 256;
+            colon_img = colon_w > 0 && colon_h > 0 ? scaled(colon_orig, colon_ow, colon_oh, colon_w, colon_h) : NULL;
+            ok = colon_img != NULL;
+        }
+        if (!ok) {                                                     /* (no memory: the cards as drawn) */
+            fprintf(stderr, "vacfx: no memory for the countdown at that size\n");
+            free_set(c); big_set = orig_set; colon_img = colon_orig; colon_w = colon_ow; colon_h = colon_oh; q8 = 256;
+        } else big_owned = 1;
+    }
+    load_set(&big_set); scale_q8 = q8; cards_dirty = 1; full_redraw = 1;
+}
+
 /* the cards show value as n digits (with a colon before digit sp, if sp); flip: animate the ones that change */
 static void set_cards(int value, int n, int sp, int flip, int t_ms) {
     int nd[4]; for (int k = n - 1, v = value; k >= 0; k--, v /= 10) nd[k] = v % 10;
@@ -958,7 +1149,7 @@ int vfx_frame(int t_ms) {
     double ts = now_s();
     reblend_rows(40);
     /* windows switching on and off, easing */
-    toggle_acc += dt * toggles_per_min;
+    toggle_acc = ncell > 1 ? toggle_acc + dt * toggles_per_min : 0;              /* (a scene with no windows: none to switch) */
     while (toggle_acc >= 60000) { toggle_acc -= 60000; const int c = 1 + (int)(rnd() % (uint32_t)(ncell - 1)); cell_on[c] ^= 1; }
     const int rate = clampi(dt * 8 * 256 / 1000, 1, 256);
     for (int c = 1; c < ncell; c++) {
@@ -971,9 +1162,10 @@ int vfx_frame(int t_ms) {
     }
     /* the sea, staggered: near rows every 2nd frame, the middle third every 3rd, the far third every 4th
        (the ripple moves well under a pixel in that time) */
-    for (int y = horizon + 2; y < H && (fx_on & FX_WATER); y++) {
-        const int depth_q8 = ((y - horizon) << 8) / (H - horizon), every = depth_q8 < 85 ? 4 : depth_q8 < 170 ? 3 : 2;
-        if ((y + frame_no) % every == 0) spans_add(rlo, rhi, y, 0, W - 1);
+    for (int y = water_top; y < H && (fx_on & FX_WATER); y++) {
+        if (wx0[y] < 0) continue;
+        const int depth_q8 = wcustom ? 255 : ((y - horizon) << 8) / (H - horizon), every = depth_q8 < 85 ? 4 : depth_q8 < 170 ? 3 : 2;
+        if ((y + frame_no) % every == 0) spans_add(rlo, rhi, y, wx0[y], wx1[y]);
     }
     /* cards: while flipping (or after a change), their whole area */
     int flipping = 0; for (int k = 0; k < ndig; k++) if (flip_start[k] >= 0 && t_ms - flip_start[k] < flip_ms + 40) flipping = 1;
@@ -987,6 +1179,7 @@ int vfx_frame(int t_ms) {
     /* rebuild, draw, show */
     for (int y = 0; y < H; y++) if (rlo[y] <= rhi[y]) refresh_row(y, rlo[y], rhi[y], t_ms, out + y * W);
     st_acc[1] += now_s() - ts; ts = now_s();
+    draw_twinkle();
     draw_particles();
     draw_ambient();
     st_acc[2] += now_s() - ts; ts = now_s();
@@ -1195,6 +1388,7 @@ unsigned vfx_selftest(void) {
 int vfx_particles(void) { return np; }
 
 void vfx_close(void) {
+    tw_free(); free(wcustom); wcustom = NULL;
     if (fb && fb != MAP_FAILED) munmap(fb, fb_len);
     if (fb_fd >= 0) close(fb_fd);
     fb = NULL; fb_fd = -1;

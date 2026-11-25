@@ -1,13 +1,15 @@
-"""Live ride wait times for the castle's screen (board.py), from ThemeParks.wiki, into
-$APP_DATA/waits.json.
+"""Live ride wait times for a park app's wait-times screen (board.py), from ThemeParks.wiki, into
+$APP_DATA/waits.json. Part of the countdown runtime: any countdown app whose app.json has a "park"
+uses it (the castle, EPCOT...).
 
-The castle app's service (S99app runs it beside the app; with no WiFi it sleeps) runs this with
+The app's service (parks/service: S99app runs it beside the app; with no WiFi it sleeps) runs this with
 --once every few minutes: the park's live data (each ride's status and standby wait, the shows'
 times), and its schedule (opening hours) when the one it has is over an hour old; then it exits, so
 its Python and TLS take memory only for the seconds of a fetch (the countdown and WiFi leave little).
 Exit status: 0 fetched, 1 couldn't (the service waits longer each time), 2 no network time yet.
 Without --once it loops by itself (for trying it on a desktop). ThemeParks.wiki's API is free and
-needs no key. PARK in its countdown.conf picks the park (an entity id; default Magic Kingdom).
+needs no key. The park: PARK in the app's countdown.conf if set, else its app.json "park": {"id": ...}
+(a ThemeParks.wiki entity id; the app's folder is the current directory), else Magic Kingdom.
 
 waits.json, written whole each time (the screen just rereads it):
     {"park": "Magic Kingdom", "updated": unix time, "example": false,
@@ -19,7 +21,7 @@ Standard library only (urllib over TLS).
 """
 import datetime, json, os, random, ssl, sys, time, urllib.request
 
-DATA = os.environ.get("APP_DATA", "/apps/data/castle")           # (the castle app's own)
+DATA = os.environ.get("APP_DATA", "/apps/data/castle")           # (the app's own data)
 OUT = os.path.join(DATA, "waits.json")
 CONF_FILE = os.path.join(DATA, "countdown.conf")
 API = "https://api.themeparks.wiki/v1/entity/"
@@ -119,8 +121,14 @@ def fetch_once(park, state):
     return 0
 
 
+def app_park():
+    """The app's park id: its app.json's "park" (the service runs in the app's folder)."""
+    try: return (json.load(open("app.json")).get("park") or {}).get("id")
+    except (OSError, ValueError, AttributeError): return None
+
+
 def main():
-    park = read_conf().get("PARK") or MAGIC_KINGDOM
+    park = read_conf().get("PARK") or app_park() or MAGIC_KINGDOM
     if "--once" in sys.argv[1:]:
         state = load_state()
         status = fetch_once(park, state)

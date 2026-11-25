@@ -10,3 +10,6 @@ rm -rf "$DEST"
 mkdir -p "$DEST"
 cp "$SRC/vacation.py" "$SRC/apps.py" "$SRC/countdown.conf" "$SRC/app.json" "$SRC/API" "$DEST/"
 cp "$SRC/launch" "$DEST/" && chmod 755 "$DEST/launch"
+mkdir "$DEST/parks"                                       # (the park apps' wait times: screen, fetcher, service)
+cp "$SRC/parks/board.py" "$SRC/parks/waits.py" "$DEST/parks/"
+cp "$SRC/parks/service" "$DEST/parks/" && chmod 755 "$DEST/parks/service"

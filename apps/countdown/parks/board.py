@@ -1,13 +1,16 @@
-"""The castle's wait-times board: shown in turn with the countdown (the castle module's screen).
+"""A park's wait-times board: shown in turn with the countdown. Part of the countdown runtime, for any
+countdown app whose app.json has a "park" (the castle, EPCOT...): its screens list
+{"id": "waits", "from": "runtime", "file": "parks/board.py", "class": "WaitsScreen", ...}.
 
-Over the castle, blurred and dimmed (the scene's settings_bg), a panel of rides in two columns: each
+Over the scene, blurred and dimmed (the scene's settings_bg), a panel of rides in two columns: each
 one's standby wait, coloured by how long (green to 15 min, gold to 40, coral beyond), or "Down" when
 it's broken down. The ones picked in Settings > Theme (RIDES in vacation.conf, names joined with |),
 else every ride with a wait, longest first. Above: the park, today's hours, how old the waits are;
-below: tonight's fireworks (SHOW_NAME, default Happily Ever After).
+below: tonight's fireworks or night show (SHOW_NAME in the app's settings, else app.json
+"park": {"show": ...}).
 
-The waits come from waits.py, the module's service, in its data folder's waits.json
-(/apps/data/castle/waits.json); without it (no WiFi), waits_example.json beside this file.
+The waits come from waits.py (the app's service, parks/service), in its data folder's waits.json
+(/apps/data/<app>/waits.json); without it (no WiFi), waits_example.json in the app's folder.
 """
 import datetime, json, os, time
 
@@ -20,9 +23,9 @@ ROWS, COL_W = 9, 380
 PANEL = (20, 76, 780, 430)
 
 
-def load(data_dir):
-    """The latest waits.json, else the example; and whether it's the example."""
-    for path in (os.path.join(data_dir, "waits.json"), os.path.join(HERE, "waits_example.json")):
+def load(data_dir, app_dir):
+    """The latest waits.json, else the app's example; and whether it's the example."""
+    for path in (os.path.join(data_dir, "waits.json"), os.path.join(app_dir, "waits_example.json")):
         try: d = json.load(open(path)); return d, bool(d.get("example"))
         except (OSError, ValueError): pass
     return {"rides": [], "shows": []}, True
@@ -62,8 +65,8 @@ class WaitsScreen:
 
     def draw(self):
         app, fx, t = self.app, self.fx, self.t
-        fx.vfx_ui_bg(0, 0, L.W, L.H, 256)                  # the castle, blurred and dimmed, over the whole screen
-        data, example = load(app.module.data_dir)
+        fx.vfx_ui_bg(0, 0, L.W, L.H, 256)                  # the scene, blurred and dimmed, over the whole screen
+        data, example = load(app.module.data_dir, app.module.dir)
         park = plain(data.get("park", "")).replace(" Park", "") or "Wait times"
         t.draw("label", park, 36, 52, GOLD)
         hours = data.get("hours")
@@ -98,7 +101,7 @@ class WaitsScreen:
                 room = COL_W - 44 - ww - 14
             t.draw("small", t.fit("small", name, room), cx + 24, y, L.IVORY if status == "OPERATING" else L.DIM)
         # tonight's fireworks, and the credit
-        show_name = app.conf.get("SHOW_NAME", "Happily Ever After")
+        show_name = app.conf.get("SHOW_NAME") or (app.module.meta.get("park") or {}).get("show", "")
         for s in data.get("shows", []):
             if plain(s.get("name", "")) == show_name and s.get("times"):
                 t.draw("small", "%s at %s" % (show_name, clock(s["times"][0])), 36, 460, GOLD); break

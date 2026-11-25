@@ -24,7 +24,7 @@ The chess clock draws with the DejaVu fonts, as on the board: they're copied onc
 build tree (tools/build/build.sh's licheepi-out volume), or FBCLOCK_FONTS names a folder with them.
 Needs Pillow (the chess clock) and a C compiler (cc) and zlib (the countdown).
 """
-import collections, fcntl, hashlib, http.server, json, os, shutil, signal, socketserver, subprocess, sys, threading, time
+import collections, fcntl, hashlib, http.server, json, os, shutil, signal, socketserver, subprocess, sys, threading, time, urllib.parse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.normpath(os.path.join(HERE, "..", ".."))
@@ -32,6 +32,7 @@ APPS = os.path.join(REPO, "apps")
 RUNTIME = os.path.join(APPS, "countdown")
 SYSTEM = os.path.join(APPS, "system")          # (the drawing library, Settings, the picker)
 STATE = os.path.join(REPO, "build", "preview")
+TRIALS = os.path.join(REPO, "build", "trial")              # scenes being tried (photo_scene.py --try): TRIALS/<app>/current
 FB = os.path.join(STATE, "fb.raw")
 PIPE = os.path.join(STATE, "touch.pipe")
 LIB = os.path.join(STATE, "libvacfx.dylib")
@@ -72,10 +73,23 @@ def newest(*dirs):
     return t
 
 
+def current_trial(app):
+    """The scene being tried for this app (photo_scene.py --try), if any: its folder."""
+    try: name = open(os.path.join(TRIALS, app, "current")).read().strip()
+    except OSError: return None
+    d = os.path.join(TRIALS, app, name, "scene")
+    return d if name and os.path.isdir(d) else None
+
+
 class Preview:
     def __init__(self, app):
         self.app = app
         self.hour, self.now, self.service_on = "", "", False
+        self.live_state = {}
+        self.builder_busy, self.builder_error, self.builder_again = "", "", None
+        self.install_line = ""
+        self.lock_busy = threading.Lock()
+        self.live(hour=None)
         self.proc = self.svc = None
         self.log = collections.deque(maxlen=400)
         self.lock = threading.RLock()
@@ -118,6 +132,8 @@ class Preview:
                  PICKER_APPS=APPS, PICKER_DATA=os.path.join(STATE, "data"), PICKER_CURRENT=app,
                  PREVIEW_DIR=STATE, PYTHONUNBUFFERED="1")
         os.makedirs(e["APP_DATA"], exist_ok=True)
+        trial = current_trial(app)
+        if trial: e["VACATION_SCENE_DIR"] = trial
         return e
 
     def command(self, app):
@@ -126,7 +142,7 @@ class Preview:
         if m.get("runtime") == "countdown":
             if not self.build_lib(): return None
             e.update(VACATION_APP=os.path.join(APPS, app), VACATION_LIB=LIB, VACATION_FB=FB, VACATION_TOUCH_PIPE=PIPE)
-            if self.hour: e["VACATION_HOUR"] = self.hour
+            # (the time of day: live.json, which the app follows as it runs)
             if self.now: e["VACATION_NOW"] = self.now
             return [sys.executable, os.path.join(RUNTIME, "vacation.py")], e
         if app == "chess":
@@ -174,7 +190,7 @@ class Preview:
             if self.service_on and os.path.exists(svc):
                 self.svc = self.spawn(["sh", svc], dict(env, APP_NETWORK="1"), os.path.join(APPS, self.app), "service: ")
                 self.say("started its service (with the Mac's network)")
-            self.stamp = newest(os.path.join(APPS, self.app), RUNTIME, SYSTEM)
+            self.stamp = newest(os.path.join(APPS, self.app), RUNTIME, SYSTEM, os.path.join(TRIALS, self.app))
 
     def pick(self):
         """Settings > Apps: the real picker, then the app picked (or the same one again)."""
@@ -219,11 +235,203 @@ class Preview:
             if self.picking: continue
             with self.lock:
                 if self.proc is None: continue
-                if newest(os.path.join(APPS, self.app), RUNTIME, SYSTEM) > self.stamp:
+                if newest(os.path.join(APPS, self.app), RUNTIME, SYSTEM, os.path.join(TRIALS, self.app)) > self.stamp:
                     self.say("files changed: restarting"); self.start(); continue
                 if self.proc.poll() is not None:
                     self.say("%s exited (status %s): starting it again" % (self.app, self.proc.returncode))
                     time.sleep(1.5); self.start()
+
+    def live(self, **kw):
+        """The live controls the app follows as it runs (countdown runtime: PREVIEW_DIR/live.json)."""
+        self.live_state.update(kw)
+        os.makedirs(STATE, exist_ok=True)
+        with open(os.path.join(STATE, "live.json.tmp"), "w") as f: json.dump(self.live_state, f)
+        os.replace(os.path.join(STATE, "live.json.tmp"), os.path.join(STATE, "live.json"))
+
+    # ---------------------------------------------------------------- the Scene Builder (builder.html)
+    def themegen(self):
+        sys.path.insert(0, os.path.join(REPO, "tools", "themegen"))
+        import photo_scene
+        return photo_scene
+
+    def busy(self, what, fn, again_ok=False):
+        """A slow step (making a scene from a photo: seconds) in the background; the page shows it. again_ok:
+        a redo that may come while another runs (a paint stroke's: the stroke is saved already): it runs once
+        more when that one's done, rather than being refused (quick strokes would seem to vanish)."""
+        with self.lock_busy:
+            if self.builder_busy:
+                if again_ok: self.builder_again = (what, fn); return {"ok": True, "queued": True}
+                return {"error": "busy: " + self.builder_busy}
+            self.builder_busy, self.builder_error = what, ""
+        def run(what, fn):
+            while True:
+                try: fn()
+                except Exception as e: self.builder_error = "%s: %s" % (what, e); self.say("builder: " + self.builder_error)
+                with self.lock_busy:
+                    if not self.builder_again: self.builder_busy = ""; return
+                    (what, fn), self.builder_again = self.builder_again, None; self.builder_busy = what
+        threading.Thread(target=run, args=(what, fn), daemon=True).start()
+        return {"ok": True}
+
+    def builder_state(self):
+        app = self.app; m = manifest(app)
+        out = {"app": app, "name": m.get("name", app), "countdown": m.get("runtime") == "countdown", "stay": bool(self.live_state.get("stay")),
+               "busy": self.builder_busy, "error": self.builder_error, "trials": [], "showing": "", "kept": False, "conf": {},
+               "install": self.install_line}
+        if not out["countdown"]: return out
+        ps = self.themegen()
+        out["trials"] = [{"name": t["name"], "current": t["current"]} for t in ps.trials(app)]
+        cur = current_trial(app)
+        out["showing"] = os.path.basename(os.path.dirname(cur)) if cur else ""
+        _, work = ps.dirs(app, out["showing"])
+        try: out["conf"] = json.load(open(os.path.join(work, "scene.json")))
+        except (OSError, ValueError): out["conf"] = {}
+        out["kept"] = os.path.exists(os.path.join(ps.app_dirs(app)[1], "scene.json"))
+        scene, _ = ps.dirs(app, out["showing"])
+        try: theme = json.load(open(os.path.join(scene, "theme.json")))
+        except (OSError, ValueError): theme = {}
+        out["cards"], out["horizon"] = theme.get("cards") or {}, theme.get("horizon")
+        out["card_size"] = [ps.scene_pack.CW, ps.scene_pack.CH]
+        try:                                                             # (the trip's date: "see it with 3 digits")
+            for line in open(os.path.join(STATE, "data", app, "countdown.conf")):
+                if line.startswith(("TRIP_DATE=", "SAIL_DATE=")) and line.split("=", 1)[1].strip(): out["trip"] = line.split("=", 1)[1].strip()
+        except OSError: pass
+        try: out["lights"] = len(json.load(open(os.path.join(work, "twinkle_points.json"))))
+        except (OSError, ValueError): out["lights"] = 0
+        try: out["window_edits"] = len(json.load(open(os.path.join(work, "windows_edits.json"))))
+        except (OSError, ValueError): out["window_edits"] = 0
+        out["windows_found"] = os.path.exists(os.path.join(work, "windows_base.png"))
+        try: out["water_edits"] = len(json.load(open(os.path.join(work, "water_edits.json"))))
+        except (OSError, ValueError): out["water_edits"] = 0
+        out["water_found"] = os.path.exists(os.path.join(work, "water_base.png"))
+        return out
+
+    def sheet(self, name):
+        ps = self.themegen()
+        scene, _ = ps.dirs(self.app, name)
+        p = os.path.join(scene, "preview.png")
+        return p if os.path.exists(p) else None
+
+    def upload(self, filename, data, orb):
+        """A photo dropped on the builder: kept in build/trial/APP/uploads/, made into a trial (with the
+        lights on a sphere found in it, if orb is "auto")."""
+        if not data: return {"error": "no photo"}
+        name = os.path.basename(filename) or "photo.jpg"
+        d = os.path.join(TRIALS, self.app, "uploads"); os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, name)
+        with open(path, "wb") as f: f.write(data)
+        ps = self.themegen()
+        return self.busy("making a scene from %s" % name, lambda: ps.try_photo(self.app, path, "auto" if orb == "auto" else None))
+
+    def install(self, c):
+        """The app on the device (tools/board/deploy.py, over USB): its kept scene, with the system and the
+        countdown runtime it runs on (unsigned: only what changed is copied); {"signed": true, "passphrase":
+        "..."} packed and signed (the passphrase to deploy.py on its stdin, nowhere else). Then it's the app
+        that runs (deploy.py --use). Its output in the log; the last line in the Scene Builder."""
+        app = self.app
+        names = ["system", "countdown", app] if c.get("runtime", True) and manifest(app).get("runtime") == "countdown" else [app]
+        cmd = [sys.executable, os.path.join(REPO, "tools", "board", "deploy.py")]
+        if c.get("signed"): cmd += ["--signed"] + (["--passphrase-stdin"] if c.get("passphrase") else [])
+        cmd += ["--use", app]                                            # (installed: the app that runs, now and at every boot)
+        cmd += names
+        def run():
+            self.install_line = "starting"
+            p = subprocess.Popen(cmd, cwd=REPO, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            if c.get("signed") and c.get("passphrase"): p.stdin.write(c["passphrase"] + "\n")
+            p.stdin.close()
+            for line in p.stdout:
+                line = line.rstrip()
+                if line and not line.lstrip().endswith("%"): self.say("install: " + line); self.install_line = line
+            if p.wait(): raise RuntimeError(self.install_line or "it failed")
+            self.install_line = "installed%s" % (" (signed)" if c.get("signed") else "")
+        self.install_line = ""
+        return self.busy("installing %s on the device" % app, run)
+
+    def builder_do(self, c):
+        ps, app, act = self.themegen(), self.app, c.get("action")
+        if "name" in c: name = c["name"]
+        else: cur = current_trial(app); name = os.path.basename(os.path.dirname(cur)) if cur else ""   # (the scene showing)
+        if act == "use": ps.set_current(app, name); return {"ok": True}
+        if act == "keep": return self.busy("keeping %s" % name, lambda: ps.keep_trial(app, name))
+        if act == "delete": ps.delete_trial(app, name); return {"ok": True}
+        if act == "orb":                                                # (the lights on a sphere: found, given, or none)
+            mode = c.get("mode")
+            orb = "auto" if mode == "auto" else False if mode == "off" else tuple(int(v) for v in mode)
+            return self.busy("finding the lights" if orb else "taking the lights off", lambda: ps.rebuild(app, name, orb))
+        if act == "layout":                                             # (the cards' place; the horizon: slower, a repack)
+            cards = c.get("cards"); hz = c.get("horizon")
+            if hz is None: ps.set_layout(app, name, cards=cards); return {"ok": True}
+            return self.busy("setting the horizon", lambda: ps.set_layout(app, name, cards=cards, horizon=hz))
+        if act == "show":
+            return self.busy("setting the show", lambda: ps.set_show(app, name, c.get("program") or [], c.get("secs", 12)))
+        return {"error": "no action %s" % act}
+
+    def windows(self, c): return self.region("windows", c)
+    def water(self, c): return self.region("water", c)
+
+    def region(self, kind, c):
+        """Painting a region of the scene on show (a photo's: trial or the app's): "windows" (the glass that
+        glows at night) or "water" (where it ripples). {"paint": [[x, y, r], ...]}, {"erase": [...]} (one drag),
+        {"rect": [x0, y0, x1, y1]}, {"undo": true}; {"auto": true} (found in the photo: the base the painting
+        goes over), {"clear_auto": true}; windows {"colour": [r, g, b]}; water {"strength": s, "speed": v}.
+        Redone in the background (a second or two)."""
+        ps = self.themegen()
+        cur = current_trial(self.app)
+        scene, work = ps.dirs(self.app, os.path.basename(os.path.dirname(cur)) if cur else "")
+        if not os.path.exists(os.path.join(work, "scene.json")):
+            return {"error": "painting works on a scene made from a photo (drop one on the Scene Builder)"}
+        redo = ps.rewindow if kind == "windows" else ps.rewater
+        what = "lighting the windows" if kind == "windows" else "laying the water"
+        report = (lambda n: self.say("windows: %d" % n)) if kind == "windows" else (lambda n: self.say("water: %s%% of the screen" % n))
+        if kind == "windows" and c.get("colour"):
+            return self.busy(what, lambda: report(ps.set_window_light(work, scene, c["colour"])))
+        if kind == "water" and ("strength" in c or "speed" in c):
+            return self.busy(what, lambda: report(ps.set_water(work, scene, c.get("strength"), c.get("speed"))))
+        if c.get("auto"):
+            find = ps.find_windows_into if kind == "windows" else ps.find_water_into
+            return self.busy("finding " + kind, lambda: self.say("%s: found: %s" % (kind, find(work, scene))))
+        if c.get("clear_auto"):
+            clear = ps.clear_found_windows if kind == "windows" else ps.clear_found_water
+            return self.busy("clearing the found " + kind, lambda: report(clear(work, scene)))
+        path = os.path.join(work, kind + "_edits.json")
+        try: edits = json.load(open(path))
+        except (OSError, ValueError): edits = []
+        if c.get("undo") and edits: edits.pop()
+        elif c.get("paint"): edits.append({"paint": [[int(x), int(y), int(r)] for x, y, r in c["paint"]]})
+        elif c.get("erase"): edits.append({"erase": [[int(x), int(y), int(r)] for x, y, r in c["erase"]]})
+        elif c.get("rect"): edits.append({"rect": [int(v) for v in c["rect"]]})
+        else: return {"error": "nothing to do"}
+        json.dump(edits, open(path, "w"))
+        r = self.busy(what, lambda: report(redo(work, scene)), again_ok=True)   # (strokes in a row: each saved, redone after)
+        return dict(r, edits=len(edits))
+
+    def lights(self, c):
+        """Editing the lights of the scene on show: {"erase": [[x, y, r], ...]} (one drag), {"add": [[x, y]]}
+        (a click), or {"undo": true} (the last edit back). On the photo being tried (photo_scene.py --try),
+        else on the app's own scene (made by photo_scene.py: tools/themegen/work/APP). The lights are redone
+        (work/edits.json), and the app restarts with them."""
+        trial = current_trial(self.app)
+        if trial: work, scene = os.path.join(os.path.dirname(trial), "work"), trial
+        else:
+            m = manifest(self.app); sc = m.get("scene") or {}
+            work = os.path.join(REPO, "tools", "themegen", "work", self.app)
+            scene = os.path.join(APPS, self.app, sc.get("dir", "scenes"), sc.get("default", ""))
+        if not os.path.exists(os.path.join(work, "twinkle_found.json")):
+            return {"error": "this scene has no lights made from a photo (photo_scene.py PHOTO %s --try --orb auto)" % self.app}
+        path = os.path.join(work, "edits.json")
+        try: edits = json.load(open(path))
+        except (OSError, ValueError):                                    # (rub-outs from before additions)
+            try: edits = [{"erase": g} for g in json.load(open(os.path.join(work, "erase_groups.json")))]
+            except (OSError, ValueError): edits = []
+        if c.get("undo") and edits: edits.pop()
+        elif c.get("erase"): edits.append({"erase": [[int(x), int(y), int(r)] for x, y, r in c["erase"]]})
+        elif c.get("add"): edits.append({"add": [[int(x), int(y)] for x, y in c["add"]]})
+        json.dump(edits, open(path, "w"))
+        sys.path.insert(0, os.path.join(REPO, "tools", "themegen"))
+        import photo_scene
+        n = photo_scene.relight(work, scene)
+        self.say("lights: %s (%d edits)" % (n, len(edits)))
+        return {"lights": n, "edits": len(edits)}
 
     def touch(self, line):
         try: os.write(self.pipe, (line.strip() + "\n").encode())
@@ -245,6 +453,19 @@ def serve(pv, port):
 
         def do_GET(self):
             if self.path == "/": return self.send(200, page, "text/html; charset=utf-8")
+            if self.path == "/builder":                                 # (the Scene Builder: the window's side panel)
+                return self.send(200, open(os.path.join(HERE, "builder.html"), "rb").read(), "text/html; charset=utf-8")
+            if self.path.startswith("/builder/state"): return self.send(200, json.dumps(pv.builder_state()).encode())
+            if self.path.startswith("/builder/outline"):               # (what was found, to flash over the picture)
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                ps = pv.themegen(); cur = current_trial(pv.app)
+                _, work = ps.dirs(pv.app, os.path.basename(os.path.dirname(cur)) if cur else "")
+                return self.send(200, ps.found_outline(work, q.get("kind", ["sky"])[0]), "image/png")
+            if self.path.startswith("/builder/sheet"):
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                path = pv.sheet(q.get("name", [""])[0])
+                if not path: return self.send(404, b"{}")
+                return self.send(200, open(path, "rb").read(), "image/png")
             if self.path == "/frame":
                 data = open(FB, "rb").read()
                 tag = hashlib.blake2b(data, digest_size=8).hexdigest()
@@ -259,15 +480,37 @@ def serve(pv, port):
             self.send(404, b"{}")
 
         def do_POST(self):
-            body = self.rfile.read(int(self.headers.get("Content-Length", "0"))).decode()
+            if self.path.startswith("/builder/upload"): body = ""        # (binary: read below)
+            else: body = self.rfile.read(int(self.headers.get("Content-Length", "0"))).decode()
             if self.path == "/touch":
                 pv.touch(body); return self.send(200, b"{}")
+            if self.path.startswith("/builder/upload"):                 # (a photo, its bytes: a new trial)
+                q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                n = int(self.headers.get("Content-Length", "0"))
+                return self.send(200, json.dumps(pv.upload(q.get("name", ["photo.jpg"])[0], self.rfile.read(n), q.get("orb", [""])[0])).encode())
+            if self.path == "/builder/install":
+                return self.send(200, json.dumps(pv.install(json.loads(body or "{}"))).encode())
+            if self.path == "/builder/do":
+                return self.send(200, json.dumps(pv.builder_do(json.loads(body or "{}"))).encode())
+            if self.path == "/windows":                                 # (painting window lights, in the scene on show)
+                return self.send(200, json.dumps(pv.windows(json.loads(body or "{}"))).encode())
+            if self.path == "/water":                                   # (painting water, in the scene on show)
+                return self.send(200, json.dumps(pv.water(json.loads(body or "{}"))).encode())
+            if self.path == "/lights":                                  # (rubbing out or adding lights, in the scene on show)
+                return self.send(200, json.dumps(pv.lights(json.loads(body or "{}"))).encode())
             if self.path == "/control":
                 c = json.loads(body or "{}")
-                if "hour" in c: pv.hour = str(c["hour"])
+                # live, no restart: the time of day (the slider, the Time menu), fireworks, the nightly show
+                if "hour" in c: pv.hour = str(c["hour"]); pv.live(hour=float(c["hour"]) if str(c["hour"]) != "" else None)
+                if c.get("fireworks"): pv.live(fireworks=pv.live_state.get("fireworks", 0) + 1)
+                if c.get("show"): pv.live(show=pv.live_state.get("show", 0) + 1)
+                if "pattern" in c: pv.live(pattern=int(c["pattern"]))                # (the lights' show: one pattern held, or -1)
+                if "stay" in c: pv.live(stay=bool(c["stay"]))                         # (stay on the scene: the app's screens wait)
+                # a restart: another app, another date, the background job on or off, or Restart ({})
                 if "now" in c: pv.now = str(c["now"])
                 if "service" in c: pv.service_on = bool(c["service"])
-                threading.Thread(target=pv.start, args=(c.get("app"),), daemon=True).start()
+                if not c or any(k in c for k in ("app", "now", "service")):
+                    threading.Thread(target=pv.start, args=(c.get("app"),), daemon=True).start()
                 return self.send(200, b"{}")
             self.send(404, b"{}")
 
