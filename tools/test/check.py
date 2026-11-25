@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run -q python
 """Check the countdown apps (the cruise, the castle) and their runtime on a desktop, with the device's
 own drawing code:
 

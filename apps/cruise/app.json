@@ -8,7 +8,6 @@
     "map/preview_*.png",
     "scenes/*/SOURCES.md",
     "scenes/*/preview.png",
-    "scenes/dream-blender",
     "splash/preview.png"
   ],
   "scene": {

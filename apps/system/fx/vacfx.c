@@ -16,7 +16,7 @@
  * particles and cards over them, and copies just those spans to the screen.
  *
  * Fixed-point throughout (the ARM926 has no FPU): positions in 1/256 px, levels 0..256.
- * Theme files: see tools/themegen/cruise/photo_theme.py.
+ * Theme files: see tools/themegen/scene_pack.py.
  */
 #include <errno.h>
 #include <fcntl.h>

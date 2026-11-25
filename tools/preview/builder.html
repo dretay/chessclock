@@ -353,6 +353,8 @@ function render(s) {
   else if (!["wpaint", "wrect", "werase", "wbehind", "wgroup", "wframe"].some(id => $(id).classList.contains("primary")))
     $("winstate").textContent = (s.windows_found ? "Windows found automatically, " : "") + (s.window_edits ? `${s.window_edits} edits of yours (Undo takes the last back).`
       : s.windows_found ? "touch them up with Paint, Rectangle or Erase." : "Find them automatically, or paint the glass that glows at night.");
+  if (c.lights_fixed && !s.window_edits && !["wpaint", "wrect", "werase", "wbehind", "wgroup", "wframe"].some(id => $(id).classList.contains("primary")))
+    $("winstate").textContent = "Its lights are its own, made with it (the cruise's cabins, each switching as a cabin). Editing windows here replaces them with painted ones (Undo every edit to get them back).";
 }
 $("hold").innerHTML = `<option value="-1">All in turn</option>` + PATTERNS.map(([, id, t]) => `<option value="${id}">${t}</option>`).join("");
 

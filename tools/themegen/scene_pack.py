@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Pack a scene's pictures into what the device's drawing library loads: any countdown app's scene.
-Pillow only. (The castle's castle_theme.py is where this came from; it still builds the castle.)
+Pillow only.
 
     python3 tools/themegen/scene_pack.py WORK OUT [--greeting TEXT] [--horizon Y] [--no-stars]
 
@@ -44,7 +44,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.normpath(os.path.join(HERE, "..", ".."))
 LINING = os.path.join(REPO, "assets", "fonts", "CormorantGaramond-SemiBold-Lining.ttf")
 W, H = 800, 480
-sys.path.insert(0, os.path.join(HERE, "cruise")); import card_extras            # (the colon, and the glowing text)
+import card_extras                                                     # (the colon, and the glowing text: beside this file)
 CARDS = {"center_x": 170, "top": 16, "gap": 12, "label_gap": -1, "scale3": 0.82}   # (top left, clear of a central subject)
 
 
@@ -78,6 +78,15 @@ def window_groups(work):
     """window_groups.json (the Group tool's boxes: the windows each touches switch as one), or []."""
     try: return json.load(open(os.path.join(work, "window_groups.json")))
     except (OSError, ValueError): return []
+
+
+def lights_picture(blob):
+    """(the light picture, how many windows) from a lights.bin.gz's contents (VLT1)."""
+    nl, nc = struct.unpack("<II", blob[4:12])
+    idx = struct.unpack("<%dI" % nl, blob[12:12 + 4 * nl]); rgb = blob[12 + 6 * nl:12 + 9 * nl]
+    img = Image.new("RGB", (W, H)); px = img.load()
+    for k, i in enumerate(idx): px[i % W, i // W] = tuple(rgb[3 * k:3 * k + 3])
+    return img, nc - 1
 
 
 def frame_picture(work):
@@ -234,7 +243,7 @@ def card(digit):
 
 
 def card_black(digit):
-    """A split-flap card: dark grey, lit from above, ivory digits (the cruise's: photo_theme.py's, at this size)."""
+    """A split-flap card: dark grey, lit from above, ivory digits (the cruise's look, at this size)."""
     w, h = CW * SS, CH * SS; mid = h // 2
     def lerp(a, b, t): return a + (b - a) * t
     im = Image.new("RGBA", (w, h)); d = ImageDraw.Draw(im)
@@ -443,14 +452,19 @@ def pack(work, out_dir, greeting=None, horizon=None, stars=True):
         m = m.getchannel("A") if m.mode in ("RGBA", "LA") else m.convert("L")
         notsky = m.resize((W, H), Image.LANCZOS).point(lambda v: 255 if v > 100 else 0)
     else: notsky = Image.new("L", (W, H), 0)
-    notsky.paste(255, (0, horizon, W, H))                    # (everything below the horizon)
+    # (everything below the horizon too; not for a ship's scene: its mask is the ship's outline, the sea round
+    # it ripples, and the wake and the bow wave know where the hull is: scene.json "mask_as_is")
+    if not conf.get("mask_as_is"): notsky.paste(255, (0, horizon, W, H))
     out.gz("mask.raw.gz", notsky.tobytes())
-    if stars: plates["night"] = add_stars(plates["night"], notsky, horizon)
+    if stars and conf.get("stars", True): plates["night"] = add_stars(plates["night"], notsky, horizon)
     for k, im in plates.items(): out.gz(k + ".rgb.gz", im.tobytes())
     out.gz("settings_bg.rgb.gz", plates["day"].filter(ImageFilter.GaussianBlur(14)).point(lambda v: int(v * 0.55)).tobytes())
     wp = os.path.join(work, "windows.png")
     if os.path.exists(wp): blob, light, n = window_lights(Image.open(wp), tuple(conf.get("light", (255, 168, 80))), not conf.get("windows_painted"),
                                                           frame_picture(work), window_groups(work))
+    elif conf.get("lights_fixed") and os.path.exists(os.path.join(work, conf["lights_fixed"])):
+        # (window light made elsewhere, as it was: the cruise's cabins, until its windows are edited here)
+        blob = gzip.open(os.path.join(work, conf["lights_fixed"])).read(); light, n = lights_picture(blob)
     else: blob, light, n = b"VLT1" + struct.pack("<II", 0, 1), Image.new("RGB", (W, H)), 0
     out.gz("lights.bin.gz", blob)
     out.gz("cards.bin.gz", cards_blob(greeting, conf.get("card_style", "parchment")))
@@ -473,6 +487,8 @@ def pack(work, out_dir, greeting=None, horizon=None, stars=True):
         if "foam" not in effects: effects.append("foam")
         theme["foam"] = conf["foam"]
     if "water" in effects: theme["water"] = {"strength": conf.get("water", {}).get("strength", 1.0), "speed": conf.get("water", {}).get("speed", 1.0)}
+    # (a scene's own extra settings, as they are: a ship's funnels, bow, stern, mast, tube... scene.json "theme_extra")
+    for k, v in (conf.get("theme_extra") or {}).items(): theme.setdefault(k, v)
     if conf.get("show"):                                                  # (the lights' show: its patterns, in turn)
         bad = [n for n in conf["show"].get("program", []) if n not in SHOW]
         if bad: sys.exit("scene_pack: no light pattern %s (there are: %s)" % (", ".join(bad), ", ".join(SHOW)))

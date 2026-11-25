@@ -77,8 +77,9 @@ light: pixels, their light, their window, so windows switch one at a time at nig
 - the ship's own places, for those effects (`stacks`, `bow`, `stern`, `mast`, `tube`, scales), left
   out by a scene without them.
 
-The generators are in `tools/themegen/` ([its README](../tools/themegen/README.md)): the cruise's from a
-photo, the castle's from a 3D model (`tools/themegen/castle/build_castle.sh`). For a new app,
+The generators are in `tools/themegen/` ([its README](../tools/themegen/README.md)): every app's scene
+is made from a photo (the cruise's work folder keeps what makes it a ship's: its outline, its cabins'
+lights, its funnels, bow and stern). Usually in the Scene Builder; from the command line,
 `photo_scene.py PHOTO APP [--crop X,Y,W,H] [--keep-mask]` makes the whole scene from one daytime photo:
 dusk and night graded from it with their own skies, the sky found by itself (`mask.png` in
 `tools/themegen/work/APP/`, to paint over and keep if it's wrong), packed into the app by
@@ -88,8 +89,7 @@ leave out what's in front of it). With the previewer open on the app, it restart
 
 ## The apps so far
 
-**The cruise** (`apps/cruise/`): the Disney Dream (`scenes/dream/`; `scenes/dream-blender/` is a
-Blender-rendered version, not installed), the fleet map (the runtime's "ships" screen type, its Caribbean chart in the app's `map/`, made
+**The cruise** (`apps/cruise/`): the Disney Dream (`scenes/dream/`), the fleet map (the runtime's "ships" screen type, its Caribbean chart in the app's `map/`, made
 by `tools/themegen/build_map.py`), placing each Disney ship where its itinerary says: at a port
 between its arrival and departure, or partway along the leg to the next (by sea, around Florida and
 Cuba: `map/sea.bin`, from `tools/themegen/build_sea.py`). The schedules come from CruiseMapper's ship

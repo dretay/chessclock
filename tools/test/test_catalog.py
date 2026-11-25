@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run -q python
 """The app catalog (apps/system/catalog.py, Get apps in the picker) on the desktop, without GitHub: a
 catalog of the countdown runtime and the castle, signed with a throwaway key and served from a local
 web server; the board's code loads and checks it with modinstall, sees the castle as "Install",

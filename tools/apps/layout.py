@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run -q python
 """An app's files as they go on the board, laid out in a folder: the one rule the SD card image,
 tools/board/deploy.py and tools/apps/pack.py all use.
 

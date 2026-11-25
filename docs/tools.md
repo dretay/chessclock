@@ -16,8 +16,10 @@ uv run tools/preview/preview.py castle    # any tool: uv run, from anywhere in t
                                           # project's .venv, whatever virtualenv is active, and keeps it in step)
 ```
 
-The tools below are written as `tools/...`: run each with `uv run` in front (or `source .venv/bin/activate`
-once in a terminal, then as written).
+The tools below that run by themselves (`tools/preview/preview.py`, `tools/board/deploy.py`,
+`tools/apps/publish.py`, `tools/test/check.py`...) start with `#!/usr/bin/env -S uv run -q python`: run
+them as written, from anywhere in the project, and they use its `.venv`. The rest (`photo_scene.py`,
+`new.py`...) take `uv run` in front.
 
 The photos scenes were made from are yours and stay out of git (`assets/`); the scenes made from them
 are in the apps, in git.
@@ -141,12 +143,11 @@ A difference is reported with a diff image beside the render. (Needs a C compile
 
 ## Art — `tools/themegen/`
 
-Makes the countdown apps' scenes, pictures and Settings text on a desktop: the cruise's ship
-(`cruise/`, from a photo) and Caribbean map, the castle (`castle/`, from a 3D model in Blender, with
-a local Stable Diffusion detail pass), the pre-drawn text (`build_ui.py`); `photo_scene.py PHOTO APP` (an app's whole scene from one
-daytime photo) and `scene_pack.py WORK OUT` (any scene's pictures: day, dusk, night, mask, windows,
+Makes the countdown apps' scenes, pictures and Settings text on a desktop: every app's scene from a
+photo (the Scene Builder, or `photo_scene.py PHOTO APP`: an app's whole scene from one daytime photo),
+the cruise's Caribbean map, the pre-drawn text (`build_ui.py`) and `scene_pack.py WORK OUT` (any scene's pictures: day, dusk, night, mask, windows,
 twinkle lights, into what the device loads): [countdown apps](countdown.md#scenes). Its
-[README](../tools/themegen/README.md); and the castle's `tools/themegen/castle/build_castle.sh`.
+[README](../tools/themegen/README.md).
 
 ## Apps — `tools/apps/`
 

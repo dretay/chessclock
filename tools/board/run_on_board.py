@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run -q python
 """Run shell commands on the board over the serial console and print what
 comes back (logging in first if needed).
 

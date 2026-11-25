@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run -q python
 """Put apps on the board over USB (see docs/apps.md), without reflashing.
 
     tools/board/deploy.py [--signed [--key KEY] [--passphrase-stdin]] [--use NAME] [--force] NAME [NAME ...]

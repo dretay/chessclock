@@ -29,7 +29,7 @@ adjust it: its work/scene.json keeps what's set.
   time, the greeting, the card layout, an "orb" for the twinkle lights; edit it and run again), then
   packed into apps/APP/scenes/<its scene>/. With the previewer open on the app, it restarts with them.
 """
-import argparse, json, os, shutil, sys
+import argparse, gzip, json, os, shutil, struct, sys
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 HERE = os.path.dirname(os.path.abspath(__file__)); REPO = os.path.normpath(os.path.join(HERE, "..", ".."))
@@ -379,6 +379,11 @@ def set_current(app, name):
 def make(photo, work, out, crop, orb, keep_mask, base_conf=None):
     """The photo into work/ (day, dusk, night, mask, scene.json), packed into out/."""
     os.makedirs(work, exist_ok=True)
+    # a scene whose plates and mask were made by hand (scene.json "plates_fixed": the cruise's, lowered, its
+    # bow wave painted out, its own grade and outline): made again, they stay as they are
+    try: fixed = json.load(open(os.path.join(work, "scene.json"))).get("plates_fixed")
+    except (OSError, ValueError): fixed = False
+    if fixed: keep_mask = True
     full = Image.open(os.path.expanduser(photo)).convert("RGB")
     day = cut(full, crop)
     mp = os.path.join(work, "mask.png")
@@ -428,9 +433,10 @@ def make(photo, work, out, crop, orb, keep_mask, base_conf=None):
         print("orb: %d troughs for its lights" % len(pts))
     elif os.path.exists(tp): os.remove(tp)
     sky = notsky.point(lambda v: 255 - v).filter(ImageFilter.GaussianBlur(1.5))       # (soft edge onto the subject)
-    dusk = Image.composite(sky_gradient(DUSK_SKY, hz), grade(day, 0, 1, hz), sky)
-    night = Image.composite(sky_gradient(NIGHT_SKY, hz), grade(day, 1, 0, hz), sky)
-    day.save(os.path.join(work, "day.png")); dusk.save(os.path.join(work, "dusk.png")); night.save(os.path.join(work, "night.png"))
+    if not fixed:
+        dusk = Image.composite(sky_gradient(DUSK_SKY, hz), grade(day, 0, 1, hz), sky)
+        night = Image.composite(sky_gradient(NIGHT_SKY, hz), grade(day, 1, 0, hz), sky)
+        day.save(os.path.join(work, "day.png")); dusk.save(os.path.join(work, "dusk.png")); night.save(os.path.join(work, "night.png"))
     print("photo: %s (horizon %d%s)" % (photo, hz, ", orb at %d,%d r %d" % (conf["orb"]["cx"], conf["orb"]["cy"], conf["orb"]["r"]) if conf.get("orb") else ""))
     scene_pack.pack(work, out)
 
@@ -776,6 +782,14 @@ def rewindow(work, scene):
     """After a window edit in the previewer: windows.png again from the edits, and the scene's lights.bin.gz
     (nothing else rebuilt). How many windows."""
     sp = os.path.join(work, "scene.json"); conf = json.load(open(sp))
+    try: edits = json.load(open(os.path.join(work, "windows_edits.json")))
+    except (OSError, ValueError): edits = []
+    fixed = conf.get("lights_fixed") and os.path.join(work, conf["lights_fixed"])
+    if fixed and os.path.exists(fixed) and not edits:               # (every edit undone: its own lights again, as made)
+        for f in ("windows.png", "window_frame.png", "window_groups.json"):
+            if os.path.exists(os.path.join(work, f)): os.remove(os.path.join(work, f))
+        blob = gzip.open(fixed).read(); scene_pack.Out(scene).gz("lights.bin.gz", blob)
+        return struct.unpack("<II", blob[4:12])[1] - 1
     if not conf.get("windows_painted"): conf["windows_painted"] = True; json.dump(conf, open(sp, "w"), indent=1)
     img = windows_picture(work); img.save(os.path.join(work, "windows.png"))
     frame = frame_picture_from_edits(work)

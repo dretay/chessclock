@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run -q python
 """Copy files (or folders) to the board over the serial console, near line speed.
 
 usage: push_to_board.py [--keep-running] [--force] LOCAL REMOTE [LOCAL REMOTE ...]

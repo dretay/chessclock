@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run -q python
 """Pack an app (apps/NAME) for publishing: a tarball of exactly what goes on the board, a manifest of
 its files' SHA-256s, and (with a key) a signed statement for the board's modinstall.
 

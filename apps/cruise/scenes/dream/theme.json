@@ -1,5 +1,26 @@
 {
+ "effects": [
+  "water",
+  "wake",
+  "smoke",
+  "gulls",
+  "dolphins",
+  "raft"
+ ],
  "horizon": 283,
+ "fireworks_scale": 0.85,
+ "cards": {
+  "center_x": 400,
+  "top": 16,
+  "gap": 12,
+  "label_gap": -1,
+  "scale3": 1.0,
+  "scale": 0.6667
+ },
+ "water": {
+  "strength": 1.0,
+  "speed": 1.0
+ },
  "stacks": [
   [
    180,
@@ -11,7 +32,6 @@
   ]
  ],
  "smoke_scale": 0.8,
- "fireworks_scale": 0.85,
  "bow": [
   638,
   422
@@ -50,11 +70,5 @@
    270,
    231
   ]
- ],
- "cards": {
-  "center_x": 400,
-  "top": 16,
-  "gap": 12,
-  "label_gap": -1
- }
+ ]
 }

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run -q python
 """Time a boot from power-on: prints the serial console output with seconds
 since power-on in front of each line, then a summary of the main stages.
 

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run -q python
 """Preview the apps on a Mac, live, without the board: the app runs here with a plain file for its
 screen, and a window (App Preview, tools/preview/viewer.swift) shows that screen and turns the mouse
 into the touchscreen.

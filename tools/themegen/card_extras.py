@@ -2,14 +2,14 @@
 "Bon voyage!" banner shown in place of the cards once the ship has sailed, and the colon between
 the last day's hours and minutes (HH:MM). Premultiplied RGBA, each as width, height (u16) + pixels.
 
-photo_theme.py adds them when it builds a theme; on its own, this adds (or replaces) them in an
-existing theme's cards.bin.gz:
-    python3 tools/themegen/cruise/card_extras.py apps/cruise/scenes/dream
+scene_pack.py uses its colon and glowing text for every scene's cards; on its own, this adds (or replaces)
+the extras in an existing scene's cards.bin.gz:
+    uv run tools/themegen/card_extras.py apps/cruise/scenes/dream
 """
 import gzip, os, struct, sys
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
-REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
+REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 LINING = os.path.join(REPO, "assets", "fonts", "CormorantGaramond-SemiBold-Lining.ttf")
 IVORY, HALO = (244, 238, 222), (0, 10, 30)
 SS = 4

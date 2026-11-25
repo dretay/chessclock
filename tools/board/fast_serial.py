@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run -q python
 """Switch the board's serial console to a faster speed until it reboots (it starts at 115200).
 
 usage: fast_serial.py [BAUD]          (default 1562500)

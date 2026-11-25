@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run -q python
 """modinstall (package/modinstall), on the desktop: it installs apps signed by a trusted key (the
 countdown runtime, then the castle on it), and refuses everything else - a changed tarball or
 statement, an untrusted key, an older version, an app without its runtime or with too old a one, a

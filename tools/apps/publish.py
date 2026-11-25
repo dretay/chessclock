@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run -q python
 """Publish apps to the catalog the boards install from (Settings > Apps > Get apps): GitHub Releases.
 
     tools/apps/publish.py [--key KEY] [--repo OWNER/NAME] NAME [NAME ...]
