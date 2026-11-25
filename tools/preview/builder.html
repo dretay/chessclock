@@ -47,6 +47,23 @@
   .patterns { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
   .patterns label { display: flex; gap: 5px; align-items: center; }
   .off { opacity: .5; }
+  /* collapsible: a section's heading, an effect's title */
+  .fold { cursor: pointer; user-select: none; display: flex; align-items: baseline; gap: 6px; }
+  .fold::before { content: "▾"; color: var(--dim); font-size: 11px; width: 10px; flex: none; transition: transform .12s; }
+  .collapsed > .fold::before { transform: rotate(-90deg); }
+  .collapsed > :not(.fold) { display: none !important; }
+  section.collapsed > h2 { margin-bottom: 0; }
+  .fold .badge { margin-left: auto; color: var(--gold); font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+  h2.fold { flex-wrap: wrap; } h2.fold .note { flex-basis: 100%; margin-left: 16px; }
+  .topbar { display: flex; align-items: center; gap: 8px; }
+  .topbar select { flex: 1; min-width: 0; }
+  /* the New app dialog: over the page, the page dimmed */
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+           width: calc(100% - 28px); max-width: 420px; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
+  dialog[open] { display: flex; flex-direction: column; gap: 10px; }
+  dialog h3 { margin: 0; font-size: 14px; }
+  dialog::backdrop { background: rgba(0,0,0,.55); }
+  dialog input[type=text] { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font: inherit; }
   .scr { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
   .scr .top { display: flex; align-items: center; gap: 6px; }
   .scr .top b { flex: 1; font-weight: 600; }
@@ -55,7 +72,29 @@
 </head>
 <body>
 <main>
-  <h1>Scene <span id="appname"></span></h1>
+  <div class="topbar"><h1>Scene</h1><select id="apppick" title="The app whose scene you're building (its trials and kept scene are all still there)"></select>
+    <button id="newapp" title="A new countdown app">New…</button></div>
+  <dialog id="newform">
+    <h3>A new countdown app</h3>
+    <div class="row note">Name <input type="text" id="nname" placeholder="Yosemite trip" style="flex:1;min-width:0"></div>
+    <div class="row note">The day is called <select id="nlabel"><option>Trip day</option><option>Park day</option><option>Trail day</option>
+      <option>Sail day</option><option>Arrival day</option><option>Island day</option></select></div>
+    <div class="row note">Ride waits for <input type="text" id="npark" placeholder="a park (optional)" style="flex:1;min-width:0"></div>
+    <div class="row note">Weather for <input type="text" id="nweather" placeholder="a place (optional)" style="flex:1;min-width:0">
+      <select id="nunits"><option value="F">°F</option><option value="C">°C</option></select></div>
+    <p class="note">It starts with a plain sky: drop a photo on it next, then keep it. The trip's date is in the app's Settings.</p>
+    <div class="row"><button id="ncreate" class="primary">Make it</button><button id="ncancel">Cancel</button></div>
+  </dialog>
+  <dialog id="installask">
+    <h3>Install with this photo?</h3>
+    <p class="note" id="installwhy"></p>
+    <div class="row" style="flex-direction:column;align-items:stretch">
+      <button id="iakeep" class="primary">Use this photo, then install</button>
+      <button id="iaasis">Install the app as it is</button>
+      <button id="iacancel">Cancel</button>
+    </div>
+  </dialog>
+  <div class="row note"><button id="foldall">Collapse all</button><button id="openall">Expand all</button></div>
   <label class="check"><input type="checkbox" id="stay" checked><span>Stay on the scene (the app's other screens wait; a tap still shows them)</span></label>
   <div class="row note">Zoom <button id="zout">−</button><button id="zin">+</button><button id="zfit">Fit</button></div>
   <p class="note" style="margin-top:-10px">Or the mouse wheel or a pinch on the picture; the middle button, or two fingers, to move around.</p>
@@ -67,28 +106,10 @@
       Drop a photo here, or click to choose one
       <input type="file" id="file" accept="image/*" hidden>
     </label>
-    <label class="check"><input type="checkbox" id="findorb"><span>Find lights on a sphere in it (like EPCOT's)</span></label>
     <div id="cards"></div>
   </section>
 
-  <section id="device">
-    <h2>On the device</h2>
-    <div class="effect">
-      <label class="check"><input type="checkbox" id="isigned"><span>Signed (packed and signed with your key: for a board locked to signed apps)</span></label>
-      <div class="row"><button id="install" class="primary">Install on the device</button></div>
-      <p class="note" id="installnote">The app's kept scene, with the system and runtime it runs on, over USB (only what changed is copied); then it's the app that runs.</p>
-    </div>
-  </section>
 
-  <section id="screensec">
-    <h2>Screens <span class="note">shown in turn with the countdown</span></h2>
-    <div id="screenlist"></div>
-    <div class="row note">
-      <select id="addtype"></select><button id="addscreen">Add</button>
-      <button id="savescreens" class="primary">Save screens</button>
-    </div>
-    <p class="note" id="screensnote"></p>
-  </section>
 
   <section id="layout">
     <h2>Layout <span class="note" id="layoutfor"></span></h2>
@@ -100,6 +121,7 @@
       <p class="note" id="layoutnote">Drag on the picture: the countdown's outline, or the horizon (fireworks go up from it; below it is never sky).</p>
       <div class="row note">Across <input type="number" id="lx"> Down <input type="number" id="ly"> Gap <input type="number" id="lgap"></div>
       <div class="row note">Size <input type="number" id="lsize" min="40" max="130" step="5"> % &nbsp;3 digits <input type="number" id="l3" min="50" max="100"> %</div>
+      <div class="row note">Cards <select id="lstyle"><option value="parchment">Parchment</option><option value="black">Black split-flap</option><option value="wood">Wood trail sign</option><option value="board">Departure board</option></select></div>
       <div class="row note">Horizon <input type="number" id="lh" min="40" max="470"> <button id="lset">Set</button></div>
       <div class="row"><button id="see3">See it with 3 digits</button><button id="today">Back to today</button></div>
     </div>
@@ -115,6 +137,7 @@
         <button id="orbshow">Show all</button>
         <button id="orboff">Remove</button>
       </div>
+      <label class="check"><input type="checkbox" id="findorb"><span>Look for it in each new photo dropped (like EPCOT's)</span></label>
       <div class="row note">Circle <input type="number" id="cx" title="centre x"> <input type="number" id="cy" title="centre y">
         <input type="number" id="cr" title="radius"> <button id="orbset">Set</button></div>
       <h3 style="margin-top:4px">The show</h3>
@@ -133,7 +156,7 @@
       <p class="note" id="winstate">Paint the glass that glows at night; each patch is a window, switching on and off on its own.</p>
       <div class="row"><button id="wauto">Find automatically</button><button id="wshow">Show all</button><button id="wclear">Clear all</button></div>
       <div class="row">
-        <button id="wpaint">Paint</button><button id="wrect">Rectangle</button><button id="werase">Erase</button><button id="wdone">Done</button>
+        <button id="wpaint">Paint</button><button id="wrect">Rectangle</button><button id="werase">Erase</button><button id="wgroup" title="Drag a box over several windows: they switch on and off together, as one light">Group</button><button id="wbehind" title="Drag a box round a lantern or window: its dark parts (the bars, the frame) go in front of the light">Behind</button><button id="wframe" title="Paint a window's frame, bars or leading: it stays dark in front of the light">Frame</button><button id="wdone">Done</button>
       </div>
       <div class="row note">Brush <select id="wbrush"><option value="1">Fine</option><option value="3">Small</option><option value="6" selected>Medium</option><option value="10">Large</option></select>
         <button id="wundo">Undo</button></div>
@@ -175,13 +198,31 @@
     <div class="effect">
       <h3>Birds</h3>
       <label class="check"><input type="checkbox" id="birds"><span>Now and then a few birds cross the sky, by day</span></label>
+      <div class="row"><button id="birdsnow">Some now</button></div>
     </div>
     <div class="effect">
       <h3>Fireworks</h3>
       <p class="note">Every scene has them at night, going up from its horizon into open sky.</p>
       <div class="row"><button id="fw">Some now</button><button id="show">The nightly show</button></div>
     </div>
-    <p class="note">Coming as effects any scene can have: foam, something gliding along a path, stars, fireflies, falling leaves or snow.</p>
+    <p class="note">Coming as effects any scene can have: something gliding along a path, stars, fireflies, falling leaves or snow.</p>
+  </section>
+  <section id="screensec">
+    <h2>Screens <span class="note">shown in turn with the countdown</span></h2>
+    <div id="screenlist"></div>
+    <div class="row note">
+      <select id="addtype"></select><button id="addscreen">Add</button>
+      <button id="savescreens" class="primary">Save screens</button>
+    </div>
+    <p class="note" id="screensnote"></p>
+  </section>
+  <section id="device">
+    <h2>On the device</h2>
+    <div class="effect">
+      <label class="check"><input type="checkbox" id="isigned"><span>Signed (packed and signed with your key: for a board locked to signed apps)</span></label>
+      <div class="row"><button id="install" class="primary">Install on the device</button></div>
+      <p class="note" id="installnote">The app's kept scene, with the system and runtime it runs on, over USB (only what changed is copied); then it's the app that runs.</p>
+    </div>
   </section>
 </main>
 <script>
@@ -231,7 +272,10 @@ function card(name, label, current, tags) {
 }
 
 function render(s) {
-  $("appname").textContent = "· " + s.name;
+  const picks = (s.apps || []).map(([id, n]) => `<option value="${id}">${n}</option>`).join("") || `<option value="${s.app}">${s.name}</option>`;
+  if ($("apppick").dataset.k !== picks) { $("apppick").innerHTML = picks; $("apppick").dataset.k = picks; }
+  if (document.activeElement !== $("apppick")) $("apppick").value = s.app;
+  if (document.activeElement !== $("findorb")) findorbFor(s);
   $("status").innerHTML = s.busy ? `<div class="busy">${s.busy}…</div>` : s.error ? `<div class="error">${s.error}</div>` : "";
   for (const id of ["photos", "effects", "layout", "screensec"]) $(id).classList.toggle("off", !s.countdown);
   // smoke and birds, for the scene showing
@@ -242,6 +286,14 @@ function render(s) {
     if (sm.scale) $("smscale").value = String(sm.scale); if (sm.wind !== undefined) $("smwind").value = String(sm.wind); if (sm.rate) $("smrate").value = String(sm.rate);
   }
   $("birds").checked = !!s.birds;
+  {   // what each effect card has, on its title (so a closed card still says it's in use)
+    const n = (a, w) => a && a.length ? `${a.length} ${w}${a.length > 1 ? "s" : ""}` : "";
+    const fo0 = s.foam || {}, oc = (s.conf || {}).orb;
+    badge("Lights on a sphere", oc ? `${s.lights || ""} lights`.trim() : "");
+    badge("Window lights", s.windows_found || s.window_edits ? "on" : "");
+    badge("Water", s.water_found || s.water_edits ? "on" : "");
+    badge("Smoke", n(sm.points, "source")); badge("Foam", n(fo0.points, "point")); badge("Birds", s.birds ? "on" : "");
+  }
   const fo = s.foam || {};
   if (!$("foplace").classList.contains("primary"))
     $("foamstate").textContent = fo.points && fo.points.length ? `Churning at ${fo.points.length} point${fo.points.length > 1 ? "s" : ""}.` : "White water at points you place: a waterfall's foot, rapids, surf.";
@@ -265,6 +317,8 @@ function render(s) {
   $("layoutfor").textContent = s.showing ? `· ${s.showing}` : "· the app's scene";
   if (document.activeElement.type !== "number") {
     const k = s.cards || {};
+    if (document.activeElement !== $("lstyle")) $("lstyle").value = (s.conf || {}).card_style || "parchment";
+    $("lstyle").disabled = !(s.conf && s.conf.photo);
     $("lx").value = k.center_x ?? 170; $("ly").value = k.top ?? 16; $("lgap").value = k.gap ?? 12;
     $("l3").value = Math.round((k.scale3 ?? 0.82) * 100); $("lh").value = s.horizon ?? "";
     $("lsize").value = Math.round((k.scale ?? 1) * 100);
@@ -282,7 +336,7 @@ function render(s) {
     $("patterns").innerHTML = PATTERNS.map(([n, , t]) => `<label><input type="checkbox" value="${n}" ${prog.includes(n) ? "checked" : ""}> ${t}</label>`).join("");
   for (const id of ["orboff", "orbshow", "showset", "undo", "editmode", "hold"]) $(id).disabled = !o;
   const photoScene = !!(c && c.photo);
-  for (const id of ["wauto", "wpaint", "wrect", "werase", "wdone", "wcset", "wundo"]) $(id).disabled = !photoScene;
+  for (const id of ["wauto", "wpaint", "wrect", "werase", "wbehind", "wgroup", "wframe", "wdone", "wcset", "wundo"]) $(id).disabled = !photoScene;
   $("wshow").disabled = !photoScene || !(s.windows_found || s.window_edits);
   $("wclear").disabled = !photoScene || !(s.windows_found || s.window_edits);
   for (const id of ["qauto", "qpaint", "qrect", "qerase", "qdone", "qset", "qundo"]) $(id).disabled = !photoScene;
@@ -296,7 +350,7 @@ function render(s) {
     $("qstrength").value = String(c.water.strength ?? 1); $("qspeed").value = String(c.water.speed ?? 1);
   }
   if (!photoScene) $("winstate").textContent = "Painting works on a scene made from a photo.";
-  else if (!["wpaint", "wrect", "werase"].some(id => $(id).classList.contains("primary")))
+  else if (!["wpaint", "wrect", "werase", "wbehind", "wgroup", "wframe"].some(id => $(id).classList.contains("primary")))
     $("winstate").textContent = (s.windows_found ? "Windows found automatically, " : "") + (s.window_edits ? `${s.window_edits} edits of yours (Undo takes the last back).`
       : s.windows_found ? "touch them up with Paint, Rectangle or Erase." : "Find them automatically, or paint the glass that glows at night.");
 }
@@ -318,11 +372,14 @@ function setMode(m) {
   if (native) {
     const c = (S && S.cards) || {}, size = (S && S.card_size) || [138, 192], k = c.scale || 1;   // (the outline: the cards at their size)
     const brush = m.startsWith("q") ? +$("qbrush").value : +$("wbrush").value;
-    native.postMessage({ editMode: m, cardW: Math.round(size[0] * k), cardH: Math.round(size[1] * k), gap: c.gap || 12, brush });
+    native.postMessage({ editMode: m, cardW: Math.round(size[0] * k), cardH: Math.round(size[1] * k), gap: c.gap || 12, brush,
+                         horizon: (S && S.horizon) || 400, cardX: c.center_x ?? 170, cardTop: c.top ?? 16 });
   }
-  for (const id of ["wpaint", "wrect", "werase", "qpaint", "qrect", "qerase"]) $(id).classList.toggle("primary", m === id);
+  for (const id of ["wpaint", "wrect", "werase", "wbehind", "wgroup", "wframe", "qpaint", "qrect", "qerase"]) $(id).classList.toggle("primary", m === id);
+  windowMode = ["wpaint", "wrect", "werase", "wbehind", "wgroup", "wframe"].includes(m); holdWindows();
   $("smplace").classList.toggle("primary", m === "smokeadd");
   $("foplace").classList.toggle("primary", m === "foamadd");
+  { const b = { foamadd: "foplace", smokeadd: "smplace" }[m]; if (b) { const e = $(b).closest(".effect"); if (e && e._fold) e._fold(false); } }
   if (m === "foamadd") $("foamstate").textContent = !native ? "In a browser, placing needs the App Preview window." : "Click on the picture where the water churns (up to 16).";
   if (m === "smokeadd") $("smokestate").textContent = !native ? "In a browser, placing needs the App Preview window." : "Click on the picture where smoke rises from (up to 8).";
   if (["qpaint", "qrect", "qerase"].includes(m)) {
@@ -330,10 +387,14 @@ function setMode(m) {
     $("waterstate").textContent = !native ? "In a browser, painting needs the App Preview window." : m === "qrect" ? "Drag a box over the water on the picture."
       : m === "qpaint" ? "Paint over the water on the picture." : "Brush over painted water to take it off.";
   }
-  if (["wpaint", "wrect", "werase"].includes(m)) {
+  if (["wpaint", "wrect", "werase", "wbehind", "wgroup", "wframe"].includes(m)) {
     night();
     $("winstate").textContent = !native ? "In a browser, painting needs the App Preview window." : m === "wrect" ? "Drag a box over each window on the picture."
-      : m === "wpaint" ? "Paint over the glass on the picture." : "Brush over painted glass to take it off.";
+      : m === "wpaint" ? "Paint over the glass on the picture."
+      : m === "wframe" ? "Paint over the frame, bars or leading: they stay dark in front of the light (Undo takes a stroke back)."
+      : m === "wgroup" ? "Drag a box over windows that belong together (a lantern's panes, a floor): they switch as one light (Undo takes it back)."
+      : m === "wbehind" ? "Drag a box round a lantern or window you've lit: its dark bars and frame go in front of the light (Undo takes it back)."
+      : "Brush over painted glass to take it off.";
   }
   $("editmode").value = m === "erase" || m === "add" ? m : "";
   $("mcards").classList.toggle("primary", m === "cards"); $("mhorizon").classList.toggle("primary", m === "horizon");
@@ -345,9 +406,9 @@ $("editmode").onchange = () => { const m = $("editmode").value; if (m) night(); 
 $("mcards").onclick = () => setMode("cards");
 $("mhorizon").onclick = () => setMode("horizon");
 $("mdone").onclick = () => setMode("");
-for (const id of ["wpaint", "wrect", "werase"]) $(id).onclick = () => setMode(id);
+for (const id of ["wpaint", "wrect", "werase", "wbehind", "wgroup", "wframe"]) $(id).onclick = () => setMode(id);
 $("wdone").onclick = () => setMode("");
-$("wbrush").onchange = () => { const on = ["wpaint", "werase"].find(id => $(id).classList.contains("primary")); if (on) setMode(on); };
+$("wbrush").onchange = () => { const on = ["wpaint", "werase", "wbehind", "wgroup", "wframe"].find(id => $(id).classList.contains("primary")); if (on) setMode(on); };
 $("wcset").onclick = () => post("/windows", { colour: $("wcolour").value.split(",").map(Number) }).then(r => { if (r.error) say(r.error); night(); refresh(); });
 $("wauto").onclick = () => (flashWhenDone("windows"), post("/windows", { auto: true })).then(r => { if (r.error) say(r.error); night(); refresh(); });
 $("wclear").onclick = () => confirm("Clear all the windows, found and painted?") && post("/windows", { clear_auto: true }).then(r => { if (r.error) say(r.error); refresh(); });
@@ -359,6 +420,7 @@ $("qclear").onclick = () => confirm("Clear all the water, found and painted?") &
 $("qset").onclick = () => post("/water", { strength: +$("qstrength").value, speed: +$("qspeed").value }).then(r => { if (r.error) say(r.error); refresh(); });
 $("qundo").onclick = () => post("/water", { undo: true }).then(r => { if (r.error) say(r.error); refresh(); });
 $("wundo").onclick = () => post("/windows", { undo: true }).then(r => { if (r.error) say(r.error); refresh(); });
+$("lstyle").onchange = () => act({ action: "layout", card_style: $("lstyle").value });
 window.layoutChanged = () => refresh();             // (from the window, after a drag)
 $("lset").onclick = () => act({ action: "layout", cards: { center_x: +$("lx").value, top: +$("ly").value, gap: +$("lgap").value,
                                                          scale: Math.max(40, Math.min(130, +$("lsize").value || 100)) / 100, scale3: +$("l3").value / 100 } });
@@ -387,12 +449,75 @@ $("smdone").onclick = () => setMode("");
 $("smclear").onclick = () => act({ action: "effect", key: "smoke", value: null });
 $("smset").onclick = () => act({ action: "effect", key: "smoke", value: Object.assign({}, (S && S.smoke) || {}, smokeSettings()) });
 $("birds").onchange = () => act({ action: "effect", key: "birds", value: $("birds").checked });
+// ---- the app: any countdown app, its kept scene and trials just as they were left
+$("apppick").onchange = () => { say(""); control({ app: $("apppick").value }); setTimeout(refresh, 400); };
+// ---- a new app: tools/apps/new.py, then it's the one shown
+$("newapp").onclick = () => { $("newform").showModal(); $("nname").focus(); };
+$("ncancel").onclick = () => $("newform").close();
+$("nname").onkeydown = e => { if (e.key === "Enter") $("ncreate").click(); };
+$("ncreate").onclick = async () => {
+  const title = $("nname").value.trim();
+  if (!title) { $("nname").focus(); $("nname").placeholder = "a name, first"; return; }
+  say("");
+  const r = await post("/builder/do", { action: "new_app", title, date_label: $("nlabel").value, park: $("npark").value,
+                                        weather: $("nweather").value, units: $("nunits").value });
+  if (r.error) { $("newform").close(); return say(r.error); }
+  $("newform").close(); $("nname").value = $("npark").value = $("nweather").value = "";
+  refresh();
+};
+// ---- folding: each section's heading and each effect's title opens and closes it (remembered)
+const FOLDS = (() => { try { return JSON.parse(localStorage.getItem("folds") || "{}"); } catch (e) { return {}; } })();
+function saveFolds() { try { localStorage.setItem("folds", JSON.stringify(FOLDS)); } catch (e) {} }
+function foldable(box, head, key, closed) {
+  head.classList.add("fold");
+  const set = c => { box.classList.toggle("collapsed", c); FOLDS[key] = c; };
+  box.classList.toggle("collapsed", key in FOLDS ? FOLDS[key] : closed);
+  head.addEventListener("click", e => { if (e.target.closest("button,select,input,label")) return; box._fold(!box.classList.contains("collapsed")); saveFolds(); });
+  box._fold = c => { set(c); holdWindows(); };
+}
+// while working on the window lights (their card open, or painting them): every window lit and still,
+// so a window just drawn shows at once (the scene's switching on and off comes back after)
+let windowMode = false, held = null;
+function holdWindows() {
+  const card = $("win"), on = windowMode || !!(card && !card.classList.contains("collapsed"));
+  if (on !== held) { held = on; control({ windows_hold: on }); }
+}
+for (const sec of document.querySelectorAll("main > section")) foldable(sec, sec.querySelector("h2"), "s:" + sec.id, false);
+for (const eff of document.querySelectorAll("#effects .effect")) {
+  const h = eff.querySelector(":scope > h3"); if (!h) continue;
+  if (h !== eff.firstElementChild) eff.insertBefore(h, eff.firstElementChild);
+  h.insertAdjacentHTML("beforeend", '<span class="badge"></span>');
+  foldable(eff, h, "e:" + h.firstChild.textContent.trim(), true);
+}
+holdWindows();
+$("foldall").onclick = () => { for (const b of document.querySelectorAll(".fold")) b.parentElement._fold(true); saveFolds(); };
+$("openall").onclick = () => { for (const b of document.querySelectorAll(".fold")) b.parentElement._fold(false); saveFolds(); };
+function badge(title, text) {
+  for (const h of document.querySelectorAll("#effects .effect > h3")) if (h.firstChild.textContent.trim() === title) h.querySelector(".badge").textContent = text || "";
+}
+// "look for the sphere in new photos": per app, remembered; until set, on for an app whose scene has one
+$("findorb").onchange = () => { try { localStorage.setItem("findorb:" + (S && S.app), $("findorb").checked ? "1" : "0"); } catch (e) {} };
+function findorbFor(s) {
+  let v = null; try { v = localStorage.getItem("findorb:" + s.app); } catch (e) {}
+  $("findorb").checked = v === null ? !!((s.conf || {}).orb) : v === "1";
+}
+$("birdsnow").onclick = () => control({ birds: true });   // (to see them: whether the scene has them on or not)
 window.smokeAdded = () => refresh();               // (from the window, after a click)
 function foamSettings() { return { amount: +$("foamount").value, flow: $("foflow").value, size: +$("fosize").value }; }
 $("foplace").onclick = async () => { await act({ action: "effect", key: "foam", value: Object.assign({}, (S && S.foam) || {}, foamSettings()) }); setMode("foamadd"); };
 $("fodone").onclick = () => setMode("");
 $("foclear").onclick = () => act({ action: "effect", key: "foam", value: null });
 $("foset").onclick = () => act({ action: "effect", key: "foam", value: Object.assign({}, (S && S.foam) || {}, foamSettings()) });
+// no Set buttons: a choice applies as it's made; a number when Enter is pressed or its box is left
+// (the buttons stay, hidden, as what each change does)
+const APPLY = { wcset: ["wcolour"], qset: ["qstrength", "qspeed"], smset: ["smscale", "smwind", "smrate"],
+                foset: ["fosize", "foflow", "foamount"], showset: ["secs"], orbset: ["cx", "cy", "cr"],
+                lset: ["lx", "ly", "lgap", "lsize", "l3", "lh"] };
+for (const [b, ids] of Object.entries(APPLY)) {
+  const btn = $(b); btn.hidden = true;
+  for (const id of ids) $(id).addEventListener("change", () => { if (!btn.disabled) btn.click(); });
+}
+$("patterns").addEventListener("change", () => { if (!$("showset").disabled) $("showset").click(); });
 
 // ---- the screens: a draft, saved into the app's app.json
 const TYPE_NAMES = { waits: "Ride wait times", weather: "Weather", ships: "Ship map" };
@@ -409,39 +534,118 @@ function renderScreens() {
         <button data-a="now">Show now</button><button data-a="del" title="Remove">✕</button></div>
       <div class="row note">${secs !== null || !s.secs ? `For <input type="number" data-k="secs" value="${secs ?? 30}" min="5" max="600"> seconds`
                                                        : `For as long as the app's setting says (${s.secs})`}</div>`;
-    if (s.type === "weather") div.insertAdjacentHTML("beforeend",
-      `<div class="row note">Place <input type="text" data-k="place" value="${(s.place || "").replace(/"/g, "&quot;")}" placeholder="a town, a park, a peak">
-       <select data-k="units"><option value="F">°F</option><option value="C">°C</option></select></div>`);
-    if (s.type === "waits") div.insertAdjacentHTML("beforeend", '<p class="note">The park in the app (app.json "park").</p>');
-    if (s.type === "ships") div.insertAdjacentHTML("beforeend", "<p class=\"note\">The ship it follows: the app's Settings (Follow). Needs the map's imagery in the app's map folder.</p>");
+    const esc = v => (v || "").replace(/"/g, "&quot;");
+    if (s.type === "weather") {
+      div.insertAdjacentHTML("beforeend",
+        `<div class="row note">Place <input type="text" data-k="place" value="${esc(s.place)}" placeholder="a town, a park, a peak">
+         <button data-w="find">Find</button> <select data-k="units"><option value="F">°F</option><option value="C">°C</option></select></div>
+         <div class="row note" data-w="pickrow" hidden>Which one? <select data-w="pick" style="flex:1;min-width:0"></select></div>
+         <p class="note" data-w="where"></p>`);
+      wirePlace(div, s);
+    }
+    if (s.type === "waits") {
+      div.insertAdjacentHTML("beforeend",
+        `<div class="row note">Park <select data-w="park" style="flex:1;min-width:0"><option value="">${PARKS ? "Pick a park…" : "Loading the parks…"}</option></select></div>
+         <div class="row note">Tonight's show <input type="text" data-k="show" value="${esc(s.show)}" placeholder="optional"></div>`);
+      wirePark(div, s);
+    }
+    if (s.type === "ships") div.insertAdjacentHTML("beforeend",
+      `<div class="row note">Your ship <select data-k="ship">${((S && S.ship_names) || []).map(n => `<option>${n}</option>`).join("")}</select></div>
+       <p class="note">The map follows it (on the device, Settings can follow another). Needs the map's imagery in the app's map folder.</p>`);
     div.querySelectorAll("[data-k]").forEach(e => {
       if (e.dataset.k === "units") e.value = s.units || "F";
-      e.oninput = e.onchange = () => { s[e.dataset.k] = e.type === "number" ? +e.value : e.value; };
+      if (e.dataset.k === "ship" && s.ship) e.value = s.ship;
+      e.oninput = e.onchange = () => {
+        s[e.dataset.k] = e.type === "number" ? +e.value : e.value;
+        if (e.dataset.k === "place") { delete s.lat; delete s.lon; delete s.looked_up; showWhere(div, s); }   // (a new name: not confirmed)
+      };
     });
     div.querySelectorAll("button[data-a]").forEach(b => b.onclick = () => {
       const a = b.dataset.a;
       if (a === "up" && i > 0) [draft[i - 1], draft[i]] = [draft[i], draft[i - 1]];
       if (a === "down" && i < draft.length - 1) [draft[i + 1], draft[i]] = [draft[i], draft[i + 1]];
       if (a === "del") draft.splice(i, 1);
-      if (a === "now") { control({ stay: true }); post("/builder/do", { action: "screen_now", index: i }); return; }
+      if (a === "now") { showNow(i); return; }
       renderScreens();
     });
     list.appendChild(div);
   });
 }
+// the park: picked from ThemeParks.wiki's list (fetched once), by destination
+let PARKS = null;
+async function loadParks() {
+  if (PARKS) return PARKS;
+  const r = await (await fetch("/builder/parks")).json();
+  if (r.error) { say(r.error); return null; }
+  PARKS = r; return PARKS;
+}
+function wirePark(div, s) {
+  const sel = div.querySelector('[data-w="park"]');
+  loadParks().then(list => {
+    if (!list) return;
+    sel.innerHTML = '<option value="">Pick a park…</option>' + list.map(d => `<optgroup label="${d.dest.replace(/"/g, "&quot;")}">` +
+      d.parks.map(p => `<option value="${p.id}">${p.name}</option>`).join("") + "</optgroup>").join("");
+    if (s.park_id) sel.value = s.park_id;
+  });
+  sel.onchange = () => { s.park_id = sel.value; s.park = sel.value ? sel.selectedOptions[0].textContent : ""; };
+}
+// the weather's place: a name, then Find, then the right one picked from what it could mean
+function showWhere(div, s) {
+  const w = div.querySelector('[data-w="where"]'); if (!w) return;
+  w.textContent = s.place && s.lat != null && s.looked_up === s.place ? `✓ ${s.place} (${s.lat}, ${s.lon})`
+                : s.place ? "Not checked yet: Find, then pick the right one." : "";
+}
+function wirePlace(div, s) {
+  const row = div.querySelector('[data-w="pickrow"]'), pick = div.querySelector('[data-w="pick"]'), input = div.querySelector('[data-k="place"]');
+  let found = [];
+  const choose = m => { s.place = s.looked_up = m.name; s.lat = m.lat; s.lon = m.lon; input.value = m.name; showWhere(div, s); };
+  div.querySelector('[data-w="find"]').onclick = async () => {
+    const q = input.value.trim(); if (!q) return;
+    const w = div.querySelector('[data-w="where"]'); w.textContent = "Looking…";
+    const r = await (await fetch("/builder/places?q=" + encodeURIComponent(q))).json();
+    if (r.error) { w.textContent = r.error; return; }
+    found = r; row.hidden = r.length < 2;
+    if (!r.length) { w.textContent = `No place called "${q}": try a nearby town, or a park's name.`; return; }
+    pick.innerHTML = r.map((m, k) => `<option value="${k}">${m.name}</option>`).join("");
+    choose(r[0]);
+    if (r.length > 1) w.textContent = `✓ ${r[0].name}: or pick another above (${r.length} places are called that).`;
+  };
+  pick.onchange = () => { if (found[+pick.value]) choose(found[+pick.value]); };
+  input.onkeydown = e => { if (e.key === "Enter") div.querySelector('[data-w="find"]').click(); };
+  showWhere(div, s);
+}
 $("addscreen").onclick = () => {
   const t = $("addtype").value;
-  draft.push(t === "weather" ? { type: "weather", place: "", units: "F", secs: 30 } : { type: t, secs: 60 });
+  draft.push(t === "weather" ? { type: "weather", place: "", units: "F", secs: 30 }
+           : t === "waits" ? { type: "waits", park: "", park_id: "", show: "", secs: 60 }
+           : t === "ships" ? { type: "ships", ship: ((S && S.ship_names) || ["Disney Dream"])[0], secs: 60 } : { type: t, secs: 60 });
   renderScreens();
 };
-$("savescreens").onclick = async () => {
-  if (draft.some(s => s.type === "weather" && !s.place)) return say("A weather screen needs a place.");
+async function saveScreens() {
+  if (draft.some(s => s.type === "weather" && !s.place)) { say("A weather screen needs a place."); return false; }
+  if (draft.some(s => s.type === "weather" && !(s.lat != null && s.looked_up === s.place))) { say("Check the weather's place: Find, then pick the right one."); return false; }
+  if (draft.some(s => s.type === "waits" && !s.park_id)) { say("A wait-times screen needs a park: pick one."); return false; }
+  $("screensnote").textContent = "Saving…";
   const r = await post("/builder/do", { action: "screens", screens: draft });
-  if (r.error) return say(r.error);
+  if (r.error) { say(r.error); $("screensnote").textContent = ""; return false; }
+  for (let k = 0; k < 60; k++) {                     // (saving looks up a weather place, fetches an example: a few seconds)
+    const st = await (await fetch("/builder/state")).json();
+    if (!st.busy) { if (st.error) { say(st.error); return false; } break; }
+    await new Promise(res => setTimeout(res, 500));
+  }
   $("screensnote").textContent = "Saved: the app restarts with them.";
   draftKey = "";                                     // (the next state's list replaces the draft)
-  refresh();
-};
+  refresh(); return true;
+}
+$("savescreens").onclick = saveScreens;
+// "Show now": an unsaved list saved first (the app only has the screens app.json has); then that one,
+// and the scene stays (the screens don't come round by themselves while "Stay on the scene" is ticked)
+async function showNow(i) {
+  if (JSON.stringify(draft) !== draftKey && !(await saveScreens())) return;
+  control({ stay: true });
+  post("/builder/do", { action: "screen_now", index: i });
+  $("screensnote").textContent = `Showing ${screenTitle(draft[i] || {})} now; then back to the scene.`;
+}
 
 // ---- on the device
 // the key's passphrase, asked when it's needed: the window's own dialog (its text hidden); in a browser, a prompt
@@ -452,12 +656,27 @@ function askPassphrase() {
   return new Promise(resolve => { passWaiter = resolve; native.postMessage({ askPassphrase: true }); });
 }
 async function waitIdle() { for (;;) { const s = await (await fetch("/builder/state")).json(); if (!s.busy) return s; await new Promise(r => setTimeout(r, 700)); } }
+// showing a trial: the device gets the app's own scene, so: this photo into the app first, the app as it is, or neither
+function askInstall(trial) {
+  const d = $("installask");
+  $("installwhy").textContent = `You're looking at a photo you're trying out ("${trial}"). The device gets the scene that's ` +
+    `saved in the app, not this one. Use this photo makes it the app's scene (replacing the one there now), then installs.`;
+  return new Promise(resolve => {
+    const done = v => { d.close(); resolve(v); };
+    $("iakeep").onclick = () => done("keep"); $("iaasis").onclick = () => done("asis"); $("iacancel").onclick = () => done(null);
+    d.onclose = () => resolve(null);                 // (Esc)
+    d.showModal();
+  });
+}
 $("install").onclick = async () => {
   if (S && S.showing) {
-    if (!confirm(`The device gets the app's kept scene, not this trial. Keep "${S.showing}" in the app first?`)) return;
-    const r = await post("/builder/do", { action: "keep", name: S.showing });
-    if (r.error) return say(r.error);
-    await waitIdle();
+    const how = await askInstall(S.showing);
+    if (!how) return;
+    if (how === "keep") {
+      const r = await post("/builder/do", { action: "keep", name: S.showing });
+      if (r.error) return say(r.error);
+      await waitIdle();
+    }
   }
   const signed = $("isigned").checked;
   let passphrase = "";

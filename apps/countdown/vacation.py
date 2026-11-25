@@ -58,6 +58,7 @@ def lighting(hour):
 
 
 # the drawing library's scene effects (vfx_effects): theme.json lists the ones its scene has
+REMOTE_LIVE = "/tmp/countdown-live.json"           # (the board: the Mac's Controls, in RAM: gone at a reboot)
 EFFECTS = {"water": 1, "wake": 2, "smoke": 4, "gulls": 8, "birds": 8, "dolphins": 16, "raft": 32, "twinkle": 64, "foam": 128}   # ("birds": the gulls, any scene's)
 
 FADE_SECS = 0.6                                     # countdown <-> a module's screen
@@ -156,7 +157,11 @@ class App:
         self.load_conf()
         self.fixed_hour = float(os.environ["VACATION_HOUR"]) if "VACATION_HOUR" in os.environ else None
         # in the previewer: its live controls (the time-of-day slider, fireworks), without a restart
-        self.live_path = os.path.join(os.environ["PREVIEW_DIR"], "live.json") if os.environ.get("PREVIEW_DIR") else None
+        # on the board: the Mac's Controls set to Device (over the USB console: tools/preview/remote.py), into RAM
+        self.live_path = os.path.join(os.environ["PREVIEW_DIR"], "live.json") if os.environ.get("PREVIEW_DIR") \
+            else os.environ.get("VACATION_LIVE") or (REMOTE_LIVE if os.path.exists("/apps/current") else None)
+        self.live_every = 0.0 if os.environ.get("PREVIEW_DIR") else 0.3       # (looked at a few times a second on the board)
+        self.live_looked = -1e9
         self.live_at, self.live = 0.0, {}
         self.go_screen = False
         self.daylapse = float(os.environ.get("VACATION_DAYLAPSE", "0"))
@@ -278,8 +283,10 @@ class App:
         self.fade_lvl = to
 
     def live_controls(self, t):
-        """The previewer's live.json, when it's changed: {"hour": h or null, "fireworks": n, "show": n}
-        (counters: each new value fires once). True if the hour changed."""
+        """The previewer's live.json (or, on the board, REMOTE_LIVE), when it's changed: {"hour": h or null,
+        "fireworks": n, "show": n, "birds": n, ...} (counters: each larger value fires once). True if the hour changed."""
+        if t - self.live_looked < self.live_every and t >= self.live_looked: return False
+        self.live_looked = t
         try: at = os.path.getmtime(self.live_path)
         except (OSError, TypeError): return False
         if at == self.live_at: return False
@@ -287,11 +294,19 @@ class App:
         try: new = json.load(open(self.live_path))
         except (OSError, ValueError): return False
         old, self.live = self.live, new
-        if old and new.get("fireworks", 0) != old.get("fireworks", 0): self.fx.vfx_fireworks(random.randint(4, 7))
-        if old and new.get("show", 0) != old.get("show", 0): self.start_show(t)
+        def fired(k): return old and new.get(k, 0) > old.get(k, 0)
+        if fired("fireworks"): self.fx.vfx_fireworks(random.randint(4, 7))
+        if fired("show"): self.start_show(t)
+        if fired("birds"): self.fx.vfx_demo(1)                                              # (birds across, now)
+        if bool(new.get("windows_hold")) != bool(old.get("windows_hold")):                 # (painting windows: all lit, still)
+            self.fx.vfx_windows_hold(1 if new.get("windows_hold") else 0)
         if new.get("pattern", -1) != old.get("pattern", -1): self.fx.vfx_twinkle_pin(int(new.get("pattern", -1)))
-        if old and new.get("screen_go", 0) != old.get("screen_go", 0) and self.playlist:     # (show a screen now)
-            self.next_screen = int(new.get("screen", 0)) % len(self.playlist); self.go_screen = True
+        go = new.get("screen_go", 0)                     # (show a screen now: app.json's nth; just asked, if the app has only now started)
+        if go and ((old and go > old.get("screen_go", 0)) or (not old and time.time() - float(new.get("screen_at", 0)) < 20)):
+            want = int(new.get("screen", 0))
+            hit = [i for i, (_, _, spec) in enumerate(self.playlist) if spec.get("_at") == want]
+            if hit: self.next_screen = hit[0]; self.go_screen = True
+            else: print("countdown: screen %d isn't showing (turned off in the settings, or it didn't load)" % (want + 1), flush=True)
         return new.get("hour") != old.get("hour") or not old
 
     def hour(self, t):

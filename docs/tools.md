@@ -45,15 +45,37 @@ new photo), what was found is outlined over the picture for a few seconds (Show 
 found and painted). "Stay on
 the scene" (Controls, and the Scene Builder, which turns it on): the app's other screens wait.
 
+**Controls** works on this Mac's preview (**Local**) or, picked at its top, on the countdown running on
+the device (**Remote: the device (USB)**): the time of day (or the device's own clock), stay on the scene,
+fireworks, the nightly show, birds and the lights' pattern, over the board's USB console (no network:
+`tools/preview/remote.py` writes `/tmp/countdown-live.json` on the board, in RAM, which the countdown
+looks at a few times a second; about a tenth of a second a change). Back to Local, the device is put back
+as it is on its own (its clock, its screens in turn, every pattern); a reboot forgets it too. In Remote, the device also follows the preview's app: picking Remote, or
+switching app (the App menu, the Scene Builder's picker, New…, the in-app picker), runs `app NAME` on it
+(now and at every boot), if that app is installed there. While it starts (a few seconds), the device shows that app's splash: its picture, "Starting" and the pulsing dots, as at boot (the board's `app NAME` does too, from the next base image). Editing lights
+is Local only. The console is let go after a few idle seconds, so deploys still work.
+
+**Controls** also has **Birds** (a few cross the sky now, whether or not the scene has them on; the
+builder's Birds card has the same as "Some now"). A screen's **Show now** in the builder saves the list
+first if it has changed (the app has only the screens its app.json has), then shows that one.
+Painted windows are lit like real ones (`scene_pack.painted_light`): a soft edge, brighter in the
+middle, each window its own lamp, and a glow on the stone round it. **Group** (drag a box over several windows: every window it touches switches on and off as one light, e.g. a lantern's panes or a building's floor; `group` boxes in `windows_edits.json`, kept as `window_groups.json`), **Behind** (drag a box round a lit lantern or window: the darkest of the three tones the box splits into on the day photo, its ironwork or frame, goes in front of the light; `behind` boxes in `windows_edits.json`) and a window's **Frame** brush (paint what stays dark in front of its light (a lantern's bars,
+mullions, leading: `window_frame.png`, from the `frame` strokes and `behind` boxes; Undo takes one back)); the light shows between them and their glow is blocked too. While the Window lights card is open,
+or a window is being painted, every window is lit and holds still (live.json `windows_hold`).
+
 The **Scene Builder** panel (View › Scene Builder ⌘B; `tools/preview/builder.html`, in the window, or at
-http://localhost:8800/builder): drop a photo on it (or on the picture) and it becomes a trial scene,
-dusk and night made from it, the lights on a sphere found if that box is ticked; each trial a card
+http://localhost:8800/builder). It's docked to the picture's right edge (it moves and resizes with it;
+drag it away to float it, back against the edge to dock it again; View › Dock Scene Builder ⇧⌘B). The
+picker at its top switches app (and **New…** beside it makes one: a name, what the day is called, optionally a park's ride waits and a place's weather; `tools/apps/new.py` underneath, then it's the app shown, a plain sky waiting for a photo): each app's kept scene and trials are just as they were left, so any
+scene can be opened again and changed. Its sections and each effect fold (click the title; remembered;
+a closed effect still says what's in it, e.g. "398 lights"). Drop a photo on it (or on the picture) and it becomes a trial scene,
+dusk and night made from it, the lights on a sphere found in it if the Lights on a sphere card says to look for them in each new photo (remembered per app; on by itself for an app whose scene has a sphere); each trial a card
 (its day, dusk and night) to show, keep in the app, or delete. Its layout: drag the countdown's outline or
-the horizon on the picture (or type them), the countdown's size (40% to 130%) and three digits' size, and "See it with 3 digits" (150 days
+the horizon on the picture (or type them), the cards' look (Parchment; Black split-flap, like the cruise's; Wood trail sign; Departure board: only the cards are drawn again. Their fonts are in the git-ignored `assets/fonts/`: Cormorant Garamond, and from Google Fonts (OFL) Arvo Bold for the wood and Barlow Condensed SemiBold for the board, from github.com/google/fonts `ofl/arvo/`, `ofl/barlowcondensed/`), the countdown's size (40% to 130%) and three digits' size, and "See it with 3 digits" (150 days
 before the trip); for any countdown app, a photo's scene or not. Its effects, for the scene showing:
 lights on a sphere (found, a circle given, or removed; the show's patterns and how long each; one
 held to watch; erasing and adding lights on the picture), Screens (the app's screens in turn with the
-countdown: add a type, its seconds and settings, a weather screen's place looked up by name; reorder,
+countdown: add a type, its seconds and settings: a weather screen's place (type a name, Find, and pick the right one of the places it could mean: Open-Meteo's geocoding; saved only once it's checked, ✓), a wait-times screen's park (picked from ThemeParks.wiki's list, by destination; into app.json "park", with its example waits) and tonight's show, a ship map's ship (the app's SHIP and MAP_SHIP); a name that can't be found says so; reorder,
 remove, Show now; Save writes them into the app's app.json), and On the device: Install on the device
 (tools/board/deploy.py over USB: the app's kept scene with the system and runtime it runs on, then the
 app that runs; Signed asks for the key's passphrase then, in a dialog, and keeps it nowhere), window lights (found automatically in the

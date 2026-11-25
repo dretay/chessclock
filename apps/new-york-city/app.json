@@ -1,0 +1,32 @@
+{
+  "id": "new-york-city",
+  "name": "New York City",
+  "version": "0.1.0",
+  "runtime": "countdown",
+  "api": 4,
+  "exclude": [
+    "scenes/*/preview.png",
+    "splash/preview.png"
+  ],
+  "scene": {
+    "engine": "scene",
+    "dir": "scenes",
+    "default": "new-york-city"
+  },
+  "screens": [
+    {
+      "type": "weather",
+      "place": "New York, New York",
+      "lat": 40.7143,
+      "lon": -74.006,
+      "units": "F",
+      "secs": 30,
+      "looked_up": "New York, New York"
+    }
+  ],
+  "countdown": {
+    "date_label": "Trip day",
+    "after": "Already there",
+    "time": "09:00"
+  }
+}

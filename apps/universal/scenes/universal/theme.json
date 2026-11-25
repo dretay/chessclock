@@ -1,0 +1,15 @@
+{
+ "effects": [
+  "birds"
+ ],
+ "horizon": 309,
+ "fireworks_scale": 0.85,
+ "cards": {
+  "center_x": 437,
+  "top": 24,
+  "gap": 12,
+  "label_gap": -1,
+  "scale3": 0.82,
+  "scale": 0.5
+ }
+}

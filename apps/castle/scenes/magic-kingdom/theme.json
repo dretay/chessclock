@@ -1,12 +1,20 @@
 {
- "effects": [],
- "horizon": 417,
+ "effects": [
+  "water",
+  "birds"
+ ],
+ "horizon": 222,
  "fireworks_scale": 0.85,
  "cards": {
-  "center_x": 170,
-  "top": 16,
+  "center_x": 649,
+  "top": 13,
   "gap": 12,
   "label_gap": -1,
-  "scale3": 0.82
+  "scale3": 0.82,
+  "scale": 0.9
+ },
+ "water": {
+  "strength": 1.0,
+  "speed": 1.0
  }
 }

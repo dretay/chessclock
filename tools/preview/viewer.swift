@@ -49,6 +49,8 @@ final class ScreenView: NSView {
     var cardW = 138, cardH = 192, cardGap = 12
     var onLayout: ([String: Any]) -> Void = { _ in }
     let guideLayer = CAShapeLayer()
+    let guideLabel = CATextLayer()
+    var rest: (Int, Int)? = nil                      // (where the guide sits between drags: the horizon's line, the countdown's outline now)
     var stroke: [[Int]] = []
     var brush = 10
     var brushTarget = "erase"                        // "erase" (the orb's lights), "wpaint" / "werase" (window glass), "qpaint" / "qerase" (water)
@@ -77,6 +79,11 @@ final class ScreenView: NSView {
         guideLayer.strokeColor = NSColor(red: 0.89, green: 0.75, blue: 0.47, alpha: 0.95).cgColor
         guideLayer.lineWidth = 2
         layer?.addSublayer(guideLayer)
+        guideLabel.fontSize = 11; guideLabel.contentsScale = 2
+        guideLabel.foregroundColor = NSColor(red: 0.11, green: 0.09, blue: 0.06, alpha: 1).cgColor
+        guideLabel.backgroundColor = NSColor(red: 0.89, green: 0.75, blue: 0.47, alpha: 0.95).cgColor
+        guideLabel.cornerRadius = 3; guideLabel.alignmentMode = .center; guideLabel.isHidden = true
+        layer?.addSublayer(guideLabel)
         registerForDraggedTypes([.fileURL])
     }
     required init?(coder: NSCoder) { fatalError() }
@@ -110,7 +117,7 @@ final class ScreenView: NSView {
         if let img = lastImage { layer?.contents = crop(img) }
         flashLayer.contents = crop(flashImage)
         CATransaction.commit()
-        drawStroke(); guideLayer.path = nil
+        drawStroke(); showRest()
         onZoom(zoom)
     }
     /* zoom to z (1 to 8), keeping the screen point (sx, sy) where it is in the view */
@@ -183,30 +190,43 @@ final class ScreenView: NSView {
     }
 
     // ---------------------------------------------------------------- the guides and the brush
+    /* the guide where things are now (no drag): the horizon's bar, the countdown's outline */
+    func showRest() {
+        if let (x, y) = rest, layoutMode == "horizon" || layoutMode == "cards" { drawGuide(x, y) }
+        else { guideLayer.path = nil; guideLabel.isHidden = true }
+    }
     private func drawGuide(_ x: Int, _ y: Int) {
+        CATransaction.begin(); CATransaction.setDisableActions(true); defer { CATransaction.commit() }
+        guideLabel.isHidden = true
         let path = CGMutablePath()
-        if layoutMode == "wrect" || layoutMode == "qrect", let (sx, sy) = boxStart {   // (a window's or water's box, from where the drag began)
+        if ["wrect", "qrect", "wbehind", "wgroup"].contains(layoutMode), let (sx, sy) = boxStart {   // (a window's or water's box, from where the drag began)
             let a = toView(CGFloat(min(sx, x)), CGFloat(min(sy, y))), b = toView(CGFloat(max(sx, x) + 1), CGFloat(max(sy, y) + 1))
             path.addRect(CGRect(x: a.x, y: b.y, width: b.x - a.x, height: a.y - b.y))
         } else if layoutMode == "cards" {                // (two digits' row, centred where the pointer is)
             let w = CGFloat(2 * cardW + cardGap) * k, h = CGFloat(cardH) * k, c = toView(CGFloat(x), CGFloat(y))
             path.addRect(CGRect(x: c.x - w / 2, y: c.y - h / 2, width: w, height: h))
-        } else if layoutMode == "horizon" {
+        } else if layoutMode == "horizon" {             // (a bar across the picture, labelled: fireworks rise from it, no sky below it)
             let c = toView(0, CGFloat(y))
-            path.move(to: CGPoint(x: 0, y: c.y)); path.addLine(to: CGPoint(x: bounds.width, y: c.y))
+            path.addRect(CGRect(x: -2, y: c.y - 3, width: bounds.width + 4, height: 6))
+            guideLabel.string = "  Horizon \(y): drag to move  "
+            let w: CGFloat = 150, h: CGFloat = 16
+            guideLabel.frame = CGRect(x: 8, y: c.y + 6 + h > bounds.height ? c.y - 6 - h : c.y + 6, width: w, height: h)
+            guideLabel.isHidden = false
         }
         guideLayer.path = path
     }
     private func layoutDone(_ x: Int, _ y: Int) {
-        guideLayer.path = nil
-        if layoutMode == "wrect" || layoutMode == "qrect", let (sx, sy) = boxStart {
+        guideLayer.path = nil; guideLabel.isHidden = true
+        if layoutMode == "horizon" || layoutMode == "cards" { rest = (x, y); drawGuide(x, y) }      // (it stays where it was put)
+        if ["wrect", "qrect", "wbehind", "wgroup"].contains(layoutMode), let (sx, sy) = boxStart {
             boxStart = nil
-            if abs(x - sx) >= 1 && abs(y - sy) >= 1 { onLayout([layoutMode == "wrect" ? "winrect" : "waterrect": [sx, sy, x, y]]) }
+            if abs(x - sx) >= 1 && abs(y - sy) >= 1 { onLayout([layoutMode == "wrect" ? "winrect" : layoutMode == "wbehind" ? "behindrect" : layoutMode == "wgroup" ? "grouprect" : "waterrect": [sx, sy, x, y]]) }
         } else if layoutMode == "cards" { onLayout(["cards": ["center_x": x, "top": max(0, y - cardH / 2)]]) }
         else if layoutMode == "horizon" { onLayout(["horizon": y]) }
     }
     func strokeColour() {
         strokeLayer.fillColor = (brushTarget == "wpaint" ? NSColor(red: 1, green: 0.72, blue: 0.3, alpha: 0.45)
+                               : brushTarget == "wframe" ? NSColor(red: 0.55, green: 0.5, blue: 1, alpha: 0.5)
                                : brushTarget == "qpaint" ? NSColor(red: 0.3, green: 0.8, blue: 1, alpha: 0.4)
                                                           : NSColor(red: 1, green: 0.24, blue: 0.24, alpha: 0.35)).cgColor
     }
@@ -234,7 +254,7 @@ final class ScreenView: NSView {
             panPending = event.modifierFlags.contains(.option) ? nil : event      // (a tap, if it doesn't move)
             return
         }
-        if !layoutMode.isEmpty { let (x, y) = screenPoint(event); if layoutMode == "wrect" || layoutMode == "qrect" { boxStart = (x, y) }; drawGuide(x, y); return }
+        if !layoutMode.isEmpty { let (x, y) = screenPoint(event); if ["wrect", "qrect", "wbehind", "wgroup"].contains(layoutMode) { boxStart = (x, y) }; drawGuide(x, y); return }
         if adding { return }
         if erasing { let (x, y) = screenPoint(event); stroke = [[x, y, brush]]; drawStroke(); return }
         send("down", event)
@@ -303,9 +323,13 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
     var logView: NSTextView!
     var controlPanel: NSPanel!
     var builderPanel: NSPanel!, builder: WKWebView!
+    var dockItem: NSMenuItem!, docking = false
+    var builderDocked = UserDefaults.standard.object(forKey: "BuilderDocked") as? Bool ?? true
     var hourSlider: NSSlider!, hourLabel: NSTextField!, liveBox: NSButton!
     var hourSent: TimeInterval = 0
     var eraseBox: NSPopUpButton!, eraseNote: NSTextField!, patternMenu: NSPopUpButton!
+    var targetMenu: NSPopUpButton!, stayBox: NSButton!, undoButton: NSButton!
+    var remoteMode: Bool { targetMenu?.indexOfSelectedItem == 1 }
     var addTarget = "lights"                         // (a click in "add" mode: an orb light, or a smoke source)
     let appMenu = NSMenu(title: "App"), timeMenu = NSMenu(title: "Time")
     var liveDataItem: NSMenuItem!, onTopItem: NSMenuItem!
@@ -332,10 +356,12 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         view.onLayout = { [weak self] change in
             if let r = change["winrect"] { self?.region("windows", ["rect": r]) }
             else if let r = change["waterrect"] { self?.region("water", ["rect": r]) }
+            else if let r = change["behindrect"] { self?.region("windows", ["behind": r]) }
+            else if let r = change["grouprect"] { self?.region("windows", ["group": r]) }
             else { self?.layout(change) }
         }
         view.onPaint = { [weak self] target, s in
-            self?.region(target.hasPrefix("q") ? "water" : "windows", [target.hasSuffix("paint") ? "paint" : "erase": s])
+            self?.region(target.hasPrefix("q") ? "water" : "windows", [target.hasSuffix("paint") ? "paint" : target == "wframe" ? "frame" : "erase": s])
         }
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: W, height: H),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
@@ -358,6 +384,30 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
     }
 
     func windowWillClose(_ note: Notification) { if (note.object as? NSWindow) === window { NSApp.terminate(nil) } }
+
+    // ---------------------------------------------------------------- the Scene Builder docked to the picture's right edge
+    // Docked, it's a child of the preview window: it moves with it, and follows its size. Dragging it away
+    // undocks it; dragging it back against the right edge docks it again (or View > Dock Scene Builder).
+    func dockBuilder() {
+        guard builderDocked, builderPanel != nil, builderPanel.isVisible else { return }
+        docking = true; defer { docking = false }
+        let f = window.frame, h = max(f.height, 640)
+        builderPanel.setFrame(NSRect(x: f.maxX, y: f.maxY - h, width: builderPanel.frame.width, height: h), display: true)
+        if builderPanel.parent == nil { window.addChildWindow(builderPanel, ordered: .above) }
+    }
+    func setDocked(_ on: Bool) {
+        builderDocked = on; UserDefaults.standard.set(on, forKey: "BuilderDocked")
+        dockItem?.state = on ? .on : .off
+        if on { dockBuilder() } else if builderPanel.parent != nil { window.removeChildWindow(builderPanel) }
+    }
+    @objc func toggleDock() { setDocked(!builderDocked) }
+    func windowDidResize(_ note: Notification) { if (note.object as? NSWindow) === window { dockBuilder() } }
+    func windowDidMove(_ note: Notification) {
+        guard (note.object as? NSWindow) === builderPanel, !docking else { return }
+        let p = builderPanel.frame, f = window.frame
+        let near = abs(p.minX - f.maxX) < 28 && p.maxY > f.minY && p.minY < f.maxY
+        if near != builderDocked { setDocked(near) }       // (dragged away, or back against the edge)
+    }
 
     func frame() {
         if screen == nil { screen = Screen(path: fbPath) }
@@ -402,7 +452,10 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         }
         let hour = s["hour"] as? String ?? ""
         let countdown = s["countdown"] as? Bool ?? false
-        if NSApp.currentEvent?.type != .leftMouseDragged {        // (the slider and box follow the menu, not fight a drag)
+        if remoteMode {                                          // (the device's: what it said; the slider is the panel's own)
+            let note = s["remote_note"] as? String ?? ""
+            if !note.isEmpty { eraseNote.stringValue = note }
+        } else if NSApp.currentEvent?.type != .leftMouseDragged {        // (the slider and box follow the menu, not fight a drag)
             liveBox.state = hour.isEmpty ? .on : .off
             if let h = Double(hour) { hourSlider.doubleValue = h }
             showHour()
@@ -466,6 +519,9 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         viewMenu.addItem(item("Show Log", #selector(toggleLog), "j"))
         viewMenu.addItem(item("Show Controls", #selector(toggleControls), "k"))
         viewMenu.addItem(item("Scene Builder", #selector(toggleBuilder), "b"))
+        dockItem = item("Dock Scene Builder", #selector(toggleDock), "b", [.command, .shift])
+        dockItem.state = builderDocked ? .on : .off
+        viewMenu.addItem(dockItem)
         viewMenu.addItem(.separator())
         viewMenu.addItem(item("Zoom In", #selector(zoomIn), "=", [.command, .option]))
         viewMenu.addItem(item("Zoom Out", #selector(zoomOut), "-", [.command, .option]))
@@ -541,12 +597,19 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
     }
     // ---------------------------------------------------------------- the controls: time of day, fireworks
     func makeControlPanel() {
-        controlPanel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 286),
+        controlPanel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 322),
                                styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
         controlPanel.title = "Controls"
         controlPanel.hidesOnDeactivate = false
         controlPanel.setFrameAutosaveName("AppPreviewControls")
         let v = NSView(frame: controlPanel.contentView!.bounds)
+        // what the controls work on: this Mac's preview, or the countdown on the device (over USB: remote.py)
+        let targetLabel = NSTextField(labelWithString: "Controls")
+        targetLabel.frame = NSRect(x: 14, y: 292, width: 70, height: 18)
+        targetMenu = NSPopUpButton(frame: NSRect(x: 84, y: 286, width: 206, height: 28), pullsDown: false)
+        targetMenu.addItems(withTitles: ["Local: this Mac's preview", "Remote: the device (USB)"])
+        targetMenu.target = self; targetMenu.action = #selector(targetPicked(_:))
+        v.addSubview(targetLabel); v.addSubview(targetMenu)
         hourLabel = NSTextField(labelWithString: "Time of day")
         hourLabel.frame = NSRect(x: 14, y: 256, width: 272, height: 18)
         hourSlider = NSSlider(value: 12, minValue: 0, maxValue: 24, target: self, action: #selector(hourMoved(_:)))
@@ -555,9 +618,11 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         liveBox = NSButton(checkboxWithTitle: "This Mac's clock", target: self, action: #selector(liveClock(_:)))
         liveBox.frame = NSRect(x: 12, y: 202, width: 200, height: 20)
         let fw = NSButton(title: "Fireworks", target: self, action: #selector(fireworks))
-        fw.frame = NSRect(x: 10, y: 140, width: 110, height: 30)
+        fw.frame = NSRect(x: 8, y: 140, width: 96, height: 30)
         let show = NSButton(title: "Nightly show", target: self, action: #selector(nightlyShow))
-        show.frame = NSRect(x: 124, y: 140, width: 130, height: 30)
+        show.frame = NSRect(x: 104, y: 140, width: 112, height: 30)
+        let birds = NSButton(title: "Birds", target: self, action: #selector(birdsNow))
+        birds.frame = NSRect(x: 216, y: 140, width: 76, height: 30)
         let showLabel = NSTextField(labelWithString: "Lights' show")
         showLabel.frame = NSRect(x: 14, y: 112, width: 100, height: 18)
         patternMenu = NSPopUpButton(frame: NSRect(x: 110, y: 106, width: 180, height: 28), pullsDown: false)
@@ -571,20 +636,23 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         eraseBox = NSPopUpButton(frame: NSRect(x: 110, y: 76, width: 110, height: 28), pullsDown: false)
         eraseBox.addItems(withTitles: ["Off", "Erase", "Add"])
         eraseBox.target = self; eraseBox.action = #selector(editMode(_:))
-        let undo = NSButton(title: "Undo", target: self, action: #selector(undoErase))
+        let undo = NSButton(title: "Undo", target: self, action: #selector(undoErase)); undoButton = undo
         undo.frame = NSRect(x: 222, y: 74, width: 70, height: 30)
         eraseNote = NSTextField(labelWithString: "")
         eraseNote.frame = NSRect(x: 14, y: 12, width: 272, height: 34)
         eraseNote.font = NSFont.systemFont(ofSize: 11); eraseNote.textColor = .secondaryLabelColor
         eraseNote.maximumNumberOfLines = 2; eraseNote.lineBreakMode = .byWordWrapping
         let stay = NSButton(checkboxWithTitle: "Stay on the scene (screens wait)", target: self, action: #selector(stayOnScene(_:)))
-        stay.frame = NSRect(x: 12, y: 178, width: 270, height: 20); stay.state = .on
-        for c in [hourLabel!, hourSlider!, liveBox!, stay, fw, show, showLabel, patternMenu!, editLabel, eraseBox!, undo, eraseNote!] as [NSView] { v.addSubview(c) }
+        stay.frame = NSRect(x: 12, y: 178, width: 270, height: 20); stay.state = .on; stayBox = stay
+        for c in [hourLabel!, hourSlider!, liveBox!, stay, fw, show, birds, showLabel, patternMenu!, editLabel, eraseBox!, undo, eraseNote!] as [NSView] { v.addSubview(c) }
         controlPanel.contentView = v
         if !controlPanel.setFrameUsingName("AppPreviewControls") {
             let f = window.frame
             controlPanel.setFrameTopLeftPoint(NSPoint(x: f.maxX + 8, y: f.maxY))
         }
+        let top = controlPanel.frame.maxY                 // (a frame saved before the Controls row: its size again, the top kept)
+        controlPanel.setContentSize(NSSize(width: 300, height: 322))
+        controlPanel.setFrameTopLeftPoint(NSPoint(x: controlPanel.frame.minX, y: top))
         controlPanel.orderFront(nil)
     }
     func clock(_ h: Double) -> String {
@@ -596,14 +664,30 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         liveBox.state = .off; showHour()
         let t = Date().timeIntervalSince1970
         let done = NSApp.currentEvent?.type == .leftMouseUp
-        if done || t - hourSent > 0.08 { hourSent = t; control(["hour": String(format: "%.2f", sender.doubleValue)]) }
+        if done || t - hourSent > 0.08 { hourSent = t; panelControl(["hour": String(format: "%.2f", sender.doubleValue)]) }
     }
     @objc func liveClock(_ sender: NSButton) {
-        showHour(); control(["hour": sender.state == .on ? "" : String(format: "%.2f", hourSlider.doubleValue)])
+        showHour(); panelControl(["hour": sender.state == .on ? "" : String(format: "%.2f", hourSlider.doubleValue)])
     }
-    @objc func fireworks() { control(["fireworks": true]) }
-    @objc func stayOnScene(_ sender: NSButton) { control(["stay": sender.state == .on]) }
-    func toNight() { liveBox.state = .off; hourSlider.doubleValue = 22; showHour(); control(["hour": "22"]) }
+    @objc func fireworks() { panelControl(["fireworks": true]) }
+    @objc func birdsNow() { panelControl(["birds": true]) }
+    @objc func stayOnScene(_ sender: NSButton) { panelControl(["stay": sender.state == .on]) }
+    func toNight() { liveBox.state = .off; hourSlider.doubleValue = 22; showHour(); panelControl(["hour": "22"]) }
+    func panelControl(_ body: [String: Any]) { var b = body; b["panel"] = true; control(b) }
+    // Local or Remote: the device starts as it is on its own (its clock, its screens in turn, every pattern);
+    // back to Local, the device is put back so, and the panel shows the preview's settings again
+    @objc func targetPicked(_ sender: NSPopUpButton) {
+        control(["target": remoteMode ? "remote" : "local"])
+        if remoteMode {
+            liveBox.state = .on; stayBox.state = .off; patternMenu.selectItem(withTag: -1); showHour()
+            eraseNote.stringValue = "Connecting to the device…"
+        } else {
+            stayBox.state = (state["stay"] as? Bool ?? false) ? .on : .off
+            patternMenu.selectItem(withTag: state["pattern"] as? Int ?? -1); eraseNote.stringValue = ""
+        }
+        liveBox.title = remoteMode ? "The device's own clock" : "This Mac's clock"
+        eraseBox.isEnabled = !remoteMode; undoButton.isEnabled = !remoteMode
+    }
     @objc func editMode(_ sender: NSPopUpButton) {      // (at night, so the lights show)
         view.erasing = sender.indexOfSelectedItem == 1; view.adding = sender.indexOfSelectedItem == 2
         if view.erasing || view.adding { toNight() }
@@ -613,7 +697,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
     @objc func patternPicked(_ sender: NSPopUpButton) {
         let id = sender.selectedItem?.tag ?? -1
         if id >= 0 { toNight() }
-        control(["pattern": id])
+        panelControl(["pattern": id])
     }
     @objc func undoErase() { erase(["undo": true]) }
     func erase(_ body: [String: Any]) {
@@ -648,9 +732,16 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
             let f = window.frame
             builderPanel.setFrameTopLeftPoint(NSPoint(x: f.maxX + 8 + 308, y: f.maxY))
         }
+        builderPanel.delegate = self
         builderPanel.orderFront(nil)
+        dockBuilder()
     }
-    @objc func toggleBuilder() { if builderPanel.isVisible { builderPanel.orderOut(nil) } else { builderPanel.orderFront(nil); builder.reload() } }
+    @objc func toggleBuilder() {
+        if builderPanel.isVisible {
+            if builderPanel.parent != nil { window.removeChildWindow(builderPanel) }
+            builderPanel.orderOut(nil)
+        } else { builderPanel.orderFront(nil); dockBuilder(); builder.reload() }
+    }
     // the page's messages: the picture's editing mode
     func userContentController(_ uc: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any] else { return }
@@ -658,11 +749,15 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         if let kind = body["flash"] as? String { flash(kind); return }
         if body["askPassphrase"] != nil { askPassphrase(); return }
         guard let mode = body["editMode"] as? String else { return }
-        view.erasing = ["erase", "wpaint", "werase", "qpaint", "qerase"].contains(mode); view.adding = ["add", "smokeadd", "foamadd"].contains(mode)
+        view.erasing = ["erase", "wpaint", "werase", "wframe", "qpaint", "qerase"].contains(mode); view.adding = ["add", "smokeadd", "foamadd"].contains(mode)
         addTarget = mode == "smokeadd" ? "smoke" : mode == "foamadd" ? "foam" : "lights"
         view.brushTarget = view.erasing ? mode : "erase"; view.strokeColour()
         if let b = body["brush"] as? Int { view.brush = mode == "erase" ? 10 : b }
-        view.layoutMode = ["cards", "horizon", "wrect", "qrect"].contains(mode) ? mode : ""
+        view.layoutMode = ["cards", "horizon", "wrect", "qrect", "wbehind", "wgroup"].contains(mode) ? mode : ""
+        if mode == "horizon", let hz = body["horizon"] as? Int { view.rest = (0, hz) }
+        else if mode == "cards", let cx = body["cardX"] as? Int, let top = body["cardTop"] as? Int { view.rest = (cx, top + (body["cardH"] as? Int ?? 192) / 2) }
+        else { view.rest = nil }
+        view.showRest()
         if let w = body["cardW"] as? Int { view.cardW = w }
         if let h = body["cardH"] as? Int { view.cardH = h }
         if let g = body["gap"] as? Int { view.cardGap = g }
@@ -765,10 +860,10 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
             URLSession.shared.dataTask(with: req) { [weak self] _, _, _ in
                 DispatchQueue.main.async { self?.builder.evaluateJavaScript("window.builderUpload && window.builderUpload()") }
             }.resume()
-            if !self.builderPanel.isVisible { self.builderPanel.orderFront(nil) }
+            if !self.builderPanel.isVisible { self.builderPanel.orderFront(nil); self.dockBuilder() }
         }
     }
-    @objc func nightlyShow() { control(["show": true]) }
+    @objc func nightlyShow() { panelControl(["show": true]) }
     @objc func toggleControls() { if controlPanel.isVisible { controlPanel.orderOut(nil) } else { controlPanel.orderFront(nil) } }
 
     @objc func toggleLog() {

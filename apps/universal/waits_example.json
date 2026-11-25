@@ -1,0 +1,137 @@
+{
+ "park": "Universal Epic Universe",
+ "updated": 1795634106.075392,
+ "example": true,
+ "hours": [
+  "2026-11-25T09:00:00-05:00",
+  "2026-11-25T21:00:00-05:00"
+ ],
+ "rides": [
+  {
+   "name": "Bowser Jr. Challenge",
+   "status": "OPERATING",
+   "wait": 5,
+   "updated": 1795611336.127
+  },
+  {
+   "name": "Constellation Carousel",
+   "status": "OPERATING",
+   "wait": 5,
+   "updated": 1795614936.389
+  },
+  {
+   "name": "Curse of the Werewolf",
+   "status": "OPERATING",
+   "wait": 40,
+   "updated": 1795633691.297
+  },
+  {
+   "name": "Dragon Racer's Rally",
+   "status": "OPERATING",
+   "wait": 25,
+   "updated": 1795631709.212
+  },
+  {
+   "name": "Fyre Drill",
+   "status": "OPERATING",
+   "wait": 5,
+   "updated": 1795617829.319
+  },
+  {
+   "name": "Harry Potter and the Battle at the Ministry\u2122",
+   "status": "OPERATING",
+   "wait": 45,
+   "updated": 1795632430.626
+  },
+  {
+   "name": "Hiccup's Wing Gliders",
+   "status": "OPERATING",
+   "wait": 15,
+   "updated": 1795630995.897
+  },
+  {
+   "name": "Mario Kart\u2122: Bowser's Challenge",
+   "status": "OPERATING",
+   "wait": 45,
+   "updated": 1795632607.619
+  },
+  {
+   "name": "Mine-Cart Madness\u2122",
+   "status": "OPERATING",
+   "wait": 60,
+   "updated": 1795633331.07
+  },
+  {
+   "name": "Monsters Unchained: The Frankenstein Experiment",
+   "status": "OPERATING",
+   "wait": 10,
+   "updated": 1795624503.361
+  },
+  {
+   "name": "Stardust Racers",
+   "status": "OPERATING",
+   "wait": 10,
+   "updated": 1795622698.796
+  },
+  {
+   "name": "Yoshi's Adventure\u2122",
+   "status": "OPERATING",
+   "wait": 35,
+   "updated": 1795630627.897
+  }
+ ],
+ "shows": [
+  {
+   "name": "Meet Mario and Luigi",
+   "times": [
+    "2026-11-25T14:20:00-05:00",
+    "2026-11-25T15:20:00-05:00",
+    "2026-11-25T16:20:00-05:00",
+    "2026-11-25T17:20:00-05:00",
+    "2026-11-25T18:20:00-05:00",
+    "2026-11-25T19:20:00-05:00",
+    "2026-11-25T20:20:00-05:00"
+   ]
+  },
+  {
+   "name": "Le Cirque Arcanus\u2122",
+   "times": [
+    "2026-11-25T14:30:00-05:00",
+    "2026-11-25T15:15:00-05:00",
+    "2026-11-25T16:00:00-05:00",
+    "2026-11-25T16:45:00-05:00",
+    "2026-11-25T17:30:00-05:00",
+    "2026-11-25T18:20:00-05:00",
+    "2026-11-25T19:10:00-05:00"
+   ]
+  },
+  {
+   "name": "Universal Celestial Goodnight",
+   "times": [
+    "2026-11-25T21:30:00-05:00"
+   ]
+  },
+  {
+   "name": "The Untrainable Dragon",
+   "times": [
+    "2026-11-25T14:30:00-05:00",
+    "2026-11-25T15:40:00-05:00",
+    "2026-11-25T16:30:00-05:00",
+    "2026-11-25T17:20:00-05:00",
+    "2026-11-25T18:10:00-05:00",
+    "2026-11-25T19:00:00-05:00"
+   ]
+  },
+  {
+   "name": "Meet Princess Peach",
+   "times": [
+    "2026-11-25T14:50:00-05:00",
+    "2026-11-25T15:50:00-05:00",
+    "2026-11-25T16:40:00-05:00",
+    "2026-11-25T17:40:00-05:00",
+    "2026-11-25T18:40:00-05:00",
+    "2026-11-25T19:40:00-05:00"
+   ]
+  }
+ ]
+}

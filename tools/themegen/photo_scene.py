@@ -569,7 +569,7 @@ def set_effect(app, name, key, value):
     os.replace(tp + ".tmp", tp)
 
 
-def set_layout(app, name, cards=None, horizon=None):
+def set_layout(app, name, cards=None, horizon=None, card_style=None):
     """Where the countdown's cards go ({"center_x", "top", "gap", "scale3"}) and the horizon, for a trial or
     the app's own scene. The cards: only theme.json changes (at once). The horizon: the scene packed again
     (below it is never sky: the mask changes). A scene not made from a photo (no work folder: the
@@ -580,8 +580,12 @@ def set_layout(app, name, cards=None, horizon=None):
         conf = json.load(open(sp))
         if cards: conf["cards"] = dict(conf.get("cards") or {}, **{k: v for k, v in cards.items() if v is not None})
         if horizon is not None: conf["horizon"] = int(horizon)
+        if card_style in scene_pack.CARD_STYLES: conf["card_style"] = card_style
         json.dump(conf, open(sp, "w"), indent=1)
         if horizon is not None: scene_pack.pack(work, scene); return
+        if card_style in scene_pack.CARD_STYLES:                         # (the cards' look: only cards.bin.gz again)
+            scene_pack.Out(scene).gz("cards.bin.gz", scene_pack.cards_blob(conf.get("greeting") or "Have a magical day!", card_style))
+    elif card_style: raise ValueError("this scene isn't made from a photo: its cards are its own")
     tp = os.path.join(scene, "theme.json"); theme = json.load(open(tp))
     if cards: theme["cards"] = dict(scene_pack.CARDS, **dict(theme.get("cards") or {}, **{k: v for k, v in cards.items() if v is not None}))
     if horizon is not None: theme["horizon"] = int(horizon)
@@ -715,13 +719,74 @@ def region_picture(work, kind):
 def windows_picture(work): return region_picture(work, "windows")
 
 
+def frame_picture_from_edits(work):
+    """The Frame brush's strokes (windows_edits.json {"frame": [[x, y, r], ...]}): white where a window's
+    frame is, in front of its light; None if there are none."""
+    from PIL import ImageDraw
+    try: edits = json.load(open(os.path.join(work, "windows_edits.json")))
+    except (OSError, ValueError): edits = []
+    strokes = [e["frame"] for e in edits if e.get("frame")]
+    boxes = [e["behind"] for e in edits if e.get("behind")]
+    if not strokes and not boxes: return None
+    img = Image.new("L", (W, H), 0); d = ImageDraw.Draw(img)
+    for st in strokes:
+        for x, y, r in st: d.ellipse([x - r, y - r, x + r, y + r], fill=255)
+    if boxes:                                                            # ("Behind": a box's dark parts are the frame)
+        lum = Image.open(os.path.join(work, "day.png")).convert("L").resize((W, H), Image.LANCZOS)
+        for b in boxes:
+            img = ImageChops.lighter(img, frame_in_box(lum, b))
+    return img
+
+
+def frame_in_box(lum, box):
+    """In a box drawn round a lantern or a window ("Behind"), its frame: the darkest of the three tones the
+    box splits into on the day photo (black ironwork; glass, grey or bright), eased over a few levels so its
+    edges aren't jagged. White where the frame is, the picture's size."""
+    x0, y0, x1, y1 = box; x0, x1 = sorted((max(0, x0), min(W - 1, x1))); y0, y1 = sorted((max(0, y0), min(H - 1, y1)))
+    out = Image.new("L", (W, H), 0)
+    if x1 - x0 < 2 or y1 - y0 < 2: return out
+    # (the photo's speckle and JPEG blocks smoothed first, a few pixels round the box too, so edges come out clean)
+    pad = 3
+    part = lum.crop((x0 - pad, y0 - pad, x1 + 1 + pad, y1 + 1 + pad)).filter(ImageFilter.MedianFilter(3)).filter(ImageFilter.GaussianBlur(0.6))
+    part = part.crop((pad, pad, part.width - pad, part.height - pad)); hist = part.histogram()
+    # three tones, not two (black iron, glass that reflects grey by day, glass that's bright): the split into
+    # three with the most spread between them (Otsu's, two thresholds), and the frame is only the darkest
+    n = [0] * 257; m = [0] * 257
+    for i in range(256): n[i + 1] = n[i] + hist[i]; m[i + 1] = m[i] + i * hist[i]
+    def part_of(a, b):                                                   # (pixels a..b-1: their count and mean)
+        c = n[b] - n[a]; return c, ((m[b] - m[a]) / c if c else 0)
+    mu = m[256] / n[256]; best, t = -1, 128
+    for t1 in range(1, 255):
+        c1, m1 = part_of(0, t1)
+        if not c1: continue
+        for t2 in range(t1 + 1, 256):
+            c2, m2 = part_of(t1, t2); c3, m3 = part_of(t2, 256)
+            if not c2 or not c3: continue
+            between = c1 * (m1 - mu) ** 2 + c2 * (m2 - mu) ** 2 + c3 * (m3 - mu) ** 2
+            if between > best: best, t = between, t1
+    soft = 12                                                            # (eased over this many levels either side)
+    m = part.point(lambda v: 255 if v <= t - soft else 0 if v >= t + soft else int(255 * (t + soft - v) / (2 * soft)))
+    m = m.filter(ImageFilter.MedianFilter(3))                           # (single stray pixels: gone)
+    out.paste(m, (x0, y0))
+    return out
+
+
 def rewindow(work, scene):
     """After a window edit in the previewer: windows.png again from the edits, and the scene's lights.bin.gz
     (nothing else rebuilt). How many windows."""
     sp = os.path.join(work, "scene.json"); conf = json.load(open(sp))
     if not conf.get("windows_painted"): conf["windows_painted"] = True; json.dump(conf, open(sp, "w"), indent=1)
     img = windows_picture(work); img.save(os.path.join(work, "windows.png"))
-    blob, _, n = scene_pack.window_lights(img, tuple(conf.get("light", (255, 168, 80))), thin=False)
+    frame = frame_picture_from_edits(work)
+    fp = os.path.join(work, "window_frame.png")
+    if frame is not None: frame.save(fp)
+    elif os.path.exists(fp): os.remove(fp)
+    try: groups = [e["group"] for e in json.load(open(os.path.join(work, "windows_edits.json"))) if e.get("group")]
+    except (OSError, ValueError): groups = []
+    gp = os.path.join(work, "window_groups.json")
+    if groups: json.dump(groups, open(gp, "w"))
+    elif os.path.exists(gp): os.remove(gp)
+    blob, _, n = scene_pack.window_lights(img, tuple(conf.get("light", (255, 168, 80))), thin=False, frame=frame, groups=groups)
     scene_pack.Out(scene).gz("lights.bin.gz", blob)
     return n
 
@@ -844,7 +909,7 @@ def found_outline(work, kind):
 
 PHOTO_FILES = ("day.png", "dusk.png", "night.png", "mask.png", "scene.json", "twinkle_mask.png", "twinkle_points.json",
                "twinkle_found.json", "erase.json", "erase_groups.json", "edits.json", "windows.png",
-               "windows_base.png", "windows_edits.json", "water.png", "water_base.png", "water_edits.json",
+               "windows_base.png", "windows_edits.json", "window_frame.png", "window_groups.json", "water.png", "water_base.png", "water_edits.json",
                "segment.png", "segment.json")
 
 

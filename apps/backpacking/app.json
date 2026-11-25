@@ -1,0 +1,32 @@
+{
+  "id": "backpacking",
+  "name": "Backpacking",
+  "version": "0.1.0",
+  "runtime": "countdown",
+  "api": 4,
+  "exclude": [
+    "scenes/*/preview.png",
+    "splash/preview.png"
+  ],
+  "scene": {
+    "engine": "scene",
+    "dir": "scenes",
+    "default": "backpacking"
+  },
+  "screens": [
+    {
+      "type": "weather",
+      "place": "Shenandoah, Virginia",
+      "lat": 38.4851,
+      "lon": -78.625,
+      "units": "F",
+      "secs": 30,
+      "looked_up": "Shenandoah, Virginia"
+    }
+  ],
+  "countdown": {
+    "date_label": "Trip day",
+    "after": "Already there",
+    "time": "09:00"
+  }
+}

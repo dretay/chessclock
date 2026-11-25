@@ -35,6 +35,8 @@ case "$1" in
 	*)
 		[ -x "/apps/$1/run" ] || { echo "no app called $1 in /apps"; exit 1; }
 		/etc/init.d/S99app stop
+		# its splash (its picture, "Starting" and pulsing dots, as at boot) while it starts: a few seconds
+		( cd "/apps/$1" && [ -r splash.sh ] && . ./splash.sh ) >/dev/null 2>&1
 		echo "$1" > /apps/current.tmp && mv /apps/current.tmp /apps/current && sync
 		exec /etc/init.d/S99app start
 		;;

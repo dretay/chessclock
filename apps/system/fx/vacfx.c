@@ -82,6 +82,7 @@ static int row_start[H + 1];          /* light pixels of row y: row_start[y] .. 
 static uint32_t *cell_first, *cell_list;   /* light pixels of window c: cell_list[cell_first[c] .. cell_first[c+1]-1] */
 static uint8_t *cell_on; static int16_t *cell_lvl;
 static int toggles_per_min = 90;
+static int windows_hold;               /* every window on and staying on (while windows are being painted) */
 
 /* refresh spans for this frame and the next (particles' old footprints), per row */
 static int16_t rlo[H], rhi[H], nlo[H], nhi[H];
@@ -89,6 +90,7 @@ static int16_t rlo[H], rhi[H], nlo[H], nhi[H];
 /* scene */
 static int stack_x[8], stack_y[8], smoke_q8 = 205, fw_q8 = 218;
 static int smoke_n = 2, smoke_wind_q8 = -256, smoke_rate = 6, smoke_dense_q8 = 256;
+static int smoke_own;                  /* a scene's own smoke (vfx_smoke: a chimney, a campfire): it rises, a plume as tall as it's big */
 /* a scene's own foam (vfx_foam): white water churning at points, each with its radius: how much, which way */
 static int foam_n, foam_xyr[16][3], foam_amount_q8 = 256, foam_flow, foamp_acc, foams_acc;   /* smoke: how many sources (the ship's two funnels, or a scene's
                                                                    own: vfx_smoke), the wind (-256 left .. 256 right), puffs a second */
@@ -106,6 +108,7 @@ static int rockets_pending, next_rocket_ms, rocket_gap_min = 300, rocket_gap_max
 typedef struct { int32_t x, y, rx, ry, v; } shadow_t;     /* 1/256 px; v in 1/256 px per s */
 static shadow_t shadows[3];
 static int mast_x = -1, mast_y, amb_q8 = 256, ntube; static int tube[32][2];
+static int gulls_now;                  /* asked for (the previewer's Birds): whatever the scene's effects, day or night */
 static int next_gulls_ms = 5000, next_pod_ms = 10000, next_raft_ms = 8000, raft_start = -1, raft_dur;
 /* which of the scene's own effects run (vfx_effects): the ship has them all; a castle, none of them.
    Fireworks, window lights and the cards are every scene's. */
@@ -474,8 +477,8 @@ static void step_particles(int dt) {
             part_t *p = spawn(P_SMOKE); if (!p) break;
             p->x = (stack_x[s] << 8) + (rr(-640, 640) * smoke_q8 >> 8); p->y = (stack_y[s] + 2) << 8;
             p->vx = (rr(9, 14) * smoke_q8) * smoke_wind_q8 / 256 + (smoke_wind_q8 == 0 ? rr(-3, 3) * smoke_q8 : 0);   /* (still air: it wavers) */
-            p->vy = -(rr(6, 9) * smoke_q8);
-            p->life = rr(4500, 6500); p->ty = (int16_t)rr(0, 1023);
+            p->vy = smoke_own ? -(rr(17, 27) * smoke_q8) : -(rr(6, 9) * smoke_q8);
+            p->life = smoke_own ? rr(5500, 8000) : rr(4500, 6500); p->ty = (int16_t)rr(0, 1023);
         }
     }
     /* rockets */
@@ -501,7 +504,8 @@ static void step_particles(int dt) {
     /* gulls: a few at a time, every minute or so, in daylight */
     if ((next_gulls_ms -= dt) < 0) {
         next_gulls_ms = rr(35000, 80000);
-        if (night_lvl < 128 && (fx_on & FX_GULLS)) {
+        if ((night_lvl < 128 && (fx_on & FX_GULLS)) || gulls_now) {
+            gulls_now = 0;
             const int dir = rnd() & 1 ? 1 : -1, n = rr(1, 3), y0 = horizon * rr(64, 218) / 256;
             for (int k = 0; k < n; k++) { part_t *p = spawn(P_GULL); if (!p) break;
                 p->x = (dir > 0 ? -20 - k * rr(14, 30) : W + 20 + k * rr(14, 30)) << 8; p->y = (y0 + rr(-14, 14)) << 8;
@@ -991,6 +995,7 @@ int vfx_open(const char *fbdev, const char *theme) {
 /* where the effects go (from theme.json); call after vfx_open */
 void vfx_scene(int hz, int s1x, int s1y, int s2x, int s2y, int smoke_scale_q8, int fw_scale_q8, int bx, int by, int sx, int sy,
                int ccx, int ctop, int cgap, int lgap) {
+    smoke_own = 0;
     horizon = hz; stack_x[0] = s1x; stack_y[0] = s1y; stack_x[1] = s2x; stack_y[1] = s2y; smoke_q8 = smoke_scale_q8; fw_q8 = fw_scale_q8;
     bow_x = bx; bow_y = by; stern_x = sx; stern_y = sy; cards_cx = ccx; cards_top = ctop; cards_gap = cgap; label_gap = lgap;
     int dx = sx - bx, dy = sy - by, len = 1; while ((len + 1) * (len + 1) <= dx * dx + dy * dy) len++;
@@ -1035,6 +1040,11 @@ void vfx_light(int wday, int wdusk, int wnight, int lights, int night, int dusk)
     cards_dirty = 1;
 }
 void vfx_lights_rate(int per_minute) { toggles_per_min = per_minute; }
+/* every window lit and holding still (1), or switching on and off again (0) */
+void vfx_windows_hold(int on) {
+    windows_hold = on;
+    if (on && cell_on) for (int c = 1; c < ncell; c++) cell_on[c] = 1;
+}
 void vfx_redraw(void) { full_redraw = 1; }
 /* the daytime touches' places: mast top, a size scale, and the AquaDuck tube as x,y pairs */
 void vfx_ambient(int mx, int my, int scale_q8, int n, const int *xy) {
@@ -1051,7 +1061,7 @@ void vfx_dim(void) {
     for (int y = 0; y < H; y++) { uint32_t *r = fb + y * fb_stride; for (int x = 0; x < W; x++) r[x] = (r[x] >> 2) & 0x3f3f3f; }
 }
 /* for previews: 1 gulls, 2 dolphins, 3 the raft, now */
-void vfx_demo(int what) { if (what == 1) next_gulls_ms = 0; if (what == 2) next_pod_ms = 0; if (what == 3) { raft_start = -1; next_raft_ms = 0; } }
+void vfx_demo(int what) { if (what == 1) { next_gulls_ms = 0; gulls_now = 1; } if (what == 2) next_pod_ms = 0; if (what == 3) { raft_start = -1; next_raft_ms = 0; } }
 
 /* three digits on a scene that asks for it (theme.json cards.scale3; the castle's cards sit to one side
    and three of them would reach it): a smaller copy of the cards, made the first time it's needed */
@@ -1115,7 +1125,7 @@ void vfx_foam(int n, const int *xyr, int amount_q8, int flow) {
    at their distance). After vfx_scene. */
 void vfx_smoke(int n, const int *xy, int scale_q8, int wind_q8, int rate, int density_q8) {
     smoke_dense_q8 = clampi(density_q8, 64, 1024);           /* (how opaque: the funnels' 256; a campfire close by, more) */
-    smoke_n = clampi(n, 0, 8);
+    smoke_n = clampi(n, 0, 8); smoke_own = 1;
     for (int k = 0; k < smoke_n; k++) { stack_x[k] = xy[2 * k]; stack_y[k] = xy[2 * k + 1]; }
     smoke_q8 = clampi(scale_q8, 40, 768); smoke_wind_q8 = clampi(wind_q8, -256, 256); smoke_rate = clampi(rate, 1, 30);
 }
@@ -1201,7 +1211,7 @@ int vfx_frame(int t_ms) {
     double ts = now_s();
     reblend_rows(40);
     /* windows switching on and off, easing */
-    toggle_acc = ncell > 1 ? toggle_acc + dt * toggles_per_min : 0;              /* (a scene with no windows: none to switch) */
+    toggle_acc = ncell > 1 && !windows_hold ? toggle_acc + dt * toggles_per_min : 0;              /* (a scene with no windows: none to switch) */
     while (toggle_acc >= 60000) { toggle_acc -= 60000; const int c = 1 + (int)(rnd() % (uint32_t)(ncell - 1)); cell_on[c] ^= 1; }
     const int rate = clampi(dt * 8 * 256 / 1000, 1, 256);
     for (int c = 1; c < ncell; c++) {

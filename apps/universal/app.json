@@ -1,0 +1,32 @@
+{
+  "id": "universal",
+  "name": "Universal",
+  "version": "0.1.0",
+  "runtime": "countdown",
+  "api": 4,
+  "exclude": [
+    "scenes/*/preview.png",
+    "splash/preview.png"
+  ],
+  "scene": {
+    "engine": "scene",
+    "dir": "scenes",
+    "default": "universal"
+  },
+  "countdown": {
+    "date_label": "Trip day",
+    "after": "Already there",
+    "time": "09:00"
+  },
+  "screens": [
+    {
+      "type": "waits",
+      "secs": 60
+    }
+  ],
+  "park": {
+    "id": "12dbb85b-265f-44e6-bccf-f1faa17211fc",
+    "name": "Universal Epic Universe",
+    "show": ""
+  }
+}

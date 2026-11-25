@@ -62,7 +62,8 @@ light: pixels, their light, their window, so windows switch one at a time at nig
   `{"strength": 1.0, "speed": 1.0}`; without the file, the water is the sea below the horizon, off the
   ship (the cruise's);
 - `smoke`: `{"points": [[x, y], ...], "scale": 0.8, "wind": 0, "rate": 4}`: smoke rising from those points
-  (up to 8: a campfire, a chimney; wind -1 left to 1 right; rate 2 light to 8 heavy); without it, the
+  (up to 8: a campfire, a chimney; scale: each puff's size and the plume's height, 0.5 a wisp to 1.3 a
+  tall plume; wind -1 left to 1 right; rate 2 light to 8 heavy); without it, the
   ship's two funnels (`stacks`). `birds` in `effects`: now and then a few cross the sky, by day (the
   cruise's gulls, for any scene); `foam`: `{"points": [[x, y, r], ...], "amount": 1.0, "flow": "still" |
   "left" | "right" | "falling" | "toward"}`: white water at those points (up to 16: a waterfall's foot,

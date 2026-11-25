@@ -83,8 +83,8 @@ class App:
         if self.dir not in sys.path: sys.path.insert(0, self.dir)          # (so a screen can import its own files)
         out = []
         import screens as screen_types
-        for spec in self.meta.get("screens", []):
-            spec = screen_types.resolve(spec)                              # ("type": the runtime's: its file and class)
+        for at, spec in enumerate(self.meta.get("screens", [])):
+            spec = dict(screen_types.resolve(spec), _at=at)                # ("type": the runtime's: its file and class; _at: its place in app.json)
             if "file" not in spec: print("countdown: %s's screen %s: no type %s" % (self.id, spec.get("id"), spec.get("type")), flush=True); continue
             path = os.path.join(HERE if spec.get("from") == "runtime" else self.dir, spec["file"])
             try:

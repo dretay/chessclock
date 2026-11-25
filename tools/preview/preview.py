@@ -24,7 +24,7 @@ The chess clock draws with the DejaVu fonts, as on the board: they're copied onc
 build tree (tools/build/build.sh's licheepi-out volume), or FBCLOCK_FONTS names a folder with them.
 Needs Pillow (the chess clock) and a C compiler (cc) and zlib (the countdown).
 """
-import collections, fcntl, hashlib, http.server, json, os, shutil, signal, socketserver, subprocess, sys, threading, time, urllib.parse
+import collections, fcntl, hashlib, http.server, json, os, shutil, signal, socketserver, subprocess, sys, threading, time, urllib.parse, urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.normpath(os.path.join(HERE, "..", ".."))
@@ -48,6 +48,36 @@ W, H = 800, 480
 def manifest(app):
     try: return json.load(open(os.path.join(APPS, app, "app.json")))
     except (OSError, ValueError): return {}
+
+
+def conf_value(path, key):
+    """KEY=value from a settings file (defaults.conf, countdown.conf), or None."""
+    try:
+        for line in open(path):
+            if line.startswith(key + "="): return line.split("=", 1)[1].strip()
+    except OSError: pass
+    return None
+
+
+def set_conf_values(path, values):
+    """Those KEY=value lines in a settings file, changed in place (or added); a file that isn't there, left."""
+    try: lines = open(path).read().splitlines()
+    except OSError: return
+    left = dict(values)
+    for i, line in enumerate(lines):
+        k = line.split("=", 1)[0]
+        if "=" in line and k in left: lines[i] = "%s=%s" % (k, left.pop(k))
+    lines += ["%s=%s" % kv for kv in left.items()]
+    with open(path + ".tmp", "w") as f: f.write("\n".join(lines) + "\n")
+    os.replace(path + ".tmp", path)
+
+
+def ship_names():
+    """The ships the ship map knows (the runtime's ships/fetch.py SHIPS)."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("ships_fetch_names", os.path.join(RUNTIME, "ships", "fetch.py"))
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    return mod.SHIPS.keys()
 
 
 def apps():
@@ -86,6 +116,7 @@ class Preview:
         self.app = app
         self.hour, self.now, self.service_on = "", "", False
         self.live_state = {}
+        self.target, self.remote = "local", None          # (the Controls panel: this Mac's preview, or the device over USB: remote.py)
         self.builder_busy, self.builder_error, self.builder_again = "", "", None
         self.install_line = ""
         self.lock_busy = threading.Lock()
@@ -178,6 +209,7 @@ class Preview:
         with self.lock:
             self.stop()
             if app: self.app = app
+            if self.target == "remote" and self.remote: self.remote.switch_app(self.app)     # (Remote: the device follows)
             try:
                 while os.read(self.drain, 65536): pass               # (taps meant for the last app)
             except (BlockingIOError, OSError): pass
@@ -277,7 +309,8 @@ class Preview:
         app = self.app; m = manifest(app)
         out = {"app": app, "name": m.get("name", app), "countdown": m.get("runtime") == "countdown", "stay": bool(self.live_state.get("stay")),
                "busy": self.builder_busy, "error": self.builder_error, "trials": [], "showing": "", "kept": False, "conf": {},
-               "install": self.install_line}
+               "install": self.install_line,
+               "apps": [[a, n] for a, n in apps() if manifest(a).get("runtime") == "countdown"]}
         if not out["countdown"]: return out
         ps = self.themegen()
         out["trials"] = [{"name": t["name"], "current": t["current"]} for t in ps.trials(app)]
@@ -292,7 +325,8 @@ class Preview:
         except (OSError, ValueError): th = {}
         out["foam"] = th.get("foam") or {}
         out["smoke"], out["birds"] = th.get("smoke") or {}, "birds" in th.get("effects", []) or "gulls" in th.get("effects", [])
-        out["screens"] = m.get("screens", [])                            # (the app's screens, and the types there are)
+        out["screens"] = self.screens_for_builder(app, m)               # (the app's screens, and the types there are)
+        out["ship_names"] = list(ship_names())
         sys.path.insert(0, RUNTIME); import screens as screen_types
         out["screen_types"] = sorted(screen_types.TYPES)
         scene, _ = ps.dirs(app, out["showing"])
@@ -355,6 +389,41 @@ class Preview:
         self.install_line = ""
         return self.busy("installing %s on the device" % app, run)
 
+    def parks(self):
+        """Every park ThemeParks.wiki has, by destination: [{"dest", "parks": [{"id", "name"}]}] (fetched once)."""
+        if not getattr(self, "_parks", None):
+            sys.path.insert(0, os.path.join(REPO, "tools", "apps")); import new as newapp
+            ds = newapp.get("destinations")["destinations"]
+            self._parks = sorted(({"dest": d["name"], "parks": sorted(({"id": p["id"], "name": p["name"]} for p in d["parks"]), key=lambda p: p["name"])}
+                                  for d in ds if d.get("parks")), key=lambda d: d["dest"])
+        return self._parks
+
+    @staticmethod
+    def places(q):
+        """The places a name could mean (Open-Meteo's geocoding): [{"name": "Springfield, Illinois, United States", "lat", "lon"}]."""
+        if not q.strip(): return []
+        u = "https://geocoding-api.open-meteo.com/v1/search?" + urllib.parse.urlencode({"name": q.strip(), "count": 8, "language": "en", "format": "json"})
+        req = urllib.request.Request(u, headers={"User-Agent": "licheepi-vacation-countdown"})
+        with urllib.request.urlopen(req, timeout=20) as r: hits = json.load(r).get("results") or []
+        return [{"name": ", ".join(v for v in (h.get("name"), h.get("admin1"), h.get("country")) if v),
+                 "lat": round(h["latitude"], 4), "lon": round(h["longitude"], 4)} for h in hits]
+
+    def screens_for_builder(self, app, m):
+        """The app's screens as the builder edits them: a wait-times screen with its park's name and tonight's
+        show (app.json "park"), a ship map with the app's own ship (defaults.conf SHIP)."""
+        park = m.get("park") or {}
+        pname = park.get("name", "")
+        if not pname and park.get("id"):
+            try: pname = json.load(open(os.path.join(APPS, app, "waits_example.json"))).get("park", "")
+            except (OSError, ValueError): pass
+        ship = conf_value(os.path.join(APPS, app, "defaults.conf"), "SHIP") or "Disney Dream"
+        out = []
+        for s in m.get("screens", []):
+            if s.get("type") == "waits": s = dict(s, park=pname, park_id=park.get("id", ""), show=park.get("show", ""))
+            elif s.get("type") == "ships": s = dict(s, ship=ship)
+            out.append(s)
+        return out
+
     def set_screens(self, screens):
         """The app's screens (app.json "screens") as the builder has them: known types only; a weather screen
         with a place but no lat/lon looked up by name (tools/apps/new.py), and an example of its weather
@@ -363,13 +432,38 @@ class Preview:
         sys.path.insert(0, os.path.join(REPO, "tools", "apps")); import new as newapp
         d = os.path.join(APPS, self.app); p = os.path.join(d, "app.json")
         meta = json.load(open(p)); out = []
+        def look_up(fn, text):                                           # (new.py's: they exit when there's no match)
+            try: return fn(text)
+            except SystemExit as e: raise ValueError(str(e).replace("new: ", ""))
         for s in screens:
+            s = dict(s)
+            if s.get("type") == "waits":                                 # (the park: the app's, app.json "park"; looked up by name)
+                ptext, show = (s.pop("park", "") or "").strip(), (s.pop("show", "") or "").strip()
+                pid = (s.pop("park_id", "") or "").strip()
+                park = dict(meta.get("park") or {})
+                if not ptext and not pid: raise ValueError("a wait-times screen needs a park (pick one)")
+                if pid:                                                  # (picked from the list: no lookup)
+                    if pid != park.get("id"):
+                        with open(os.path.join(d, "waits_example.json"), "w") as f: json.dump(newapp.example_waits(pid, ptext), f, indent=1)
+                    park.update(id=pid, name=ptext or park.get("name", ""))
+                elif ptext != park.get("name") or not park.get("id"):
+                    pid, pname = look_up(newapp.find_park, ptext)
+                    if pid != park.get("id"):
+                        with open(os.path.join(d, "waits_example.json"), "w") as f: json.dump(newapp.example_waits(pid, pname), f, indent=1)
+                    park.update(id=pid, name=pname)
+                park["show"] = show
+                meta["park"] = park
+            if s.get("type") == "ships":                                 # (the app's own ship: SHIP, and the one the map follows)
+                ship = s.pop("ship", "")
+                if ship in ship_names():
+                    for f in (os.path.join(d, "defaults.conf"), os.path.join(STATE, "data", self.app, "countdown.conf")):
+                        set_conf_values(f, {"SHIP": ship, "MAP_SHIP": ship})
             s = {k: v for k, v in s.items() if v not in (None, "")}
             if s.get("type") not in screen_types.TYPES:
                 if s.get("file"): out.append(s)                       # (a screen of the app's own: as it was)
                 continue
             if s["type"] == "weather" and s.get("place") and not ("lat" in s and "lon" in s and s.get("looked_up") == s["place"]):
-                name, lat, lon = newapp.find_place(s["place"]); s.update(place=name, lat=lat, lon=lon, looked_up=name)
+                name, lat, lon = look_up(newapp.find_place, s["place"]); s.update(place=name, lat=lat, lon=lon, looked_up=name)
                 if not os.path.exists(os.path.join(d, "weather_example.json")):
                     with open(os.path.join(d, "weather_example.json"), "w") as f: json.dump(newapp.example_weather(s, d), f, indent=1)
             if isinstance(s.get("secs"), str) and s["secs"].isdigit(): s["secs"] = int(s["secs"])
@@ -384,7 +478,29 @@ class Preview:
             os.chmod(svc, 0o755)
         self.say("screens: %s" % ", ".join(s.get("type") or s.get("id", "?") for s in out))
 
+    def new_app(self, c):
+        """A new countdown app (tools/apps/new.py: a placeholder scene, an icon, a splash; a park's waits or a
+        place's weather if given), then it's the app shown: drop a photo on it next."""
+        aid = "".join(ch if ch.isalnum() else "-" for ch in (c.get("id") or c.get("title") or "").lower()).strip("-")
+        while "--" in aid: aid = aid.replace("--", "-")
+        if not aid or not (c.get("title") or "").strip(): return {"error": "a new app needs a name"}
+        if os.path.exists(os.path.join(APPS, aid)): return {"error": "there's an app called %s already" % aid}
+        cmd = [sys.executable, os.path.join(REPO, "tools", "apps", "new.py"), aid, "--name", c["title"].strip(),
+               "--date-label", (c.get("date_label") or "Trip day").strip()]
+        if (c.get("park") or "").strip(): cmd += ["--park", c["park"].strip()]
+        if (c.get("weather") or "").strip(): cmd += ["--weather", c["weather"].strip(), "--units", "C" if c.get("units") == "C" else "F"]
+        def make():
+            r = subprocess.run(cmd, capture_output=True, text=True, cwd=REPO)
+            self.say("new app: " + (r.stdout + r.stderr).strip().splitlines()[-1] if (r.stdout + r.stderr).strip() else "new app: done")
+            if r.returncode != 0:
+                if os.path.isdir(os.path.join(APPS, aid)) and not os.path.exists(os.path.join(APPS, aid, "scenes")):
+                    shutil.rmtree(os.path.join(APPS, aid))               # (half made: so it can be tried again)
+                raise RuntimeError((r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout).strip() else "new.py failed")
+            self.start(aid)
+        return self.busy("making the app %s" % c["title"].strip(), make)
+
     def builder_do(self, c):
+        if c.get("action") == "new_app": return self.new_app(c)
         ps, app, act = self.themegen(), self.app, c.get("action")
         if "name" in c: name = c["name"]
         else: cur = current_trial(app); name = os.path.basename(os.path.dirname(cur)) if cur else ""   # (the scene showing)
@@ -397,6 +513,7 @@ class Preview:
             return self.busy("finding the lights" if orb else "taking the lights off", lambda: ps.rebuild(app, name, orb))
         if act == "layout":                                             # (the cards' place; the horizon: slower, a repack)
             cards = c.get("cards"); hz = c.get("horizon")
+            if c.get("card_style"): return self.busy("drawing the cards", lambda: ps.set_layout(app, name, card_style=c["card_style"]))
             if hz is None: ps.set_layout(app, name, cards=cards); return {"ok": True}
             return self.busy("setting the horizon", lambda: ps.set_layout(app, name, cards=cards, horizon=hz))
         if act == "effect":                                             # (smoke, birds: at once)
@@ -418,7 +535,7 @@ class Preview:
         if act == "screens":                                            # (the app's screens: app.json, written)
             return self.busy("setting the screens", lambda: self.set_screens(c.get("screens") or []))
         if act == "screen_now":
-            i = int(c.get("index", 0)); self.live(screen=i, screen_go=self.live_state.get("screen_go", 0) + 1); return {"ok": True}
+            i = int(c.get("index", 0)); self.live(screen=i, screen_go=self.live_state.get("screen_go", 0) + 1, screen_at=time.time()); return {"ok": True}
         if act == "show":
             return self.busy("setting the show", lambda: ps.set_show(app, name, c.get("program") or [], c.get("secs", 12)))
         return {"error": "no action %s" % act}
@@ -457,6 +574,9 @@ class Preview:
         elif c.get("paint"): edits.append({"paint": [[int(x), int(y), int(r)] for x, y, r in c["paint"]]})
         elif c.get("erase"): edits.append({"erase": [[int(x), int(y), int(r)] for x, y, r in c["erase"]]})
         elif c.get("rect"): edits.append({"rect": [int(v) for v in c["rect"]]})
+        elif c.get("group") and kind == "windows": edits.append({"group": [int(v) for v in c["group"]]})
+        elif c.get("behind") and kind == "windows": edits.append({"behind": [int(v) for v in c["behind"]]})
+        elif c.get("frame") and kind == "windows": edits.append({"frame": [[int(x), int(y), int(r)] for x, y, r in c["frame"]]})
         else: return {"error": "nothing to do"}
         json.dump(edits, open(path, "w"))
         r = self.busy(what, lambda: report(redo(work, scene)), again_ok=True)   # (strokes in a row: each saved, redone after)
@@ -513,6 +633,12 @@ def serve(pv, port):
             if self.path == "/builder":                                 # (the Scene Builder: the window's side panel)
                 return self.send(200, open(os.path.join(HERE, "builder.html"), "rb").read(), "text/html; charset=utf-8")
             if self.path.startswith("/builder/state"): return self.send(200, json.dumps(pv.builder_state()).encode())
+            if self.path.startswith("/builder/parks") or self.path.startswith("/builder/places"):   # (the screens' pickers)
+                try:
+                    if self.path.startswith("/builder/parks"): out = pv.parks()
+                    else: out = pv.places(urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("q", [""])[0])
+                except Exception as e: out = {"error": "couldn't look it up: %s" % e}
+                return self.send(200, json.dumps(out).encode())
             if self.path.startswith("/builder/outline"):               # (what was found, to flash over the picture)
                 q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
                 ps = pv.themegen(); cur = current_trial(pv.app)
@@ -532,7 +658,9 @@ def serve(pv, port):
             if self.path.startswith("/state"):
                 state = {"app": pv.app, "apps": apps(), "hour": pv.hour, "now": pv.now, "service": pv.service_on,
                          "has_service": os.path.exists(os.path.join(APPS, pv.app, "service")),
-                         "countdown": manifest(pv.app).get("runtime") == "countdown", "log": list(pv.log)[-200:]}
+                         "countdown": manifest(pv.app).get("runtime") == "countdown", "log": list(pv.log)[-200:],
+                         "target": pv.target, "remote_note": pv.remote.note if pv.remote else "",
+                         "stay": bool(pv.live_state.get("stay")), "pattern": pv.live_state.get("pattern", -1)}
                 return self.send(200, json.dumps(state).encode())
             self.send(404, b"{}")
 
@@ -557,9 +685,27 @@ def serve(pv, port):
                 return self.send(200, json.dumps(pv.lights(json.loads(body or "{}"))).encode())
             if self.path == "/control":
                 c = json.loads(body or "{}")
+                if "target" in c:                                        # (the Controls panel: this Mac, or the device)
+                    want = "remote" if c["target"] == "remote" else "local"
+                    if want == "remote" and not pv.remote:
+                        sys.path.insert(0, HERE); import remote; pv.remote = remote.Remote()
+                    if want == "local" and pv.target == "remote": pv.remote.reset()
+                    pv.target = want
+                    if want == "remote": pv.remote.set(stay=False); pv.remote.switch_app(pv.app)
+                    return self.send(200, b"{}")
+                if c.get("panel") and pv.target == "remote":            # (the panel's controls, for the device's countdown)
+                    r = pv.remote
+                    if "hour" in c: r.set(hour=float(c["hour"]) if str(c["hour"]) != "" else None)
+                    for k in ("fireworks", "show", "birds"):
+                        if c.get(k): r.fire(k)
+                    if "pattern" in c: r.set(pattern=int(c["pattern"]))
+                    if "stay" in c: r.set(stay=bool(c["stay"]))
+                    return self.send(200, b"{}")
                 # live, no restart: the time of day (the slider, the Time menu), fireworks, the nightly show
                 if "hour" in c: pv.hour = str(c["hour"]); pv.live(hour=float(c["hour"]) if str(c["hour"]) != "" else None)
                 if c.get("fireworks"): pv.live(fireworks=pv.live_state.get("fireworks", 0) + 1)
+                if c.get("birds"): pv.live(birds=pv.live_state.get("birds", 0) + 1)
+                if "windows_hold" in c: pv.live(windows_hold=bool(c["windows_hold"]))
                 if c.get("show"): pv.live(show=pv.live_state.get("show", 0) + 1)
                 if "pattern" in c: pv.live(pattern=int(c["pattern"]))                # (the lights' show: one pattern held, or -1)
                 if "stay" in c: pv.live(stay=bool(c["stay"]))                         # (stay on the scene: the app's screens wait)

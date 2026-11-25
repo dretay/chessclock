@@ -1,0 +1,3 @@
+#!/bin/sh
+# New York City's background job: what its screens show (the countdown runtime's shared fetcher loop).
+exec ../countdown/screens.sh
