@@ -483,6 +483,13 @@ def pack(work, out_dir, greeting=None, horizon=None, stars=True):
         if "smoke" not in effects: effects.append("smoke")
         theme["smoke"] = conf["smoke"]
     if conf.get("birds") and "birds" not in effects: effects.append("birds")
+    if conf.get("fireflies", {}).get("points"):                          # (fireflies: zones they wander in, from dusk)
+        if "fireflies" not in effects: effects.append("fireflies")
+        theme["fireflies"] = conf["fireflies"]
+    if len(conf.get("mist", {}).get("box") or []) == 4:                  # (mist: a box it drifts in, thickest at dawn and dusk)
+        if "mist" not in effects: effects.append("mist")
+        theme["mist"] = conf["mist"]
+    if conf.get("fireworks") is False: theme["fireworks"] = False       # (a scene without fireworks: a trail, a city)
     if conf.get("foam", {}).get("points"):                               # (white water: a waterfall's foot, rapids, surf)
         if "foam" not in effects: effects.append("foam")
         theme["foam"] = conf["foam"]

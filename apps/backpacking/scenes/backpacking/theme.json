@@ -2,7 +2,9 @@
  "effects": [
   "birds",
   "water",
-  "smoke"
+  "smoke",
+  "fireflies",
+  "mist"
  ],
  "horizon": 257,
  "fireworks_scale": 0.85,
@@ -26,6 +28,38 @@
     397,
     342
    ]
+  ]
+ },
+ "fireworks": false,
+ "fireflies": {
+  "amount": 1,
+  "size": 40,
+  "points": [
+   [
+    653,
+    381,
+    40
+   ],
+   [
+    485,
+    395,
+    40
+   ],
+   [
+    140,
+    404,
+    40
+   ]
+  ]
+ },
+ "mist": {
+  "amount": 1.0,
+  "when": "dawn",
+  "box": [
+   795,
+   273,
+   0,
+   398
   ]
  }
 }

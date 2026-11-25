@@ -222,7 +222,7 @@ final class ScreenView: NSView {
         CATransaction.begin(); CATransaction.setDisableActions(true); defer { CATransaction.commit() }
         guideLabel.isHidden = true
         let path = CGMutablePath()
-        if ["wrect", "qrect", "wbehind", "wgroup"].contains(layoutMode), let (sx, sy) = boxStart {   // (a window's or water's box, from where the drag began)
+        if ["wrect", "qrect", "wbehind", "wgroup", "mistbox"].contains(layoutMode), let (sx, sy) = boxStart {   // (a window's or water's box, from where the drag began)
             let a = toView(CGFloat(min(sx, x)), CGFloat(min(sy, y))), b = toView(CGFloat(max(sx, x) + 1), CGFloat(max(sy, y) + 1))
             path.addRect(CGRect(x: a.x, y: b.y, width: b.x - a.x, height: a.y - b.y))
         } else if layoutMode == "cards" {                // (two digits' row, centred where the pointer is)
@@ -241,9 +241,9 @@ final class ScreenView: NSView {
     private func layoutDone(_ x: Int, _ y: Int) {
         guideLayer.path = nil; guideLabel.isHidden = true
         if layoutMode == "horizon" || layoutMode == "cards" { rest = (x, y); drawGuide(x, y) }      // (it stays where it was put)
-        if ["wrect", "qrect", "wbehind", "wgroup"].contains(layoutMode), let (sx, sy) = boxStart {
+        if ["wrect", "qrect", "wbehind", "wgroup", "mistbox"].contains(layoutMode), let (sx, sy) = boxStart {
             boxStart = nil
-            if abs(x - sx) >= 1 && abs(y - sy) >= 1 { onLayout([layoutMode == "wrect" ? "winrect" : layoutMode == "wbehind" ? "behindrect" : layoutMode == "wgroup" ? "grouprect" : "waterrect": [sx, sy, x, y]]) }
+            if abs(x - sx) >= 1 && abs(y - sy) >= 1 { onLayout([layoutMode == "wrect" ? "winrect" : layoutMode == "wbehind" ? "behindrect" : layoutMode == "wgroup" ? "grouprect" : layoutMode == "mistbox" ? "mistrect" : "waterrect": [sx, sy, x, y]]) }
         } else if layoutMode == "cards" { onLayout(["cards": ["center_x": x, "top": max(0, y - cardH / 2)]]) }
         else if layoutMode == "horizon" { onLayout(["horizon": y]) }
     }
@@ -277,7 +277,7 @@ final class ScreenView: NSView {
             panPending = event.modifierFlags.contains(.option) ? nil : event      // (a tap, if it doesn't move)
             return
         }
-        if !layoutMode.isEmpty { let (x, y) = screenPoint(event); if ["wrect", "qrect", "wbehind", "wgroup"].contains(layoutMode) { boxStart = (x, y) }; drawGuide(x, y); return }
+        if !layoutMode.isEmpty { let (x, y) = screenPoint(event); if ["wrect", "qrect", "wbehind", "wgroup", "mistbox"].contains(layoutMode) { boxStart = (x, y) }; drawGuide(x, y); return }
         if adding { return }
         if erasing { let (x, y) = screenPoint(event); stroke = [[x, y, brush]]; drawStroke(); return }
         send("down", event)
@@ -373,6 +373,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
             guard let self else { return }
             if self.addTarget == "smoke" { self.placeAt("smoke_add", x, y) }
             else if self.addTarget == "foam" { self.placeAt("foam_add", x, y) }
+            else if self.addTarget == "fireflies" { self.placeAt("fireflies_add", x, y) }
             else { self.erase(["add": [[x, y]]]) }
         }
         view.onDropFile = { [weak self] u in self?.uploadPhoto(u) }
@@ -382,6 +383,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
             else if let r = change["waterrect"] { self?.region("water", ["rect": r]) }
             else if let r = change["behindrect"] { self?.region("windows", ["behind": r]) }
             else if let r = change["grouprect"] { self?.region("windows", ["group": r]) }
+            else if let r = change["mistrect"] { self?.builderDo(["action": "mist_box", "box": r]) }
             else { self?.layout(change) }
         }
         view.onPaint = { [weak self] target, s in
@@ -773,11 +775,11 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         if let kind = body["flash"] as? String { flash(kind); return }
         if body["askPassphrase"] != nil { askPassphrase(); return }
         guard let mode = body["editMode"] as? String else { return }
-        view.erasing = ["erase", "wpaint", "werase", "wframe", "qpaint", "qerase"].contains(mode); view.adding = ["add", "smokeadd", "foamadd"].contains(mode)
-        addTarget = mode == "smokeadd" ? "smoke" : mode == "foamadd" ? "foam" : "lights"
+        view.erasing = ["erase", "wpaint", "werase", "wframe", "qpaint", "qerase"].contains(mode); view.adding = ["add", "smokeadd", "foamadd", "fflyadd"].contains(mode)
+        addTarget = mode == "smokeadd" ? "smoke" : mode == "foamadd" ? "foam" : mode == "fflyadd" ? "fireflies" : "lights"
         view.brushTarget = view.erasing ? mode : "erase"; view.strokeColour()
         if let b = body["brush"] as? Int { view.brush = mode == "erase" ? 10 : b }
-        view.layoutMode = ["cards", "horizon", "wrect", "qrect", "wbehind", "wgroup"].contains(mode) ? mode : ""
+        view.layoutMode = ["cards", "horizon", "wrect", "qrect", "wbehind", "wgroup", "mistbox"].contains(mode) ? mode : ""
         if mode == "horizon", let hz = body["horizon"] as? Int { view.rest = (0, hz) }
         else if mode == "cards", let cx = body["cardX"] as? Int, let top = body["cardTop"] as? Int { view.rest = (cx, top + (body["cardH"] as? Int ?? 192) / 2) }
         else { view.rest = nil }
@@ -793,6 +795,14 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         req.httpMethod = "POST"; req.httpBody = try? JSONSerialization.data(withJSONObject: ["action": action, "x": x, "y": y])
         URLSession.shared.dataTask(with: req) { [weak self] _, _, _ in
             DispatchQueue.main.async { self?.builder.evaluateJavaScript("window.smokeAdded && window.smokeAdded()") }
+        }.resume()
+    }
+    // a Scene Builder action from the picture (the mist's box): then the page catches up
+    func builderDo(_ body: [String: Any]) {
+        var req = URLRequest(url: url("/builder/do"))
+        req.httpMethod = "POST"; req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        URLSession.shared.dataTask(with: req) { [weak self] _, _, _ in
+            DispatchQueue.main.async { self?.builder.evaluateJavaScript("window.layoutChanged && window.layoutChanged()") }
         }.resume()
     }
     // window glass painted, rubbed out or boxed on the picture

@@ -59,7 +59,7 @@ def lighting(hour):
 
 # the drawing library's scene effects (vfx_effects): theme.json lists the ones its scene has
 REMOTE_LIVE = "/tmp/countdown-live.json"           # (the board: the Mac's Controls, in RAM: gone at a reboot)
-EFFECTS = {"water": 1, "wake": 2, "smoke": 4, "gulls": 8, "birds": 8, "dolphins": 16, "raft": 32, "twinkle": 64, "foam": 128}   # ("birds": the gulls, any scene's)
+EFFECTS = {"water": 1, "wake": 2, "smoke": 4, "gulls": 8, "birds": 8, "dolphins": 16, "raft": 32, "twinkle": 64, "foam": 128, "fireflies": 256, "mist": 512}   # ("birds": the gulls, any scene's)
 
 FADE_SECS = 0.6                                     # countdown <-> a module's screen
 
@@ -113,6 +113,7 @@ class App:
         self.screens = self.module.screens()
         self.ui_dir = os.environ.get("VACATION_UI_DIR", os.path.join(apps.SYSTEM, "ui"))     # (the system package's)
         self.scene = json.load(open(os.path.join(self.theme_dir, "theme.json")))
+        self.fireworks_on = self.scene.get("fireworks", True) is not False   # (a scene can have none: a trail, a city)
         lib = os.environ.get("VACATION_LIB", os.path.join(apps.SYSTEM, "fx", "libvacfx.so"))
         self.fx = ctypes.CDLL(lib)
         self.fx.vfx_selftest.restype = ctypes.c_uint
@@ -125,6 +126,13 @@ class App:
         # the scene's own effects (theme.json "effects"; all of them when it doesn't say: the ship's)
         if "effects" in s:
             self.fx.vfx_effects(sum(EFFECTS.get(e, 0) for e in s["effects"]))
+        ff = s.get("fireflies") or {}                    # (fireflies: zones x, y, r; how many)
+        if ff.get("points"):
+            xyr = [int(v) for p in ff["points"][:16] for v in (p[0], p[1], p[2] if len(p) > 2 else 30)]
+            self.fx.vfx_fireflies(len(xyr) // 3, (ctypes.c_int * len(xyr))(*xyr), int(float(ff.get("amount", 1.0)) * 256))
+        mi = s.get("mist") or {}                         # (mist: a box, how much, when)
+        if len(mi.get("box") or []) == 4:
+            self.fx.vfx_mist(*[int(v) for v in mi["box"]], int(float(mi.get("amount", 1.0)) * 256), 1 if mi.get("when") == "always" else 0)
         fo = s.get("foam") or {}                         # (a scene's own foam: points and sizes, how much, which way)
         if fo.get("points"):
             xyr = [int(v) for p in fo["points"][:16] for v in (p[0], p[1], p[2] if len(p) > 2 else 12)]
@@ -362,18 +370,18 @@ class App:
                 else:                                                          # sailed: "Bon voyage!"
                     if cards != ("sailed",):
                         self.fx.vfx_banner(1)
-                        if cards is not None and left > -3600: self.start_show(t)   # just now: a fireworks show
+                        if cards is not None and left > -3600 and self.fireworks_on: self.start_show(t)   # just now: a fireworks show
                         cards = ("sailed",)
                     # and fireworks now and then all through sailing day, day or night
-                    if wall.date() == self.sail and t >= next_party:
+                    if wall.date() == self.sail and t >= next_party and self.fireworks_on:
                         next_party = t + random.uniform(120, 300); self.fx.vfx_fireworks(random.randint(4, 7))
                 days = d
                 # fireworks: random bursts at night, and/or the nightly show at its time
                 if t >= next_fw:
                     next_fw = t + random.uniform(0.5, 1.5) * self.fw_every
-                    if night > 0.6 and self.fw_mode in ("random", "both"): self.fx.vfx_fireworks(random.randint(3, 6))
+                    if night > 0.6 and self.fw_mode in ("random", "both") and self.fireworks_on: self.fx.vfx_fireworks(random.randint(3, 6))
                 today = datetime.date.today()
-                if self.fw_mode in ("show", "both") and shown_on != today and 0 <= (h - self.show_at) % 24 < 0.05:
+                if self.fireworks_on and self.fw_mode in ("show", "both") and shown_on != today and 0 <= (h - self.show_at) % 24 < 0.05:
                     shown_on = today; self.start_show(t)
                 if not self.sim and t >= next_clock_save: next_clock_save = t + 300; save_clock()
             while self.show and self.show[0][0] <= t:

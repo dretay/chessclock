@@ -64,6 +64,7 @@
   dialog h3 { margin: 0; font-size: 14px; }
   dialog::backdrop { background: rgba(0,0,0,.55); }
   dialog input[type=text] { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font: inherit; }
+  p.group { margin: 6px 0 -2px; color: var(--gold); font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
   .scr { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
   .scr .top { display: flex; align-items: center; gap: 6px; }
   .scr .top b { flex: 1; font-weight: 600; }
@@ -129,6 +130,7 @@
 
   <section id="effects">
     <h2>Effects <span class="note" id="effectsfor"></span></h2>
+    <p class="group">Lights</p>
     <div class="effect" id="orb">
       <h3>Lights on a sphere</h3>
       <p class="note" id="orbstate"></p>
@@ -163,6 +165,7 @@
       <div class="row note">Light <select id="wcolour"><option value="255,168,80">Warm</option><option value="255,200,120">Lamplight</option>
         <option value="255,238,210">White</option><option value="180,210,255">Cool</option></select> <button id="wcset">Set</button></div>
     </div>
+    <p class="group">Water</p>
     <div class="effect" id="water">
       <h3>Water</h3>
       <p class="note" id="waterstate">Paint where there's water (a lake, the sea, a fountain): it ripples, gently or choppily.</p>
@@ -176,15 +179,6 @@
         Pace <select id="qspeed"><option value="0.6">Slow</option><option value="1" selected>Normal</option><option value="1.6">Fast</option></select>
         <button id="qset">Set</button></div>
     </div>
-    <div class="effect" id="smokecard">
-      <h3>Smoke</h3>
-      <p class="note" id="smokestate">Rising from points you place: a campfire, a chimney.</p>
-      <div class="row"><button id="smplace">Place smoke</button><button id="smdone">Done</button><button id="smclear">Clear</button></div>
-      <div class="row note">Size <select id="smscale"><option value="0.5">Wisp</option><option value="0.8" selected>Normal</option><option value="1.3">Big</option></select>
-        Wind <select id="smwind"><option value="0" selected>Still</option><option value="-1">Left</option><option value="1">Right</option></select></div>
-      <div class="row note">Thickness <select id="smrate"><option value="2">Light</option><option value="4" selected>Normal</option><option value="8">Heavy</option></select>
-        <button id="smset">Set</button></div>
-    </div>
     <div class="effect" id="foamcard">
       <h3>Foam</h3>
       <p class="note" id="foamstate">White water at points you place: a waterfall's foot, rapids, surf.</p>
@@ -195,17 +189,42 @@
       <div class="row note">Amount <select id="foamount"><option value="0.5">Light</option><option value="1" selected>Normal</option><option value="2">Heavy</option></select>
         <button id="foset">Set</button></div>
     </div>
+    <p class="group">Air</p>
+    <div class="effect" id="smokecard">
+      <h3>Smoke</h3>
+      <p class="note" id="smokestate">Rising from points you place: a campfire, a chimney.</p>
+      <div class="row"><button id="smplace">Place smoke</button><button id="smdone">Done</button><button id="smclear">Clear</button></div>
+      <div class="row note">Size <select id="smscale"><option value="0.5">Wisp</option><option value="0.8" selected>Normal</option><option value="1.3">Big</option></select>
+        Wind <select id="smwind"><option value="0" selected>Still</option><option value="-1">Left</option><option value="1">Right</option></select></div>
+      <div class="row note">Thickness <select id="smrate"><option value="2">Light</option><option value="4" selected>Normal</option><option value="8">Heavy</option></select>
+        <button id="smset">Set</button></div>
+    </div>
+    <div class="effect" id="mistcard">
+      <h3>Mist</h3>
+      <p class="note" id="miststate">A soft, drifting haze over a valley, a lake or a field: drag a box where it lies.</p>
+      <div class="row"><button id="mistdraw">Draw its box</button><button id="mistdone">Done</button><button id="mistclear">Clear</button></div>
+      <div class="row note">How thick <select id="mistamount"><option value="0.6">Light</option><option value="1" selected>Normal</option><option value="1.6">Thick</option></select>
+        When <select id="mistwhen"><option value="dawn" selected>Dawn and dusk</option><option value="always">All day</option></select></div>
+    </div>
     <div class="effect">
       <h3>Birds</h3>
       <label class="check"><input type="checkbox" id="birds"><span>Now and then a few birds cross the sky, by day</span></label>
       <div class="row"><button id="birdsnow">Some now</button></div>
     </div>
-    <div class="effect">
+    <p class="group">Night</p>
+    <div class="effect" id="fwcard">
       <h3>Fireworks</h3>
-      <p class="note">Every scene has them at night, going up from its horizon into open sky.</p>
+      <label class="check"><input type="checkbox" id="fwon" checked><span>At night: bursts now and then, and the nightly show (the app's Settings say when), going up from the horizon into open sky</span></label>
       <div class="row"><button id="fw">Some now</button><button id="show">The nightly show</button></div>
     </div>
-    <p class="note">Coming as effects any scene can have: something gliding along a path, stars, fireflies, falling leaves or snow.</p>
+    <div class="effect" id="fflycard">
+      <h3>Fireflies</h3>
+      <p class="note" id="fflystate">Soft glows wandering and blinking, from dusk: click where they gather (trees, a meadow, the water's edge).</p>
+      <div class="row"><button id="ffplace">Place fireflies</button><button id="ffdone">Done</button><button id="ffclear">Clear</button></div>
+      <div class="row note">Area <select id="ffsize"><option value="20">Small</option><option value="40" selected>Medium</option><option value="80">Large</option></select>
+        How many <select id="ffamount"><option value="0.5">A few</option><option value="1" selected>Some</option><option value="2">Lots</option></select></div>
+    </div>
+    <p class="note">Coming as effects any scene can have: something gliding along a path, falling leaves or snow.</p>
   </section>
   <section id="screensec">
     <h2>Screens <span class="note">shown in turn with the countdown</span></h2>
@@ -286,6 +305,16 @@ function render(s) {
     if (sm.scale) $("smscale").value = String(sm.scale); if (sm.wind !== undefined) $("smwind").value = String(sm.wind); if (sm.rate) $("smrate").value = String(sm.rate);
   }
   $("birds").checked = !!s.birds;
+  $("fwon").checked = s.fireworks !== false;
+  const ff = s.fireflies || {}, mi = s.mist || {};
+  if (!$("ffplace").classList.contains("primary"))
+    $("fflystate").textContent = ff.points && ff.points.length ? `Gathering in ${ff.points.length} place${ff.points.length > 1 ? "s" : ""}, from dusk.` : "Soft glows wandering and blinking, from dusk: click where they gather (trees, a meadow, the water's edge).";
+  if (!$("mistdraw").classList.contains("primary"))
+    $("miststate").textContent = mi.box ? `Lying from ${mi.box[1]} to ${mi.box[3]} down, ${mi.when === "always" ? "all day" : "thickest at dawn and dusk"}.` : "A soft, drifting haze over a valley, a lake or a field: drag a box where it lies.";
+  if (document.activeElement.tagName !== "SELECT") {
+    if (ff.amount) $("ffamount").value = String(ff.amount); if (ff.size) $("ffsize").value = String(ff.size);
+    if (mi.amount) $("mistamount").value = String(mi.amount); if (mi.when) $("mistwhen").value = mi.when;
+  }
   {   // what each effect card has, on its title (so a closed card still says it's in use)
     const n = (a, w) => a && a.length ? `${a.length} ${w}${a.length > 1 ? "s" : ""}` : "";
     const fo0 = s.foam || {}, oc = (s.conf || {}).orb;
@@ -293,6 +322,7 @@ function render(s) {
     badge("Window lights", s.windows_found || s.window_edits ? "on" : "");
     badge("Water", s.water_found || s.water_edits ? "on" : "");
     badge("Smoke", n(sm.points, "source")); badge("Foam", n(fo0.points, "point")); badge("Birds", s.birds ? "on" : "");
+    badge("Fireflies", n((s.fireflies || {}).points, "place")); badge("Mist", (s.mist || {}).box ? "on" : ""); badge("Fireworks", s.fireworks === false ? "off" : "on");
   }
   const fo = s.foam || {};
   if (!$("foplace").classList.contains("primary"))
@@ -381,6 +411,10 @@ function setMode(m) {
   windowMode = ["wpaint", "wrect", "werase", "wbehind", "wgroup", "wframe"].includes(m); holdWindows();
   $("smplace").classList.toggle("primary", m === "smokeadd");
   $("foplace").classList.toggle("primary", m === "foamadd");
+  $("ffplace").classList.toggle("primary", m === "fflyadd"); $("mistdraw").classList.toggle("primary", m === "mistbox");
+  if (m === "fflyadd") { night(); $("fflystate").textContent = !native ? "In a browser, placing needs the App Preview window." : "Click where fireflies gather (up to 16 places)."; }
+  if (m === "mistbox") $("miststate").textContent = !native ? "In a browser, drawing needs the App Preview window." : "Drag a box over where the mist lies (a valley floor, a lake): it fades out at the box's edges.";
+  { const b = { fflyadd: "ffplace", mistbox: "mistdraw" }[m]; if (b) { const e = $(b).closest(".effect"); if (e && e._fold) e._fold(false); } }
   { const b = { foamadd: "foplace", smokeadd: "smplace" }[m]; if (b) { const e = $(b).closest(".effect"); if (e && e._fold) e._fold(false); } }
   if (m === "foamadd") $("foamstate").textContent = !native ? "In a browser, placing needs the App Preview window." : "Click on the picture where the water churns (up to 16).";
   if (m === "smokeadd") $("smokestate").textContent = !native ? "In a browser, placing needs the App Preview window." : "Click on the picture where smoke rises from (up to 8).";
@@ -504,7 +538,20 @@ function findorbFor(s) {
   $("findorb").checked = v === null ? !!((s.conf || {}).orb) : v === "1";
 }
 $("birdsnow").onclick = () => control({ birds: true });   // (to see them: whether the scene has them on or not)
-window.smokeAdded = () => refresh();               // (from the window, after a click)
+window.smokeAdded = () => refresh();
+// fireflies: zones clicked on the picture; mist: a box dragged on it; fireworks: on or off for this scene
+function fflySettings() { return { amount: +$("ffamount").value, size: +$("ffsize").value }; }
+$("ffplace").onclick = async () => { await act({ action: "effect", key: "fireflies", value: Object.assign({}, (S && S.fireflies) || {}, fflySettings()) }); setMode("fflyadd"); };
+$("ffdone").onclick = () => setMode("");
+$("ffclear").onclick = () => act({ action: "effect", key: "fireflies", value: null });
+for (const id of ["ffsize", "ffamount"]) $(id).onchange = () => { if (S && S.fireflies && S.fireflies.points) act({ action: "effect", key: "fireflies", value: Object.assign({}, S.fireflies, fflySettings()) }); };
+window.firefliesAdded = () => refresh();
+function mistSettings() { return { amount: +$("mistamount").value, when: $("mistwhen").value }; }
+$("mistdraw").onclick = () => { control({ hour: "6.3" }); setMode("mistbox"); };          // (at dawn: when it's thickest)
+$("mistdone").onclick = () => setMode("");
+$("mistclear").onclick = () => act({ action: "effect", key: "mist", value: null });
+for (const id of ["mistamount", "mistwhen"]) $(id).onchange = () => { if (S && S.mist && S.mist.box) act({ action: "effect", key: "mist", value: Object.assign({}, S.mist, mistSettings()) }); };
+$("fwon").onchange = () => act({ action: "effect", key: "fireworks", value: $("fwon").checked });               // (from the window, after a click)
 function foamSettings() { return { amount: +$("foamount").value, flow: $("foflow").value, size: +$("fosize").value }; }
 $("foplace").onclick = async () => { await act({ action: "effect", key: "foam", value: Object.assign({}, (S && S.foam) || {}, foamSettings()) }); setMode("foamadd"); };
 $("fodone").onclick = () => setMode("");

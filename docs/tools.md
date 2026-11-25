@@ -98,7 +98,8 @@ app that runs; Signed asks for the key's passphrase then, in a dialog, and keeps
 photo, dark windows in a plain wall or lit ones at dusk, a guess to touch up; or painted on the picture,
 brush or box, or erased; the light's colour), smoke (click where it rises from: a campfire, a chimney;
 its size, wind, thickness), foam (click where the water churns: its size, which way it flows, how
-much), birds (on or off), water (found automatically, a guess, or painted on the
+much), mist (drag a box where it lies: how thick, dawn and dusk or all day), fireflies (click where they
+gather: how big an area, how many), fireworks (on or off for the scene), birds (on or off), water (found automatically, a guess, or painted on the
 picture: it ripples, gentle to choppy, slow to fast; the cruise's sea stays its own), fireworks. The same from the command line:
 `uv run tools/themegen/photo_scene.py PHOTO epcot --try --orb auto`; `--list epcot`, `--keep NAME
 epcot`, `--back epcot` ([countdown apps](countdown.md#scenes)). `--browser` (or no `swiftc`) shows the same in a page at

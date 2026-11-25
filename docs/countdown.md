@@ -65,7 +65,11 @@ light: pixels, their light, their window, so windows switch one at a time at nig
   (up to 8: a campfire, a chimney; scale: each puff's size and the plume's height, 0.5 a wisp to 1.3 a
   tall plume; wind -1 left to 1 right; rate 2 light to 8 heavy); without it, the
   ship's two funnels (`stacks`). `birds` in `effects`: now and then a few cross the sky, by day (the
-  cruise's gulls, for any scene); `foam`: `{"points": [[x, y, r], ...], "amount": 1.0, "flow": "still" |
+  cruise's gulls, for any scene); `fireflies`: `{"points": [[x, y, r], ...], "amount": 1.0}`: about five
+  glows wandering in each zone, blinking now and then, from dusk; `mist`: `{"box": [x0, y0, x1, y1], "amount":
+  1.0, "when": "dawn" | "always"}`: a soft haze drifting in the box, thickest at dawn and dusk (or the same all
+  day), pale by day, rosy at dusk, cool at night; `"fireworks": false`: none in this scene (no bursts, no
+  nightly show, no sailing-day party; every scene has them otherwise); `foam`: `{"points": [[x, y, r], ...], "amount": 1.0, "flow": "still" |
   "left" | "right" | "falling" | "toward"}`: white water at those points (up to 16: a waterfall's foot,
   rapids, surf; falling throws up spray), on the scene's own water if it has some, else wherever placed;
 - `effects`: the library's scene effects it has (`water`, `wake`, `smoke`, `gulls`/`birds`, `dolphins`,

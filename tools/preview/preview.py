@@ -343,6 +343,7 @@ class Preview:
         try: th = json.load(open(os.path.join(scene, "theme.json")))
         except (OSError, ValueError): th = {}
         out["foam"] = th.get("foam") or {}
+        out["fireflies"], out["mist"], out["fireworks"] = th.get("fireflies") or {}, th.get("mist") or {}, th.get("fireworks", True) is not False
         out["smoke"], out["birds"] = th.get("smoke") or {}, "birds" in th.get("effects", []) or "gulls" in th.get("effects", [])
         out["screens"] = self.screens_for_builder(app, m)               # (the app's screens, and the types there are)
         out["ship_names"] = list(ship_names())
@@ -552,6 +553,17 @@ class Preview:
             r = int(c.get("r") or fo.get("size", 12))
             fo["points"] = (fo.get("points") or [])[:15] + [[int(c["x"]), int(c["y"]), r]]
             ps.set_effect(app, name, "foam", fo); return {"ok": True, "foam": len(fo["points"])}
+        if act in ("fireflies_add", "mist_box"):                       # (a click: fireflies there; a box: the mist's)
+            scene, work = ps.dirs(app, name)
+            key = "fireflies" if act == "fireflies_add" else "mist"
+            try: cur = json.load(open(os.path.join(work, "scene.json"))).get(key) or {}
+            except (OSError, ValueError): cur = json.load(open(os.path.join(scene, "theme.json"))).get(key) or {}
+            if key == "fireflies":
+                cur = dict({"amount": 1.0, "size": 40}, **cur)
+                cur["points"] = (cur.get("points") or [])[:15] + [[int(c["x"]), int(c["y"]), int(c.get("r") or cur.get("size", 40))]]
+            else:
+                cur = dict({"amount": 1.0, "when": "dawn"}, **cur); cur["box"] = [int(v) for v in c["box"]]
+            ps.set_effect(app, name, key, cur); return {"ok": True}
         if act == "screens":                                            # (the app's screens: app.json, written)
             return self.busy("setting the screens", lambda: self.set_screens(c.get("screens") or []))
         if act == "screen_now":

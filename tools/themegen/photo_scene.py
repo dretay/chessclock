@@ -558,7 +558,9 @@ def set_show(app, name, program, secs):
 
 def set_effect(app, name, key, value):
     """An effect's settings for a trial (or the app's own scene): "smoke" ({"points", "scale", "wind",
-    "rate"}; no points: none), "foam" ({"points": [[x, y, r]], "amount", "flow"}) or "birds" (true or false). Into scene.json, and the scene's theme.json at
+    "rate"}; no points: none), "foam" ({"points": [[x, y, r]], "amount", "flow"}), "fireflies" ({"points": [[x, y, r]], "amount"}),
+    "mist" ({"box": [x0, y0, x1, y1], "amount", "when": "dawn" or "always"}), "fireworks" (false: none) or
+    "birds" (true or false). Into scene.json, and the scene's theme.json at
     once (no repack: the previewer restarts with it)."""
     scene, work = dirs(app, name)
     sp = os.path.join(work, "scene.json")
@@ -566,9 +568,15 @@ def set_effect(app, name, key, value):
         conf = json.load(open(sp)); conf[key] = value; json.dump(conf, open(sp, "w"), indent=1)
     tp = os.path.join(scene, "theme.json"); theme = json.load(open(tp))
     fx = [e for e in theme.get("effects", []) if e != key]
-    if key in ("smoke", "foam"):
+    if key in ("smoke", "foam", "fireflies"):
         if value and value.get("points"): fx.append(key); theme[key] = value
         else: theme.pop(key, None)
+    elif key == "mist":
+        if value and len(value.get("box") or []) == 4: fx.append(key); theme[key] = value
+        else: theme.pop(key, None)
+    elif key == "fireworks":                                             # (on: as every scene has them; off: none)
+        if value is False: theme["fireworks"] = False
+        else: theme.pop("fireworks", None)
     elif key == "birds" and value: fx.append("birds")
     theme["effects"] = fx
     with open(tp + ".tmp", "w") as f: json.dump(theme, f, indent=1)

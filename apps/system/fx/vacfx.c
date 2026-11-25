@@ -97,7 +97,7 @@ static int foam_n, foam_xyr[16][3], foam_amount_q8 = 256, foam_flow, foamp_acc, 
 static int bow_x, bow_y, stern_x, stern_y, hull_dx = -256, hull_dy;   /* unit vector bow -> stern, Q8 */
 
 /* particles: kind, position and velocity in 1/256 px and 1/256 px per s */
-enum { P_FOAM, P_WAKE, P_SMOKE, P_ROCKET, P_SPARK, P_GULL, P_DOLPHIN, P_SPLASH };
+enum { P_FOAM, P_WAKE, P_SMOKE, P_ROCKET, P_SPARK, P_GULL, P_DOLPHIN, P_SPLASH, P_FLY };
 typedef struct { uint8_t kind; int32_t x, y, vx, vy, px, py; int32_t age, life; uint32_t col; int16_t size; int16_t ty; } part_t;
 static part_t parts[MAXP]; static int np;
 static int foam_acc, wake_acc, smoke_acc, toggle_acc, bow_acc, spray_acc;
@@ -112,7 +112,17 @@ static int gulls_now;                  /* asked for (the previewer's Birds): wha
 static int next_gulls_ms = 5000, next_pod_ms = 10000, next_raft_ms = 8000, raft_start = -1, raft_dur;
 /* which of the scene's own effects run (vfx_effects): the ship has them all; a castle, none of them.
    Fireworks, window lights and the cards are every scene's. */
-enum { FX_WATER = 1, FX_WAKE = 2, FX_SMOKE = 4, FX_GULLS = 8, FX_DOLPHINS = 16, FX_RAFT = 32, FX_TWINKLE = 64, FX_FOAM = 128, FX_ALL = 255 };
+enum { FX_WATER = 1, FX_WAKE = 2, FX_SMOKE = 4, FX_GULLS = 8, FX_DOLPHINS = 16, FX_RAFT = 32, FX_TWINKLE = 64, FX_FOAM = 128,
+       FX_FIREFLIES = 256, FX_MIST = 512, FX_ALL = 1023 };
+/* fireflies: soft yellow-green glows wandering in zones (x, y, r), each blinking now and then, from dusk */
+static int fly_n, fly_xyr[16][3], fly_amount_q8 = 256, fly_acc;
+/* mist: a drifting band in a box, thickest at dawn and dusk (mode 0) or all day (1); drawn as rows are
+   refreshed (a few each frame, like the sea), from a soft noise tile that drifts sideways */
+#define MIST_TW 512
+#define MIST_TH 128
+static int mist_on, mist_x0, mist_y0, mist_x1, mist_y1, mist_amount_q8 = 256, mist_mode;
+static uint8_t *mist_tile;
+static uint16_t mist_ex[W];            /* the band's fade at its sides, by x (0..256): worked out once (no divides per pixel: the ARM9 has none) */
 static int fx_on = FX_ALL;
 static int hold_lvl, hold_drawn;           /* the press-and-hold bar under the cards */
 
@@ -260,7 +270,40 @@ static inline uint32_t ripple_px(int x, int y, int amp_q8, int amy, int ph1, int
     return ((((a & 0xff00ff) * g + (b & 0xff00ff) * f) >> 8) & 0xff00ff) | ((((a & 0x00ff00) * g + (b & 0x00ff00) * f) >> 8) & 0x00ff00);
 }
 static int shadow_row(int y, uint8_t *sh, int *ax, int *bx);
+static inline int lerp_i(int a, int b, int t) { return a + (((b - a) * t) >> 8); }
+static void mist_row(int y, int x0, int x1, int t_ms, uint32_t *dst);
+static void refresh_row_sea(int y, int x0, int x1, int t_ms, uint32_t *dst);
 static void refresh_row(int y, int x0, int x1, int t_ms, uint32_t *dst) {
+    refresh_row_sea(y, x0, x1, t_ms, dst);
+    if (mist_on && (fx_on & FX_MIST) && y >= mist_y0 && y <= mist_y1) mist_row(y, x0, x1, t_ms, dst);
+}
+/* the mist's colour and strength now: pale by day, rosy at dusk, cool and dim at night */
+static int mist_col_r, mist_col_g, mist_col_b, mist_str;
+static void mist_light(void) {
+    const int dr = lerp_i(226, 238, dusk_lvl), dg = lerp_i(232, 200, dusk_lvl), db = lerp_i(238, 186, dusk_lvl);
+    mist_col_r = lerp_i(dr, 64, night_lvl); mist_col_g = lerp_i(dg, 74, night_lvl); mist_col_b = lerp_i(db, 98, night_lvl);
+    /* dawn and dusk (mode 0): thick in the half light, a faint haze by day, light at night; always (1): steady */
+    const int f = mist_mode ? 200 : clampi(70 + (186 * dusk_lvl >> 8) + (60 * night_lvl >> 8), 0, 256);
+    mist_str = clampi(mist_amount_q8 * f >> 8, 0, 400);
+}
+static void mist_row(int y, int x0, int x1, int t_ms, uint32_t *dst) {
+    if (!mist_str) return;
+    const int h = mist_y1 - mist_y0; if (h < 2) return;
+    const int t = ((y - mist_y0) << 8) / h, ey = 4 * t * (256 - t) >> 8;           /* (0 at the box's top and bottom, 256 midway) */
+    const int a = x0 > mist_x0 ? x0 : mist_x0, b = x1 < mist_x1 ? x1 : mist_x1; if (a > b) return;
+    const int drift = (int)((int64_t)t_ms * 6 / 1000);                              /* (six pixels a second, the band as one) */
+    const uint8_t *nrow = mist_tile + (y % MIST_TH) * MIST_TW;
+    const int sy = ey * mist_str >> 8; if (sy < 2) return;
+    for (int x = a; x <= b; x++) {
+        int al = (sy * mist_ex[x] >> 8) * nrow[(x + drift) & (MIST_TW - 1)] >> 8;
+        if (al <= 1) continue;
+        if (al > 200) al = 200;
+        const uint32_t p = dst[x]; int R = (p >> 16) & 255, G = (p >> 8) & 255, B = p & 255;
+        R += (mist_col_r - R) * al >> 8; G += (mist_col_g - G) * al >> 8; B += (mist_col_b - B) * al >> 8;
+        dst[x] = (uint32_t)R << 16 | (uint32_t)G << 8 | (uint32_t)B;
+    }
+}
+static void refresh_row_sea(int y, int x0, int x1, int t_ms, uint32_t *dst) {
     const uint32_t *src = base + y * W;
     if (wx0[y] < 0 || !(fx_on & FX_WATER)) { memcpy(dst + x0, src + x0, (size_t)(x1 - x0 + 1) * 4); return; }
     /* the sea grows toward the viewer; a scene's own water (a lake, a fountain) ripples evenly, as strong as it says */
@@ -397,7 +440,6 @@ static void tube_at(int u, int *x, int *y) {
 
 /* ------------------------------------------------------------------ particles */
 static part_t *spawn(int kind) { if (np >= MAXP) return NULL; part_t *p = &parts[np++]; memset(p, 0, sizeof *p); p->kind = (uint8_t)kind; return p; }
-static inline int lerp_i(int a, int b, int t) { return a + (((b - a) * t) >> 8); }
 static int wl_at(int x) {
     const int c = clampi(x, 0, W - 1); if (wl[c] >= 0) return wl[c];
     return bow_x == stern_x ? bow_y : bow_y + (stern_y - bow_y) * (x - bow_x) / (stern_x - bow_x);
@@ -440,6 +482,21 @@ static void step_particles(int dt) {
     /* a scene's own foam: at its points, within each one's radius, moving as its flow says (0 churning in
        place, 1 drifting left, 2 right, 3 falling, 4 spreading toward the viewer); it's drawn only on the
        scene's water when it has some (water.raw.gz), anywhere otherwise (p->ty 1 says so) */
+    /* fireflies: as many as the zones ask for, while it's dusk or dark; each lives a minute or so, then another */
+    {
+        const int dark = night_lvl > (dusk_lvl * 160 >> 8) ? night_lvl : dusk_lvl * 160 >> 8;
+        int live = 0; for (int k = 0; k < np; k++) live += parts[k].kind == P_FLY;
+        const int want = (fx_on & FX_FIREFLIES) && fly_n && dark > 70 ? fly_n * 5 * fly_amount_q8 / 256 : 0;
+        fly_acc += live < want ? dt : 0;
+        while (fly_acc >= 160 && live < want) {
+            fly_acc -= 160; part_t *p = spawn(P_FLY); if (!p) break; live++;
+            const int z = (int)(rnd() % (uint32_t)fly_n), r = fly_xyr[z][2];
+            p->x = (fly_xyr[z][0] + rr(-r, r)) << 8; p->y = (fly_xyr[z][1] + rr(-r / 2, r / 2)) << 8;
+            p->ty = (int16_t)z; p->life = rr(30000, 75000); p->size = (int16_t)rr(2600, 5200);   /* blink: every 2.6 to 5.2 s */
+            p->col = (uint32_t)rr(0, 5000);
+        }
+        if (!want) fly_acc = 0;
+    }
     foamp_acc += (fx_on & FX_FOAM) && foam_n ? dt * 28 * foam_n * foam_amount_q8 / 256 : 0;
     while (foamp_acc >= 1000) {
         foamp_acc -= 1000; part_t *p = spawn(P_FOAM); if (!p) break;
@@ -541,6 +598,15 @@ static void step_particles(int dt) {
                 break;
             }
             p->vx = p->vx * drag_foam >> 8; p->vy = p->vy * (256 - dt * 177 / 256) >> 8; break;
+        case P_FLY: {                                       /* wandering: a slow, turning drift, kept near its zone */
+            const int *z = fly_xyr[p->ty % 16];
+            p->vx += rr(-90, 90) * dt / 16; p->vy += rr(-70, 70) * dt / 16;
+            const int ox = (p->x >> 8) - z[0], oy = (p->y >> 8) - z[1];
+            if (abs(ox) > z[2]) p->vx -= ox * 6 * dt / 16;
+            if (abs(oy) > z[2] / 2 + 4) p->vy -= oy * 6 * dt / 16;
+            p->vx = p->vx * 250 >> 8; p->vy = p->vy * 250 >> 8;
+            p->vx = clampi(p->vx, -14 * 256, 14 * 256); p->vy = clampi(p->vy, -9 * 256, 9 * 256);
+            p->x += p->vx * dt / 1000; p->y += p->vy * dt / 1000; break; }
         case P_SMOKE: {
             const int wob = sin_lut[((p->ty + p->age / 8) & (LUT - 1))] * 5 / 2 * smoke_q8 >> 14;   /* sideways drift */
             p->vy = p->vy * (256 - dt * 57 / 1000) >> 8;
@@ -587,6 +653,7 @@ static void particle_rects(void) {
         switch (p->kind) {
         case P_FOAM: case P_WAKE: r = (p->size * (p->kind == P_WAKE ? 5 : 3) >> 8) + 2; break;
         case P_SMOKE: r = 30; break;
+        case P_FLY: r = 7; break;
         case P_GULL: r = (p->size >> 8) + 3; break;
         case P_DOLPHIN: {                                   /* the whole arc */
             const int x0 = p->px >> 8, y0 = p->py >> 8, len = p->vx >> 8, ht = p->vy >> 8;
@@ -614,6 +681,17 @@ static void draw_particles(void) {
             const int rx = p->size * grow >> 8, ry = (p->size >> 1) * (256 + u * (p->kind == P_WAKE ? 2 : 1)) >> 8;
             blob(p->x, p->y, rx, ry, p->kind == P_WAKE ? wake_col : foam_col, (a * (int)p->col >> 8) * (p->kind == P_WAKE ? 180 : 256) >> 8,
                  prof_soft, 0, p->ty == 1 && !wcustom ? 0 : 1);    /* (a scene's foam with no water of its own: anywhere) */
+            break; }
+        case P_FLY: {                                       /* a blink: a soft glow and a bright core, at dusk and in the dark */
+            const int dark = night_lvl > (dusk_lvl * 160 >> 8) ? night_lvl : dusk_lvl * 160 >> 8;
+            if (dark < 60) break;
+            const int ph = (int)((p->age + (int)p->col) % (p->size > 0 ? p->size : 3000));
+            if (ph >= 1100) break;                          /* (off most of the time) */
+            int e = ph < 350 ? ph * 256 / 350 : (1100 - ph) * 256 / 750;   /* on fast, fading slowly */
+            const int fade = p->age < 1500 ? p->age * 256 / 1500 : p->life - p->age < 1500 ? (p->life - p->age) * 256 / 1500 : 256;
+            e = e * fade >> 8; e = e * clampi((dark - 60) * 256 / 120, 0, 256) >> 8;
+            blob(p->x, p->y, 1300, 1300, 0x6ee63c, e * 150 >> 8, prof_soft, 1, 0);     /* glow, ~5 px */
+            blob(p->x, p->y, 420, 420, 0xf0ffb4, e * 230 >> 8, prof_soft, 1, 0);       /* core */
             break; }
         case P_SMOKE: {
             const int f = u, inv = 256 - f;
@@ -1035,6 +1113,7 @@ void vfx_light(int wday, int wdusk, int wnight, int lights, int night, int dusk)
     const int relight = wday != wgt[0] || wdusk != wgt[1] || wnight != wgt[2] || lights != lights_lvl;
     const int old[3] = {wgt[0], wgt[1], wgt[2]};
     wgt[0] = wday; wgt[1] = wdusk; wgt[2] = wnight; lights_lvl = lights; night_lvl = night; dusk_lvl = dusk;
+    if (mist_on) mist_light();
     if (plates_for_weights()) { wgt[0] = old[0]; wgt[1] = old[1]; wgt[2] = old[2]; plates_for_weights(); }   /* (keep the light as it was) */
     if (relight) reblend_row = 0;              /* spread over the next frames */
     cards_dirty = 1;
@@ -1113,6 +1192,43 @@ void vfx_cards_scale3(int q8) { scale3_q8 = clampi(q8, 0, 256); }
 
 /* a scene's own foam: n points (x, y, radius triples, up to 16), how much (amount_q8: 256 normal), which way
    (flow: 0 churning in place, 1 drifting left, 2 right, 3 falling, with spray, 4 spreading toward the viewer) */
+/* fireflies in n zones (x, y, r: up to 16), about 5 in each at amount_q8 256; from dusk, in the dark */
+void vfx_fireflies(int n, const int *xyr, int amount_q8) {
+    fly_n = clampi(n, 0, 16); fly_amount_q8 = clampi(amount_q8, 32, 1024);
+    for (int k = 0; k < fly_n; k++) { fly_xyr[k][0] = xyr[3 * k]; fly_xyr[k][1] = xyr[3 * k + 1]; fly_xyr[k][2] = clampi(xyr[3 * k + 2], 4, 160); }
+}
+/* mist in the box x0, y0 to x1, y1 (none if empty): how much (256 normal), mode 0 thickest at dawn and dusk,
+   1 the same all day */
+void vfx_mist(int x0, int y0, int x1, int y1, int amount_q8, int mode) {
+    mist_x0 = clampi(x0 < x1 ? x0 : x1, 0, W - 1); mist_x1 = clampi(x0 < x1 ? x1 : x0, 0, W - 1);
+    mist_y0 = clampi(y0 < y1 ? y0 : y1, 0, H - 1); mist_y1 = clampi(y0 < y1 ? y1 : y0, 0, H - 1);
+    mist_amount_q8 = clampi(amount_q8, 32, 768); mist_mode = mode ? 1 : 0;
+    mist_on = mist_x1 - mist_x0 > 8 && mist_y1 - mist_y0 > 4;
+    {   const int edge = clampi((mist_x1 - mist_x0) / 6, 8, 60);
+        for (int x = 0; x < W; x++)
+            mist_ex[x] = (uint16_t)(clampi(((x - mist_x0) << 8) / edge, 0, 256) * clampi(((mist_x1 - x) << 8) / edge, 0, 256) >> 8); }
+    if (mist_on && !mist_tile) {                        /* soft value noise, two octaves, wrapping both ways */
+        mist_tile = malloc(MIST_TW * MIST_TH); if (!mist_tile) { mist_on = 0; return; }
+        uint8_t g1[8][16], g2[16][32];
+        for (int j = 0; j < 8; j++) for (int i = 0; i < 16; i++) g1[j][i] = (uint8_t)rr(40, 255);
+        for (int j = 0; j < 16; j++) for (int i = 0; i < 32; i++) g2[j][i] = (uint8_t)rr(0, 255);
+        for (int y = 0; y < MIST_TH; y++) for (int x = 0; x < MIST_TW; x++) {
+            int v[2];
+            for (int o = 0; o < 2; o++) {
+                const int cw = o ? 16 : 32, ch = o ? 8 : 16, nx = MIST_TW / cw, ny = MIST_TH / ch;
+                const int gx = x / cw, gy = y / ch, fx = (x % cw) * 256 / cw, fy = (y % ch) * 256 / ch;
+                const int sx = fx * fx * (768 - 2 * fx) >> 16, sy_ = fy * fy * (768 - 2 * fy) >> 16;   /* smoothstep */
+                #define G(i, j) (o ? g1[(j) % ny][(i) % nx] : g2[(j) % ny][(i) % nx])
+                const int a = G(gx, gy) + ((G(gx + 1, gy) - G(gx, gy)) * sx >> 8), b = G(gx, gy + 1) + ((G(gx + 1, gy + 1) - G(gx, gy + 1)) * sx >> 8);
+                #undef G
+                v[o] = a + ((b - a) * sy_ >> 8);
+            }
+            mist_tile[y * MIST_TW + x] = (uint8_t)clampi((v[0] * 3 + v[1]) / 4, 0, 255);
+        }
+    }
+    mist_light(); full_redraw = 1;
+}
+
 void vfx_foam(int n, const int *xyr, int amount_q8, int flow) {
     foam_n = clampi(n, 0, 16);
     for (int k = 0; k < foam_n; k++) { foam_xyr[k][0] = xyr[3 * k]; foam_xyr[k][1] = xyr[3 * k + 1]; foam_xyr[k][2] = clampi(xyr[3 * k + 2], 1, 80); }
@@ -1229,6 +1345,9 @@ int vfx_frame(int t_ms) {
         const int depth_q8 = wcustom ? 255 : ((y - horizon) << 8) / (H - horizon), every = depth_q8 < 85 ? 4 : depth_q8 < 170 ? 3 : 2;
         if ((y + frame_no) % every == 0) spans_add(rlo, rhi, y, wx0[y], wx1[y]);
     }
+    /* the mist's rows, a quarter of them each frame (it drifts six pixels a second: a pixel in four frames) */
+    if (mist_on && (fx_on & FX_MIST) && mist_str)
+        for (int y = mist_y0 + (frame_no & 3); y <= mist_y1; y += 4) spans_add(rlo, rhi, y, mist_x0, mist_x1);
     /* cards: while flipping (or after a change), their whole area */
     int flipping = 0; for (int k = 0; k < ndig; k++) if (flip_start[k] >= 0 && t_ms - flip_start[k] < flip_ms + 40) flipping = 1;
     if (hold_lvl > 0 || hold_drawn) { cards_dirty = 1; if (!hold_lvl) hold_drawn = 0; }
