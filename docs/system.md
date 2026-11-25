@@ -13,6 +13,13 @@ kernel config is cut down to what the apps use (no networking unless built with 
 console, compiled for size), which leaves several megabytes more RAM than the old kernel did;
 `STRICT_KERNEL_RWX` is off (it padded the kernel's sections to 1 MB each).
 
+**Sound.** The chip's own audio codec (mainline's `sun4i-codec`, built in: card 0, "F1C100s Audio
+Codec") drives the HPL and HPR pins, to a PAM8403 amplifier and one or two speakers
+([protoboard](../hardware/protoboard/DESIGN.md), audio). The base system has `amixer` (its volume;
+codecs start muted or quiet), `aplay` and `speaker-test` (alsa-utils: WAVs, a test tone) and `mpg123`
+(MP3s, with its fixed-point decoder: the ARM9 has no floating point), about 1 MB in all. Playing an
+MP3 takes well under 1 MB of memory; the decoding is the cost, on the same processor as the drawing.
+
 **Device tree.** The [custom device tree](../board/licheepi_nano/linux/suniv-f1c100s-licheepi-nano-custom.dts)
 builds on mainline's Lichee Pi Nano file and adds:
 

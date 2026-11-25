@@ -98,6 +98,14 @@ BR2_PACKAGE_DEJAVU=y
 BR2_PACKAGE_ZLIB=y
 BR2_PACKAGE_MODINSTALL=y
 BR2_PACKAGE_LIBFFI=y
+# sound: the chip's audio codec (HPL/HPR, to a PAM8403 amplifier): amixer (its volume, unmuting), aplay and
+# speaker-test (WAVs, testing the speakers), mpg123 (MP3s: its fixed-point decoder, the ARM9 has no FPU)
+BR2_PACKAGE_ALSA_UTILS=y
+BR2_PACKAGE_ALSA_UTILS_AMIXER=y
+BR2_PACKAGE_ALSA_UTILS_APLAY=y
+BR2_PACKAGE_ALSA_UTILS_SPEAKER_TEST=y
+# BR2_PACKAGE_ALSA_UTILS_ALSAMIXER is not set
+BR2_PACKAGE_MPG123=y
 # the kernel has no networking, so no network startup script
 # BR2_PACKAGE_IFUPDOWN_SCRIPTS is not set
 # only DejaVu Sans is used
