@@ -17,7 +17,7 @@ http://localhost:8800 (the same controls).
 - Mouse: press, drag and release, as on the touchscreen (press and hold for Settings).
 - Save a file in the app (or the runtime) and it restarts; change fx/vacfx.c and it's recompiled first.
 - The page: pick the app; freeze the time of day or pretend it's another date; run the app's
-  background job (its live data: ride waits, AIS) with the Mac's network; the app's log.
+  background job (its live data: ride waits, the ships' schedules) with the Mac's network; the app's log.
 - Settings > Apps opens the real app picker, and starts the app picked, here.
 
 The chess clock draws with the DejaVu fonts, as on the board: they're copied once from the board's

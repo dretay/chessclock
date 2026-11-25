@@ -112,7 +112,7 @@ STRINGS["small"] += ["Positions from ", " min ago", " h ago", " days ago", "Posi
 STRINGS["label"] += ["Disney " + n for n in FLEET] + ["Follow", "Rides"]
 STRINGS["chip"] += FLEET
 STRINGS["tiny"] = ["Imagery: NASA Blue Marble", "Imagery: NASA Black Marble"]
-CHAR_FONTS = ["small", "label"]   # every printable character on its own too (AIS destinations, WiFi names, the keyboard)
+CHAR_FONTS = ["small", "label"]   # every printable character on its own too (port names, WiFi names, the keyboard)
 EXTRA_CHARS = "\u00b0\u2032\u00b7"    # degree, minute, middle dot
 
 DIGIT_FONTS = ["value", "label", "small"]    # these get 0-9 as single glyphs too

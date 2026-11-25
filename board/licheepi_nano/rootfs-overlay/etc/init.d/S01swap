@@ -1,25 +1,26 @@
 #!/bin/sh
 #
 # Swap, for the countdown and WiFi together (they need more than the Nano's 32 MB; much of the
-# countdown's memory is Python loaded once and seldom touched again):
-# 1. compressed memory (zram, LZ4): idle memory compresses about 3:1 and comes back far faster than from
-#    the SD card. Up to ZRAM_MB of it (uncompressed), in at most ZRAM_MEM_MB of real memory.
-# 2. a 32 MB file on the apps partition (/apps/swapfile), made the first time: only when the compressed
-#    swap is full (Linux uses the swap turned on first, first). In the background, so the boot isn't
-#    held up (making the file takes a few seconds, once).
+# countdown's memory is Python loaded once and seldom touched again): a 32 MB file on the apps
+# partition (/apps/swapfile), made the first time, in the background so the boot isn't held up
+# (making the file takes a few seconds, once).
+#
+# Compressed memory (zram) first is possible, ZRAM_MB of it, but off: measured on the board
+# (24 Nov 2026), the countdown's memory compressed only about 1.2:1 counting the allocator's overhead
+# (4.7 MB in 3.9 MB of RAM), which left less memory free (3.9 MB against 6.0 MB) for about the same
+# swap on the card. Never give it a mem_limit: a full zram with one fails writes and stalls the system
+# until the watchdog resets it, rather than moving on to the file.
 #
 
 F=/apps/swapfile
 MB=32
-ZRAM_MB=24
-ZRAM_MEM_MB=6
+ZRAM_MB=0
 
 case "$1" in
 	start)
 		[ -e /proc/swaps ] || exit 0                    # (a kernel without swap)
-		if [ -e /sys/block/zram0/disksize ]; then
+		if [ "$ZRAM_MB" -gt 0 ] && [ -e /sys/block/zram0/disksize ]; then
 			echo lz4 > /sys/block/zram0/comp_algorithm 2>/dev/null
-			echo ${ZRAM_MEM_MB}M > /sys/block/zram0/mem_limit
 			echo ${ZRAM_MB}M > /sys/block/zram0/disksize
 			mkswap /dev/zram0 >/dev/null && swapon /dev/zram0
 		fi

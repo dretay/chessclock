@@ -21,7 +21,7 @@ and makes the mouse the touchscreen (click to tap, hold two seconds for Settings
 Saving a file in the app or the runtime restarts it (the drawing library is recompiled when
 `fx/vacfx.c` changes). Its menus: **App** (the apps ⌘1–3, Restart ⌘R), **Time** (morning, noon, dusk,
 evening, night; Pretend It's… ⌘D, e.g. the trip's last day), **Data** (the app's background job with
-the Mac's network ⌘L: live ride waits; AIS with a key in `build/preview/data/cruise/ais.key`),
+the Mac's network ⌘L: live ride waits, the ships' schedules),
 **View** (actual or double size, Keep on Top ⌘T, the log ⌘J, a screenshot to the Desktop ⌘S).
 Closing the window stops the preview. `--browser` (or no `swiftc`) shows the same in a page at
 http://localhost:8800. Settings > Apps opens the real app
@@ -84,6 +84,4 @@ The ESP32's firmware: [wifi](wifi.md).
 ## The apps' own
 
 `apps/chess/tools/simulate.py` (the clock's animations and touch handling against an in-memory screen)
-and `apps/chess/tools/check_games.py` (every game in `apps/chess/games.pgn` replays: run it after adding one);
-`apps/cruise/tools/send_ships.py` (ship positions to the board over USB, for the map
-without WiFi).
+and `apps/chess/tools/check_games.py` (every game in `apps/chess/games.pgn` replays: run it after adding one).

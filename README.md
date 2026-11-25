@@ -10,8 +10,8 @@ touchscreen (Settings > Apps):
   case that keeps the time.
 * **Countdowns to a trip**: the days left on flip-clock cards over a living picture of where you're
   going, changing with the time of day ([countdown apps](docs/countdown.md), on a shared
-  [runtime](apps/countdown/README.md)): **a Disney cruise** (the ship at sea, a fleet map with live AIS
-  positions) and **Magic Kingdom** (Cinderella Castle, live ride wait times).
+  [runtime](apps/countdown/README.md)): **a Disney cruise** (the ship at sea, a fleet map of where the
+  Disney ships are, from their itineraries) and **Magic Kingdom** (Cinderella Castle, live ride wait times).
 
 ![The chess clock](docs/clock.png)
 

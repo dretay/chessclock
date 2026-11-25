@@ -19,7 +19,7 @@ FROM $BASE_IMAGE:$BASE_VERSION AS local
 # runtime). `app NAME` on the board, or Settings > Apps, switches later.
 ARG APP=chess
 # WiFi through an ESP32 on SPI1 (package/esp-hosted): 1 to include it, with TLS for Python (OpenSSL
-# and the CA certificates: the cruise app's AIS feed, apps/cruise/ais.py, is over a secure websocket). It costs about 4 MB of the
+# and the CA certificates: the apps' fetchers, the cruise's schedules and the castle's ride waits, are over HTTPS). It costs about 4 MB of the
 # Nano's 32 MB: with the countdown too, it needs the swap file S01swap makes.
 ARG WIFI=0
 

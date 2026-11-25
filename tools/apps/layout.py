@@ -8,7 +8,7 @@ An app with an install.sh lays itself out (`install.sh DEST`): the system packag
 drawing library: for the board, in the build container, with CC set to the board's compiler) and the
 chess clock. Any other app is its folder as it is, less its tools/ (desktop helpers), Python caches,
 and what its app.json "exclude" lists (paths in it, * allowed); and its "native" programs compiled
-into it: [{"src": "aisd.c", "out": "aisd", "libs": "-lssl -lcrypto"}] (for the board in the WiFi build
+into it: [{"src": "fetch.c", "out": "fetch", "libs": "-lssl -lcrypto"}] (for the board in the WiFi build
 tree, which has OpenSSL; on a Mac, against Homebrew's).
 
 The board's compiler comes from tools/build/build.sh's build tree (its licheepi-out volume, with the

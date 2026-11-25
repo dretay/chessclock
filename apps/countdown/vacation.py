@@ -27,7 +27,7 @@ For trying it out:
   VACATION_SHOW=1           start the nightly fireworks show right away
   VACATION_UI_DIR           the Settings images (ui.bin.gz), if not the installed ones
   VACATION_MAP_DIR          the fleet map's chart (map.rgb.gz, map.json), if not the installed one
-  VACATION_SHIPS=FILE       ship positions from this file (see modules/cruise/map.py)
+  VACATION_SCHEDULE=FILE    the ships' schedules from this file, not the app's schedule.json (see apps/cruise/map.py)
   VACATION_MAP_AFTER=5      show the module's first screen (the fleet map) after this many seconds
   VACATION_NOW=2026-12-16T15:58   pretend the date and time are this (try the last day and sailing)
 """

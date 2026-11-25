@@ -8,8 +8,8 @@
 /dist-*/
 /dist-*.tar
 
-# secrets: the aisstream.io API key (it belongs on the board, /apps/data/cruise/ais.key; this
-# only guards against a copy landing in the tree)
+# secrets: the aisstream.io API key the cruise map once used (no longer: kept ignored so a copy left
+# in the tree isn't committed)
 ais.key
 # module signing keys (tools/apps/pack.py --key): never in the repository
 *.pem

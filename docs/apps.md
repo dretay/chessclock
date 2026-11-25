@@ -16,7 +16,7 @@ image: `tools/board/deploy.py` puts it on the board, signed or not. The image co
 |---|---|---|
 | `chess` | [apps/chess](../apps/chess/README.md) | the chess clock |
 | `castle` | [apps/castle](../apps/castle) | the Magic Kingdom countdown, with live ride waits ([countdown apps](countdown.md)) |
-| `cruise` | [apps/cruise](../apps/cruise) | the Disney cruise countdown, with the fleet map and live AIS ([countdown apps](countdown.md)) |
+| `cruise` | [apps/cruise](../apps/cruise) | the Disney cruise countdown, with the fleet map (the ships from their itineraries; [countdown apps](countdown.md)) |
 | `countdown` | [apps/countdown](../apps/countdown/README.md) | the runtime the countdown apps run on (never started by itself) |
 | `system` | `apps/system` | what every app shares: the drawing library, Settings' pages, **Device settings** (date and time, display, touch, WiFi), the app picker and Get apps; the countdown runtime runs on it, and the chess clock uses its screens |
 

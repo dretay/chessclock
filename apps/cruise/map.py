@@ -1,22 +1,22 @@
-"""The fleet map: where the Disney ships are, shown in turn with the countdown.
+"""The fleet map: where the Disney ships are scheduled to be, shown in turn with the countdown.
 
 The Caribbean from space, NASA's Blue Marble by day and Black Marble (city lights) at night, centred on
-the ship picked in Settings (MAP_SHIP): it gets a pulsing ring and a card with what its AIS reports
-(position, speed and course, status, destination, distance and time to go, its ETA and whether it's
-running early or late, and how far it's come today). Any other ship in
-view is a small ship pointing its way, with its name on a tag (your own ship, SHIP, has its name in gold on the card when it's the one followed). The
-status line says how old the positions are.
+the ship picked in Settings (MAP_SHIP): it gets a pulsing ring, its sailing so far (a line through the
+ports it's called at), the way to its next port (dashed), and a card: in port until when, or at sea
+bound for where, arriving when, and how far to go; its sailing. Any other ship in view is a small ship
+pointing its way, with its name on a tag (your own ship, SHIP, has its name in gold on the card when
+it's the one followed).
+
+Where each ship is comes from its published itinerary, not a live report: schedule.json in the app's
+data folder (/apps/data/cruise), kept up to date by schedule.py (the app's service, over WiFi): each
+ship's current sailing, port by port with its times, and the route of each leg by sea. A ship is at a
+port between its arrival and departure, and between two ports partway along the leg, as far as the time
+since it left says. Without that file (no WiFi yet), schedule_example.json, its times moved to now.
 
 The map comes in 256-px tiles made on a desktop (tools/themegen/build_map.py -> map/tiles/,
 map.json); only the dozen or so around the ship are loaded. The cruise app's screen (its app.json).
-
-Positions come from a file, one ship per line (see ships_example.csv):
-    name, latitude, longitude, heading, speed (knots), when (unix time or YYYY-MM-DDTHH:MM),
-    and optionally destination, ETA (MM-DD HH:MM, UTC as AIS sends it), status, MMSI
-the module's data folder's ships.csv (/apps/data/cruise/ships.csv) when it exists (kept up to date from
-AIS by ais.py, the module's service, over WiFi; or written over serial by apps/cruise/tools/send_ships.py), otherwise the example. A later line for the same ship replaces an earlier one.
 """
-import calendar, datetime, json, math, os, random, time
+import json, math, os, time
 
 import vacation_layout as L
 
@@ -27,56 +27,6 @@ def rgb(c): return (c[0] << 16) | (c[1] << 8) | c[2]
 HALO = (4, 10, 22)
 FUNNEL = (200, 44, 36)                                 # Disney red
 CARD_X0, CARD_X1, CARD_Y0 = 470, 788, 12          # the featured ship's card, top right
-COMPASS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
-MONTHS = L.MONTHS
-
-
-class Ship:
-    def __init__(self, name, f):
-        self.name = name
-        self.lat, self.lon = float(f[1]), float(f[2])
-        self.heading = float(f[3]) if len(f) > 3 and f[3] else 0.0
-        self.speed = float(f[4]) if len(f) > 4 and f[4] else 0.0
-        self.when = None
-        if len(f) > 5 and f[5]:
-            self.when = float(f[5]) if f[5].replace(".", "").isdigit() else time.mktime(datetime.datetime.fromisoformat(f[5]).timetuple())
-        self.dest = f[6] if len(f) > 6 else ""
-        self.eta = f[7] if len(f) > 7 else ""
-        self.status = f[8] if len(f) > 8 else ""
-        self.mmsi = f[9] if len(f) > 9 else ""
-        self.trail = []                                # earlier positions: (lat, lon), oldest first
-
-
-def read_ships(path):
-    """name -> Ship; and whether the file says it's an example."""
-    ships, example = {}, False
-    try: lines = open(path).read().splitlines()
-    except OSError: return ships, example
-    for line in lines:
-        if line.lstrip().startswith("#"):
-            if "EXAMPLE" in line.upper(): example = True
-            continue
-        f = [v.strip() for v in line.split(",")]
-        if len(f) < 3: continue
-        name = f[0] if f[0].startswith("Disney ") else "Disney " + f[0]
-        try: s = Ship(name, f)
-        except ValueError: continue
-        old = ships.get(name)
-        if old and (s.when or 0) >= (old.when or 0):                      # a newer report: the old one joins the trail
-            s.trail = old.trail + [(old.lat, old.lon, old.when)]
-        elif old:                                                          # (an older report, out of order)
-            old.trail = sorted(old.trail + [(s.lat, s.lon, s.when)], key=lambda p: p[2] or 0); continue
-        ships[name] = s
-    for s in ships.values():                     # the last day of it: all of it for the day's distance, 30 points to draw
-        s.day = [p for p in s.trail if not (s.when and p[2] and s.when - p[2] > 24 * 3600)]
-        s.trail = thin(s.day, 30)
-    return ships, example
-
-
-def thin(points, n):
-    """At most n of the points, evenly spread, keeping the first and last."""
-    if len(points) <= n: return list(points)
-    return [points[round(i * (len(points) - 1) / (n - 1))] for i in range(n)]
 
 
 def nm(lat1, lon1, lat2, lon2):
@@ -86,21 +36,25 @@ def nm(lat1, lon1, lat2, lon2):
     return 2 * 3440.065 * math.asin(min(1.0, math.sqrt(a)))
 
 
-ESTIMATE_AFTER = 15 * 60        # a report older than this, under way: estimate where the ship is now
+def bearing(a, b):
+    """Degrees from north, a to b."""
+    p1, p2, dl = math.radians(a[0]), math.radians(b[0]), math.radians(b[1] - a[1])
+    return math.degrees(math.atan2(math.sin(dl) * math.cos(p2), math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl))) % 360
 
 
-def eta_time(eta, ref):
-    """An AIS ETA ("MM-DD HH:MM", UTC as AIS sends it, no year) as unix time: the year that puts it nearest ref."""
-    try:
-        mo, rest = eta.split("-", 1); day, hm = rest.split(); h, m = (int(v) for v in hm.split(":"))
-        year = time.gmtime(ref).tm_year
-        times = []
-        for y in (year - 1, year, year + 1):
-            try: times.append(calendar.timegm((y, int(mo), int(day), h, m, 0)))
-            except ValueError: pass
-        return min(times, key=lambda t: abs(t - ref)) if times else None
-    except (ValueError, IndexError, AttributeError):
-        return None
+def clock(hhmm):
+    """"15:00" -> "3:00 PM" (the port's own time, as published)."""
+    try: h, m = (int(v) for v in hhmm.split(":"))
+    except (ValueError, AttributeError): return ""
+    return "%d:%02d %s" % (h % 12 or 12, m, "PM" if h >= 12 else "AM")
+
+
+def sailing_name(title):
+    """CruiseMapper's "4 nights, round-trip from Fort Lauderdale, USA" -> "4 nights from Fort Lauderdale"."""
+    t = title.replace(", USA", "").replace(", round-trip from ", " from ").replace("round-trip from ", "from ").strip()
+    parts = t.split(" from ", 1)                                     # ("Singapore, Singapore": the city once)
+    if len(parts) == 2 and "," in parts[1] and parts[1].split(",")[0].strip() == parts[1].split(",")[1].strip(): t = parts[0] + " from " + parts[1].split(",")[0]
+    return t
 
 
 def span(hours):
@@ -109,6 +63,92 @@ def span(hours):
     if mins < 60: return "%d min" % max(mins, 1)
     if mins < 48 * 60: return "%d h" % (mins // 60) + (" %d min" % (mins % 60) if mins % 60 and mins < 10 * 60 else "")
     return "%d days %d h" % (mins // 1440, mins % 1440 // 60)
+
+
+def along(points, f):
+    """The point a fraction f of the way along a line through points, and the index of the piece it's on."""
+    lens = [nm(a[0], a[1], b[0], b[1]) for a, b in zip(points, points[1:])]
+    goal = max(0.0, min(1.0, f)) * sum(lens)
+    for i, d in enumerate(lens):
+        if goal <= d or i == len(lens) - 1:
+            t = goal / d if d else 0.0
+            a, b = points[i], points[i + 1]
+            return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t), i
+        goal -= d
+    return tuple(points[0]), 0
+
+
+class Ship:
+    """A ship where its schedule puts it at `now`: lat, lon, heading, speed (knots, the leg's average), and
+    what the card says (where; the sailing). trail: the way it's come this sailing; ahead: the way to its
+    next port (both [(lat, lon)]); ports: the ports called at so far."""
+
+    def __init__(self, name, entry, now):
+        self.name, self.heading, self.speed = name, 0.0, 0.0
+        self.trail, self.ahead, self.ports, self.next_port = [], [], [], None
+        self.where, self.lines = "", []
+        stops, legs = entry.get("stops") or [], entry.get("legs") or []
+        title = sailing_name(entry.get("title") or "")
+        later = entry.get("upcoming") or []
+        if not stops:                                              # (between sailings, as far as the page says)
+            raise ValueError("no sailing")
+        def at(i, k):                                              # a stop's arrival/departure time, filling gaps
+            st = stops[i]; v = st.get(k)
+            return v if v else st.get("depart" if k == "arrive" else "arrive") or 0
+        first, last = stops[0], stops[-1]
+        if now < at(0, "depart"):                                  # not sailed yet: in its home port
+            self.lat, self.lon = first["lat"], first["lon"]
+            self.where = "At %s, sails %s%s" % (first["name"], "today " if at(0, "depart") - now < 18 * 3600 else first["day"] + " ", clock(first["depart_at"]))
+            self.lines = [title] if title else []
+            return
+        if now >= at(len(stops) - 1, "arrive"):                    # the sailing's over: back in port
+            self.lat, self.lon = last["lat"], last["lon"]
+            self.ports = [(s["lat"], s["lon"]) for s in stops[:-1]]
+            self.where = "At %s since %s %s" % (last["name"], last["day"], clock(last["arrive_at"]))
+            if later: self.lines = ["Next: %s, %s" % (" ".join(later[0][0].split()[1:][::-1]), sailing_name(later[0][1]))]
+            return
+        for i in range(len(stops)):
+            if at(i, "arrive") <= now < at(i, "depart"):           # in port
+                st = stops[i]
+                self.lat, self.lon = st["lat"], st["lon"]
+                self.ports = [(s["lat"], s["lon"]) for s in stops[:i]]
+                self.trail = [p for leg in legs[:i] for p in leg]
+                self.where = "At %s until %s" % (st["name"], clock(st["depart_at"]))
+                self.lines = [title] if title else []
+                return
+            if i + 1 < len(stops) and at(i, "depart") <= now < at(i + 1, "arrive"):    # at sea, between ports
+                a, b = stops[i], stops[i + 1]
+                route = legs[i] if i < len(legs) and len(legs[i]) >= 2 else [(a["lat"], a["lon"]), (b["lat"], b["lon"])]
+                t0, t1 = at(i, "depart"), at(i + 1, "arrive")
+                f = (now - t0) / max(1, t1 - t0)
+                (self.lat, self.lon), k = along(route, f)
+                self.heading = bearing(route[k], route[k + 1])
+                length = sum(nm(p[0], p[1], q[0], q[1]) for p, q in zip(route, route[1:]))
+                self.speed = length / max(0.1, (t1 - t0) / 3600)
+                self.trail = [p for leg in legs[:i] for p in leg] + list(route[:k + 1])
+                self.ahead = list(route[k + 1:])
+                self.ports = [(s["lat"], s["lon"]) for s in stops[:i + 1]]
+                self.next_port = (b["name"], b["lat"], b["lon"])
+                togo = length * (1 - f)
+                self.where = "At sea, bound for %s" % b["name"]
+                self.lines = ["Arriving %s %s" % (b["day"], clock(b["arrive_at"])) if b.get("arrive_at") else "",
+                              "%.0f nm to go" % togo if togo >= 1 else "", title]
+                self.lines = [l for l in self.lines if l]
+                return
+        raise ValueError("no place in its schedule")
+
+
+def read_schedule(path, now, example=False):
+    """name -> Ship, where each is at `now` (an example's times moved to now), and when it was fetched."""
+    try: data = json.load(open(path))
+    except (OSError, ValueError): return {}, None
+    shift = now - data.get("now", now) if example else 0
+    ships, fetched = {}, []
+    for name, entry in (data.get("ships") or {}).items():
+        try: ships[name] = Ship(name, entry, now - shift)
+        except (ValueError, KeyError, TypeError, IndexError): continue
+        if entry.get("fetched"): fetched.append(entry["fetched"] + shift)
+    return ships, (min(fetched) if fetched else None)
 
 
 def merc(lat): return math.log(math.tan(math.pi / 4 + math.radians(max(-85.0, min(85.0, lat))) / 2))
@@ -154,6 +194,12 @@ class MapScreen:
 
     def width(self, font, s): return self.parts(font, s, 0)[1]
 
+    def fit(self, font, s, w):
+        """s, shortened with "..." if it's wider than w."""
+        if self.width(font, s) <= w: return s
+        while s and self.width(font, s.rstrip(" ,") + "...") > w: s = s[:-1]
+        return s.rstrip(" ,") + "..."
+
     def text(self, font, s, x, base, color, halo=True):
         """Text (with a dark halo, so it reads over the imagery); returns its width."""
         ps, w = self.parts(font, s, x)
@@ -174,13 +220,6 @@ class MapScreen:
         return x, wy - self.oy
 
     def proj(self, lat, lon): return self.screen(*self.world(lat, lon))
-
-    def near(self, lat, lon, within=700):
-        best, dist = None, 1e9
-        for name, la, lo in self.meta["ports"]:
-            d = math.hypot((lat - la) * 111, (lon - lo) * 111 * math.cos(math.radians(lat)))   # km, roughly
-            if d < dist: best, dist = name, d
-        return best if best and dist < within else None
 
     def on_screen(self, x, y): return 6 < x < L.W - 6 and 6 < y < L.H - 26
 
@@ -238,50 +277,13 @@ class MapScreen:
         return best[1], best[2], best[3], best[4]
 
     def card_lines(self, s):
-        """The followed ship's AIS details, as (text, colour) lines."""
-        if s is None: return [("No position reported yet", L.DIM)]
-        lines = [(dms(s.lat, "N", "S") + "   " + dms(s.lon, "E", "W"), L.IVORY)]
-        if getattr(s, "estimated", None):                                 # (no recent report: where it should be)
-            age, how = s.estimated
-            lines.append(("Estimated · last heard %s ago" % span(age / 3600), L.GOLD))
-        status = s.status.lower() if s.status else ("under way" if s.speed > 0.5 else "stopped")
-        if s.speed > 0.5:
-            lines.append(("%.0f kn · course %03.0f° %s" % (s.speed, s.heading % 360, COMPASS[int((s.heading % 360 + 22.5) // 45) % 8]), L.IVORY))
-        place = self.near(s.lat, s.lon, 60 if status in ("moored", "at anchor", "stopped") else 700)
-        if status in ("moored", "at anchor", "stopped"):
-            lines.append((status.capitalize() + (" at " + place if place else ""), L.IVORY))
-        else:
-            lines.append(("Under way" + (", near " + place if place else ", at sea"), L.IVORY))
-        if s.dest:
-            dest = s.dest.title() if s.dest.isupper() else s.dest
-            now = s.when or time.time()
-            due = eta_time(s.eta, now)
-            lines.append((("Bound for " if s.speed > 0.5 else "Destination ") + dest, L.DIM))
-            # how far, and how long at this speed (straight there: a little short of the real route)
-            port = self.port_named(s.dest)
-            arrive = None
-            if port and s.speed > 3:
-                d = nm(s.lat, s.lon, port[1], port[2])
-                if d > 2:
-                    hours = d / s.speed; arrive = now + hours * 3600
-                    lines.append(("%.0f nm to go, about %s" % (d, span(hours)), L.DIM))     # "112 nm to go, about 6 h 20 min"
-            if due:
-                t = time.localtime(due)                                        # (the board's own time zone)
-                eta = "Due %d %s %d:%02d %s" % (t.tm_mday, MONTHS[t.tm_mon - 1], t.tm_hour % 12 or 12, t.tm_min, "PM" if t.tm_hour >= 12 else "AM")
-                if arrive and due > now and not getattr(s, "estimated", None):   # early or late, at this speed (not from an estimate: it's made from the ETA)
-                    late = (arrive - due) / 3600
-                    off = span(abs(late)) if abs(late) < 2 else "%d h" % round(abs(late))   # (whole hours from 2 h: the card is narrow)
-                    eta += " · on time" if abs(late) < 0.25 else " · %s %s" % (off, "late" if late > 0 else "early")
-                lines.append((eta, L.DIM))                                     # "Due 22 Nov 8:00 AM · 40 min late"
-        # how far it's come since midnight (the board's), along its trail
-        midnight = time.mktime(datetime.date.today().timetuple())
-        today = [p for p in getattr(s, "day", []) if p[2] and p[2] >= midnight] + [(s.lat, s.lon, s.when)]
-        run = sum(nm(a[0], a[1], b[0], b[1]) for a, b in zip(today, today[1:]))
-        if run >= 1: lines.append(("%.0f nm today" % run, L.DIM))
-        return lines                         # (how old the positions are: the status line, bottom left)
+        """The followed ship's card: where it is by its schedule, and its sailing, as (text, colour) lines."""
+        if s is None:
+            return [("No sailing listed for it now", L.DIM)]
+        return [(dms(s.lat, "N", "S") + "   " + dms(s.lon, "E", "W"), L.IVORY), (s.where, L.IVORY)] + [(t, L.DIM) for t in s.lines]
 
     def draw_card(self):
-        fx = self.fx; lines = self.card_lines(self.ships.get(self.follow))
+        fx = self.fx; lines = [(self.fit("small", t, CARD_X1 - CARD_X0 - 32), c) for t, c in self.card_lines(self.ships.get(self.follow))]
         w = max([self.width("label", self.follow)] + [self.width("small", t) for t, _ in lines]) + 32
         x0 = max(CARD_X0, CARD_X1 - w); y1 = CARD_Y0 + 50 + 22 * len(lines)
         self.card_box = (x0, CARD_Y0, CARD_X1, y1)
@@ -290,62 +292,41 @@ class MapScreen:
         y = CARD_Y0 + 58
         for t, col in lines: self.text("small", t, x0 + 16, y, col, halo=False); y += 22
 
-    def estimate(self, s, now):
-        """Where a ship under way should be by now, when its last report is old (aisstream hears ships at
-        sea only now and then): toward the destination it declared, arriving at its ETA; else on its last
-        course and speed, for at most 3 h. Its real report joins its trail; s.estimated says so."""
-        if not s.when or now - s.when < ESTIMATE_AFTER: return
-        if (s.status or "").lower() in ("moored", "at anchor") or s.speed < 1: return
-        port = self.port_named(s.dest) if s.dest else None
-        due = eta_time(s.eta, s.when) if s.eta else None
-        real = (s.lat, s.lon, s.when)
-        if port and due and due > s.when:
-            f = min(1.0, (now - s.when) / (due - s.when))
-            lat, lon = s.lat + (port[1] - s.lat) * f, s.lon + (port[2] - s.lon) * f
-            how = "on its way to %s" % port[0] if f < 1 else "arrived at %s" % port[0]
-            if f >= 1: s.speed = 0.0
-        else:
-            hours = min(3.0, (now - s.when) / 3600); d = s.speed * hours / 60          # (degrees of latitude)
-            h = math.radians(s.heading)
-            lat = s.lat + d * math.cos(h); lon = s.lon + d * math.sin(h) / max(0.2, math.cos(math.radians(lat)))
-            how = "on its last course"
-        s.trail = s.trail + [real]
-        s.lat, s.lon, s.estimated = lat, lon, (now - s.when, how)
-
-    def port_named(self, dest):
-        """The chart's port for an AIS destination ("NASSAU", "Port Canaveral", "US PCV"...), if it knows it."""
-        d = dest.lower().replace("the ", "").strip()
-        for name, la, lo in self.meta["ports"]:
-            n = name.lower().replace("the ", "")
-            if d and (d == n or d in n or n in d): return name, la, lo
-        return None
+    def polyline(self, pts, width, color, alpha, dash=None):
+        """A line through pts (screen), solid or dashed (dash: (on, off) pixels)."""
+        fx = self.fx; carry = 0.0
+        for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+            dist = math.hypot(bx - ax, by - ay)
+            if not dash:
+                fx.vfx_ui_line(int(ax * 16), int(ay * 16), int(bx * 16), int(by * 16), width, rgb(color), alpha); continue
+            if dist < 0.5: continue
+            ux, uy = (bx - ax) / dist, (by - ay) / dist; d = carry
+            while d < dist:
+                e = min(d + dash[0], dist)
+                fx.vfx_ui_line(int((ax + ux * d) * 16), int((ay + uy * d) * 16), int((ax + ux * e) * 16), int((ay + uy * e) * 16), width, rgb(color), alpha)
+                d += dash[0] + dash[1]
+            carry = d - dist
 
     def draw_trail_and_route(self, s):
-        """Where the followed ship has been (dots fading into the past) and, under way, a dashed line
-        to where it's bound. Drawn under everything else."""
+        """The followed ship's sailing so far (a line through where it's been, a dot at each port it's
+        called at) and, at sea, the way to its next port (dashed, a ring at the port). Drawn under
+        everything else."""
         fx = self.fx; x, y = self.proj(s.lat, s.lon)
-        pts = [self.proj(la, lo) for la, lo, _ in s.trail] + [(x, y)]
-        n = len(pts)
-        for i in range(n - 1):                                          # faint line through them
-            a = 90 + 140 * (i + 1) // n
-            (ax, ay), (bx, by) = pts[i], pts[i + 1]
-            fx.vfx_ui_line(int(ax * 16), int(ay * 16), int(bx * 16), int(by * 16), 60, rgb(HALO), a // 3)
-            fx.vfx_ui_line(int(ax * 16), int(ay * 16), int(bx * 16), int(by * 16), 26, rgb(L.IVORY), a * 3 // 4)
-        for i, (px, py) in enumerate(pts[:-1]):                          # and a dot at each report
-            a = 110 + 145 * (i + 1) // n
-            fx.vfx_ui_line(int(px * 16), int(py * 16), int(px * 16), int(py * 16), 120, rgb(HALO), a * 2 // 3)
-            fx.vfx_ui_line(int(px * 16), int(py * 16), int(px * 16), int(py * 16), 76, rgb(L.IVORY), a)
-        port = self.port_named(s.dest) if s.dest and s.speed > 0.5 else None
-        if port:
-            tx, ty = self.proj(port[1], port[2]); dx, dy = tx - x, ty - y; dist = math.hypot(dx, dy)
-            if dist > 30:
-                ux, uy = dx / dist, dy / dist; d = 16.0                      # (starts clear of the ship)
-                while d < dist - 8:
-                    e = min(d + 9, dist - 8)
-                    a0, a1 = (x + ux * d, y + uy * d), (x + ux * e, y + uy * e)
-                    fx.vfx_ui_line(int(a0[0] * 16), int(a0[1] * 16), int(a1[0] * 16), int(a1[1] * 16), 56, rgb(HALO), 90)
-                    fx.vfx_ui_line(int(a0[0] * 16), int(a0[1] * 16), int(a1[0] * 16), int(a1[1] * 16), 30, rgb(L.GOLD), 210)
-                    d += 16
+        past = [self.proj(la, lo) for la, lo in s.trail] + [(x, y)]
+        if len(past) > 1:
+            self.polyline(past, 60, HALO, 70)
+            self.polyline(past, 26, L.IVORY, 170)
+        for la, lo in s.ports:
+            px, py = self.proj(la, lo)
+            fx.vfx_ui_line(int(px * 16), int(py * 16), int(px * 16), int(py * 16), 120, rgb(HALO), 150)
+            fx.vfx_ui_line(int(px * 16), int(py * 16), int(px * 16), int(py * 16), 76, rgb(L.IVORY), 230)
+        if s.next_port:
+            ahead = [(x, y)] + [self.proj(la, lo) for la, lo in s.ahead]
+            if math.hypot(ahead[-1][0] - x, ahead[-1][1] - y) > 30:
+                # (starts clear of the ship, stops short of the port's ring)
+                self.polyline(ahead, 56, HALO, 90, dash=(9, 7))
+                self.polyline(ahead, 30, L.GOLD, 210, dash=(9, 7))
+                tx, ty = ahead[-1]
                 fx.vfx_ui_ring(int(tx * 16), int(ty * 16), 7 * 16, 30, rgb(L.GOLD), 220)
 
     def draw(self, example, layer):
@@ -378,16 +359,12 @@ class MapScreen:
         for it in reversed(self.items): self.draw_item(it)                   # the followed ship last, on top
         self.draw_card()
         # how old the positions are, and the imagery's credit
-        whens = [sh.when for sh in ships.values() if sh.when]
         r = self.meta.get("region")
         if s and r and not (r[0] + 4 < s.lon < r[2] - 4 and r[1] + 2 < s.lat < r[3] - 2):
             self.text("small", "Beyond the Caribbean map", L.W // 2 - self.width("small", "Beyond the Caribbean map") // 2, 300, L.IVORY)
-        if example: self.text("small", "Example positions", 24, 466, L.GOLD)
-        elif whens:
-            age = max(0, time.time() - max(whens)) / 60
-            msg = "Positions just in" if age < 2 else "Positions from %d min ago" % age if age < 120 else \
-                  "Positions from %d h ago" % (age / 60) if age < 48 * 60 else "Positions from %d days ago" % (age / 1440)
-            self.text("small", msg, 24, 466, L.DIM)
+        if example: self.text("small", "Example schedules", 24, 466, L.GOLD)
+        else:
+            self.text("small", "Where the itineraries put them", 24, 466, L.DIM)
         if self.credit:
             k = self.sid("tiny|" + self.credit)
             if k >= 0: fx.vfx_ui_text(k, L.W - 12 - fx.vfx_ui_metric(k, 4), 468, rgb((150, 156, 166)), 255)
@@ -425,13 +402,10 @@ class MapScreen:
     def run(self, seconds):
         """Show the map for this long, or until a tap; returns False if there's nothing to show."""
         app, fx = self.app, self.fx
-        live = app.conf.get("SHIPS_FILE") or os.path.join(app.module.data_dir, "ships.csv")
-        path = os.environ.get("VACATION_SHIPS") or (live if os.path.exists(live) else os.path.join(os.path.dirname(self.map_dir), "ships_example.csv"))
-        if not os.path.exists(path): path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ships_example.csv")
-        self.ships, example = read_ships(path)
-        if not example:                                                   # (old reports: where they should be by now)
-            now = time.time()
-            for sh in self.ships.values(): self.estimate(sh, now)
+        live = os.environ.get("VACATION_SCHEDULE") or os.path.join(app.module.data_dir, "schedule.json")
+        example = not os.path.exists(live)
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schedule_example.json") if example else live
+        self.ships, fetched = read_schedule(path, time.time(), example)
         # NASA's Earth by day (Blue Marble) or at night (Black Marble, the city lights), with the ship picture's
         # day and night
         if fx.vfx_ui_open_blank(app.ui_dir.encode()) != 0: return False

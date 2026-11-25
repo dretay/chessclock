@@ -68,10 +68,13 @@ photo, the castle's from a 3D model (`tools/themegen/castle/build_castle.sh`).
 
 **The cruise** (`apps/cruise/`): the Disney Dream (`scenes/dream/`; `scenes/dream-blender/` is a
 Blender-rendered version, not installed), the fleet map (`map.py`, its Caribbean chart in `map/`, made
-by `tools/themegen/build_map.py`), and live ship positions from AIS (`ais.py`, aisstream.io) into
-`/apps/data/cruise/ships.csv`. AIS needs WiFi and an API key in `/apps/data/cruise/ais.key`; until
-then the map shows `ships_example.csv` (`apps/cruise/tools/send_ships.py` puts a file there over
-USB). Settings > Theme: the ship the map follows (`MAP_SHIP`).
+by `tools/themegen/build_map.py`), placing each Disney ship where its itinerary says: at a port
+between its arrival and departure, or partway along the leg to the next (by sea, around Florida and
+Cuba: `map/sea.bin`, from `tools/themegen/build_sea.py`). The schedules come from CruiseMapper's ship
+pages, fetched over WiFi by `schedule.py` (the app's service: each ship about twice a day) into
+`/apps/data/cruise/schedule.json`; until then the map shows `schedule_example.json` (a real fetch, its
+times moved to now). It reads CruiseMapper's page layout: if they change it, the log says "couldn't
+read" and the map keeps the last schedules. Settings > Theme: the ship the map follows (`MAP_SHIP`).
 
 **The castle** (`apps/castle/`): Cinderella Castle at Magic Kingdom (`scenes/magic-kingdom/`, rendered
 from a 3D model: day, dusk and night from one camera, a light AI detail pass over all but the castle,
