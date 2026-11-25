@@ -180,7 +180,7 @@ def main():
                     if max(h - l for l, h in zip(lo, hi)) <= 6:            # all one colour: open ocean
                         flat["%d_%d" % (tx, ty)] = [(l + h) // 2 for l, h in zip(lo, hi)]; sea = sea or flat["%d_%d" % (tx, ty)]; continue
                     path = os.path.join(d, "%d_%d.rgb.gz" % (tx, ty))
-                    with gzip.open(path, "wb", 9) as f: f.write(t.tobytes())
+                    with gzip.GzipFile(path, "wb", 9, mtime=0) as f: f.write(t.tobytes())   # (no timestamp: same tile, same file)
                     stored += 1; size += os.path.getsize(path)
             # a preview around Florida
             cx, cy = proj(-79.5, 26.5)

@@ -6,7 +6,7 @@ runtime too old for an installed app, the names /apps's other things have, repla
 app, and tarballs reaching outside the app (.., absolute paths, links). Uses a throwaway key; needs a
 C compiler, zlib, and OpenSSL 3 (OPENSSL picks one). Run by tools/test/check.py, or by itself.
 """
-import gzip, io, json, os, shutil, subprocess, sys, tarfile, tempfile
+import gzip, io, os, shutil, subprocess, sys, tarfile, tempfile
 
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.join(REPO, "tools", "apps")); import pack, layout

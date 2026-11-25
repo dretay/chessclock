@@ -17,7 +17,7 @@ api, the runtime it needs (a countdown app: `runtime countdown`) or the api it p
 The board checks it against the public keys in its /etc/modules/trusted.keys, then the tarball against
 it: `modinstall NAME-VERSION.tar.gz`.
 """
-import fnmatch, getpass, gzip, hashlib, io, json, os, subprocess, sys, tarfile, tempfile
+import getpass, gzip, hashlib, io, json, os, subprocess, sys, tarfile, tempfile
 
 REPO = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import layout

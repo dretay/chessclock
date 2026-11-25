@@ -15,7 +15,7 @@ pre-drawn on a desktop (tools/themegen/build_ui.py; layout in vacation_layout.py
 it opens at once. Save writes vacation.conf (and sets the clock if today's date or time were
 changed); Cancel, or a minute and a half untouched, leaves everything as it was.
 """
-import calendar, datetime, json, os, threading, time
+import calendar, datetime, json, os, threading
 
 import vacation_layout as L
 

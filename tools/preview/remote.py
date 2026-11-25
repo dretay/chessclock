@@ -1,9 +1,9 @@
 """The previewer's Controls set to Device: the same live controls (time of day, fireworks, the nightly
-show, birds, the lights' pattern, stay on the scene) for the countdown running on the board, written over
+show, birds, fireflies, the lights' pattern, stay on the scene) for the countdown running on the board, written over
 its USB console into /tmp/countdown-live.json (in RAM: a reboot forgets it), which the countdown looks at a
 few times a second (apps/countdown/vacation.py REMOTE_LIVE). No network, nothing listening on the board.
 
-One-shot controls (fireworks, show, birds) are times in ms: the countdown fires each when it's larger than
+One-shot controls (fireworks, show, birds, fireflies) are times in ms: the countdown fires each when it's larger than
 the last, so a new session never sets one off by itself. Leaving Device puts the board back as it was
 (its own clock, its screens in turn, every pattern), one-shots aside.
 

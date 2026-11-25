@@ -25,7 +25,10 @@ import importlib.util, json, os, sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 SYSTEM = os.environ.get("SYSTEM_DIR") or os.path.join(os.path.dirname(HERE), "system")   # (the system package: /apps/system)
 if SYSTEM not in sys.path: sys.path.insert(0, SYSTEM)
-from sysapps import DEVICE_CONF, DEVICE_KEYS, read_conf, device_path, read_settings, manifest_path, installed   # noqa: E402
+from sysapps import DEVICE_KEYS, read_conf, device_path, manifest_path   # noqa: E402
+from sysapps import read_settings   # noqa: E402  (passed on: vacation.py calls apps.read_settings)
+# what vacation.py uses from here (read_settings passed on from sysapps)
+__all__ = ["App", "API", "CONF", "OLD_DATA", "SYSTEM", "ensure_device", "manifest_path", "read_conf", "read_settings", "settings_file"]
 
 API = 4                                  # the app.json "api" this runtime understands (also in the API file):
                                          # 3 added screens from the runtime ("from": "runtime": the parks' wait times);

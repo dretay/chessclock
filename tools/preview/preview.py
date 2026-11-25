@@ -728,7 +728,7 @@ def serve(pv, port):
                 if c.get("panel") and pv.target == "remote":            # (the panel's controls, for the device's countdown)
                     r = pv.remote
                     if "hour" in c: r.set(hour=float(c["hour"]) if str(c["hour"]) != "" else None)
-                    for k in ("fireworks", "show", "birds"):
+                    for k in ("fireworks", "show", "birds", "fireflies"):
                         if c.get(k): r.fire(k)
                     if "pattern" in c: r.set(pattern=int(c["pattern"]))
                     if "stay" in c: r.set(stay=bool(c["stay"]))

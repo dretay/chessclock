@@ -16,7 +16,7 @@ the app's own: {"file": ..., "class": ...}, as the cruise's fleet map.)
 
     python3 screens.py --plan     (in an app's folder) the fetchers its screens need: "name every path" lines
 """
-import json, os, sys
+import json, sys
 
 TYPES = {
     "waits":   {"file": "parks/board.py",    "class": "WaitsScreen",   "fetch": "parks/waits.py",   "every": 300},

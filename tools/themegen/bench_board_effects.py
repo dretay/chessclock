@@ -29,15 +29,15 @@ def fw():
     return ImageChops.add(skyf, lay)
 bench("fireworks: 220 sparks + additive (sky 800x196)", fw)
 small = day.crop((300, 100, 360, 140))
-bench("one 60x40 sprite pasted", lambda: day.paste(small, (10, 10)), 50)
-bench("pack full frame to BGRX", lambda: day.tobytes("raw", "BGRX"))
+bench("one 60x40 sprite pasted", lambda d=day: d.paste(small, (10, 10)), 50)        # (each bound now: freed below,
+bench("pack full frame to BGRX", lambda d=day: d.tobytes("raw", "BGRX"))             #  the 32 MB board needs the room)
 water = day.crop((0, HZ, W, H))
-bench("pack water region to BGRX", lambda: water.tobytes("raw", "BGRX"))
+bench("pack water region to BGRX", lambda w=water: w.tobytes("raw", "BGRX"))
 bench("pack 60x40 to BGRX", lambda: small.tobytes("raw", "BGRX"), 50)
 fd = os.open("/dev/fb0", os.O_RDWR); mem = mmap.mmap(fd, W * H * 4, mmap.MAP_SHARED, mmap.PROT_READ | mmap.PROT_WRITE)
 data = day.tobytes("raw", "BGRX"); del day
 wd = water.tobytes("raw", "BGRX")
-def full(): mem[0:len(data)] = data
+def full(d=data): mem[0:len(d)] = d
 def wat(): o = HZ * W * 4; mem[o:o + len(wd)] = wd
 bench("copy full frame into framebuffer", full)
 bench("copy water region into framebuffer", wat)

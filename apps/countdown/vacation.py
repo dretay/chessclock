@@ -99,7 +99,6 @@ def days_left(sail, today):
 
 class App:
     def __init__(self):
-        here = os.path.dirname(os.path.abspath(__file__))
         app_dir = os.environ.get("VACATION_APP") or os.getcwd()
         app_id = json.load(open(apps.manifest_path(app_dir) or os.path.join(app_dir, "app.json")))["id"]
         self.module = apps.App(app_dir, DATA or os.path.join("/apps/data", app_id))   # the trip: scene, screens, data

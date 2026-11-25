@@ -623,7 +623,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
     }
     // ---------------------------------------------------------------- the controls: time of day, fireworks
     func makeControlPanel() {
-        controlPanel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 322),
+        controlPanel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 380, height: 322),
                                styleMask: [.titled, .closable, .utilityWindow], backing: .buffered, defer: false)
         controlPanel.title = "Controls"
         controlPanel.hidesOnDeactivate = false
@@ -644,11 +644,13 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         liveBox = NSButton(checkboxWithTitle: "This Mac's clock", target: self, action: #selector(liveClock(_:)))
         liveBox.frame = NSRect(x: 12, y: 202, width: 200, height: 20)
         let fw = NSButton(title: "Fireworks", target: self, action: #selector(fireworks))
-        fw.frame = NSRect(x: 8, y: 140, width: 96, height: 30)
+        fw.frame = NSRect(x: 8, y: 140, width: 90, height: 30)
         let show = NSButton(title: "Nightly show", target: self, action: #selector(nightlyShow))
-        show.frame = NSRect(x: 104, y: 140, width: 112, height: 30)
+        show.frame = NSRect(x: 98, y: 140, width: 108, height: 30)
         let birds = NSButton(title: "Birds", target: self, action: #selector(birdsNow))
-        birds.frame = NSRect(x: 216, y: 140, width: 76, height: 30)
+        birds.frame = NSRect(x: 206, y: 140, width: 70, height: 30)
+        let flies = NSButton(title: "Fireflies", target: self, action: #selector(firefliesNow))
+        flies.frame = NSRect(x: 276, y: 140, width: 96, height: 30)
         let showLabel = NSTextField(labelWithString: "Lights' show")
         showLabel.frame = NSRect(x: 14, y: 112, width: 100, height: 18)
         patternMenu = NSPopUpButton(frame: NSRect(x: 110, y: 106, width: 180, height: 28), pullsDown: false)
@@ -670,14 +672,14 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         eraseNote.maximumNumberOfLines = 2; eraseNote.lineBreakMode = .byWordWrapping
         let stay = NSButton(checkboxWithTitle: "Stay on the scene (screens wait)", target: self, action: #selector(stayOnScene(_:)))
         stay.frame = NSRect(x: 12, y: 178, width: 270, height: 20); stay.state = .on; stayBox = stay
-        for c in [hourLabel!, hourSlider!, liveBox!, stay, fw, show, birds, showLabel, patternMenu!, editLabel, eraseBox!, undo, eraseNote!] as [NSView] { v.addSubview(c) }
+        for c in [hourLabel!, hourSlider!, liveBox!, stay, fw, show, birds, flies, showLabel, patternMenu!, editLabel, eraseBox!, undo, eraseNote!] as [NSView] { v.addSubview(c) }
         controlPanel.contentView = v
         if !controlPanel.setFrameUsingName("AppPreviewControls") {
             let f = window.frame
             controlPanel.setFrameTopLeftPoint(NSPoint(x: f.maxX + 8, y: f.maxY))
         }
         let top = controlPanel.frame.maxY                 // (a frame saved before the Controls row: its size again, the top kept)
-        controlPanel.setContentSize(NSSize(width: 300, height: 322))
+        controlPanel.setContentSize(NSSize(width: 380, height: 322))
         controlPanel.setFrameTopLeftPoint(NSPoint(x: controlPanel.frame.minX, y: top))
         controlPanel.orderFront(nil)
     }
@@ -697,6 +699,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
     }
     @objc func fireworks() { panelControl(["fireworks": true]) }
     @objc func birdsNow() { panelControl(["birds": true]) }
+    @objc func firefliesNow() { panelControl(["fireflies": true]) }
     @objc func stayOnScene(_ sender: NSButton) { panelControl(["stay": sender.state == .on]) }
     func toNight() { liveBox.state = .off; hourSlider.doubleValue = 22; showHour(); panelControl(["hour": "22"]) }
     func panelControl(_ body: [String: Any]) { var b = body; b["panel"] = true; control(b) }
