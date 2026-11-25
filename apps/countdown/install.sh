@@ -13,3 +13,7 @@ cp "$SRC/launch" "$DEST/" && chmod 755 "$DEST/launch"
 mkdir "$DEST/parks"                                       # (the park apps' wait times: screen, fetcher, service)
 cp "$SRC/parks/board.py" "$SRC/parks/waits.py" "$DEST/parks/"
 cp "$SRC/parks/service" "$DEST/parks/" && chmod 755 "$DEST/parks/service"
+cp "$SRC/screens.py" "$DEST/" && cp "$SRC/screens.sh" "$DEST/" && chmod 755 "$DEST/screens.sh"   # (screen types; the shared fetcher loop)
+mkdir "$DEST/weather" "$DEST/ships"
+cp "$SRC/ships/screen.py" "$SRC/ships/fetch.py" "$DEST/ships/"
+cp "$SRC/weather/screen.py" "$SRC/weather/fetch.py" "$DEST/weather/"

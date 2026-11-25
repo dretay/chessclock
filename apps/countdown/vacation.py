@@ -27,7 +27,7 @@ For trying it out:
   VACATION_SHOW=1           start the nightly fireworks show right away
   VACATION_UI_DIR           the Settings images (ui.bin.gz), if not the installed ones
   VACATION_MAP_DIR          the fleet map's chart (map.rgb.gz, map.json), if not the installed one
-  VACATION_SCHEDULE=FILE    the ships' schedules from this file, not the app's schedule.json (see apps/cruise/map.py)
+  VACATION_SCHEDULE=FILE    the ships' schedules from this file, not the app's schedule.json (see apps/countdown/ships/screen.py)
   VACATION_MAP_AFTER=5      show the module's first screen (the fleet map) after this many seconds
   VACATION_NOW=2026-12-16T15:58   pretend the date and time are this (try the last day and sailing)
 """
@@ -58,7 +58,7 @@ def lighting(hour):
 
 
 # the drawing library's scene effects (vfx_effects): theme.json lists the ones its scene has
-EFFECTS = {"water": 1, "wake": 2, "smoke": 4, "gulls": 8, "dolphins": 16, "raft": 32, "twinkle": 64}
+EFFECTS = {"water": 1, "wake": 2, "smoke": 4, "gulls": 8, "birds": 8, "dolphins": 16, "raft": 32, "twinkle": 64, "foam": 128}   # ("birds": the gulls, any scene's)
 
 FADE_SECS = 0.6                                     # countdown <-> a module's screen
 
@@ -124,6 +124,11 @@ class App:
         # the scene's own effects (theme.json "effects"; all of them when it doesn't say: the ship's)
         if "effects" in s:
             self.fx.vfx_effects(sum(EFFECTS.get(e, 0) for e in s["effects"]))
+        fo = s.get("foam") or {}                         # (a scene's own foam: points and sizes, how much, which way)
+        if fo.get("points"):
+            xyr = [int(v) for p in fo["points"][:16] for v in (p[0], p[1], p[2] if len(p) > 2 else 12)]
+            self.fx.vfx_foam(len(xyr) // 3, (ctypes.c_int * len(xyr))(*xyr), int(float(fo.get("amount", 1.0)) * 256),
+                             {"still": 0, "left": 1, "right": 2, "falling": 3, "toward": 4}.get(fo.get("flow", "still"), 0))
         water = s.get("water") or {}                     # (a scene's own water, water.raw.gz: how strong, how fast)
         self.fx.vfx_water(int(float(water.get("strength", 1.0)) * 256), int(float(water.get("speed", 1.0)) * 256))
         show = s.get("show") or {}                       # (the lights' show: theme.json "show", else every pattern)
@@ -139,6 +144,12 @@ class App:
         tube = [v for pt in s.get("tube", []) for v in pt]
         mast = s.get("mast", [-1, 0])
         self.fx.vfx_ambient(mast[0], mast[1], int(s.get("ambient_scale", 1.0) * 256), len(tube) // 2, (ctypes.c_int * max(1, len(tube)))(*tube))
+        sm = s.get("smoke") or {}                        # (a scene's own smoke: where from, how big, the wind; after vfx_scene: it sets the ship's funnels)
+        if sm.get("points"):
+            xy = [int(v) for p in sm["points"][:8] for v in p]
+            rate = int(sm.get("rate", 4)); dense = float(sm.get("density", 1.2 + rate * 0.2))   # (thicker smoke: more puffs, denser)
+            self.fx.vfx_smoke(len(xy) // 2, (ctypes.c_int * len(xy))(*xy), int(float(sm.get("scale", 0.8)) * 256),
+                              int(float(sm.get("wind", 0)) * 256), rate, int(dense * 256))
         self.backlight = Backlight()
         self.bl_shown, self.bl_at, self.bright_preview = None, 0.0, None
         self.screen_press, self.want_settings, self.screen_tapped = None, False, False
@@ -147,6 +158,7 @@ class App:
         # in the previewer: its live controls (the time-of-day slider, fireworks), without a restart
         self.live_path = os.path.join(os.environ["PREVIEW_DIR"], "live.json") if os.environ.get("PREVIEW_DIR") else None
         self.live_at, self.live = 0.0, {}
+        self.go_screen = False
         self.daylapse = float(os.environ.get("VACATION_DAYLAPSE", "0"))
         self.log_every = float(os.environ.get("VACATION_LOG_SECS", "60"))
         # a preview steps time exactly one frame per frame, and can record every frame
@@ -195,10 +207,11 @@ class App:
         except ValueError: self.countdown_secs = 60.0
         self.playlist = []
         for spec, cls in self.screens:
-            if c.get(spec.get("enabled", ""), "1") in ("0", ""): continue
-            try: secs = float(c.get(spec.get("secs", ""), "60"))
+            if spec.get("enabled") and c.get(spec["enabled"], "1") in ("0", ""): continue
+            v = spec.get("secs", 60)                     # (seconds, or the name of a setting holding them)
+            try: secs = float(v) if isinstance(v, (int, float)) else float(c.get(v, "60"))
             except ValueError: secs = 60.0
-            self.playlist.append((cls, secs))
+            self.playlist.append((cls, secs, spec))
         self.next_screen = 0
 
     # time: real, or a preview's frame-by-frame clock
@@ -277,6 +290,8 @@ class App:
         if old and new.get("fireworks", 0) != old.get("fireworks", 0): self.fx.vfx_fireworks(random.randint(4, 7))
         if old and new.get("show", 0) != old.get("show", 0): self.start_show(t)
         if new.get("pattern", -1) != old.get("pattern", -1): self.fx.vfx_twinkle_pin(int(new.get("pattern", -1)))
+        if old and new.get("screen_go", 0) != old.get("screen_go", 0) and self.playlist:     # (show a screen now)
+            self.next_screen = int(new.get("screen", 0)) % len(self.playlist); self.go_screen = True
         return new.get("hour") != old.get("hour") or not old
 
     def hour(self, t):
@@ -373,15 +388,17 @@ class App:
                 continue
             # the module's next screen, every so often (not in the middle of a fireworks show, or a press)
             # (a tap shows it even during a fireworks show; on its own timer, it waits for the show to end)
+            if self.go_screen: self.go_screen = False; next_map = -1      # (the previewer's "show it now")
             # (the previewer's "Stay on the scene": no screens by themselves, a tap still brings one)
             if self.playlist and t >= next_map and (not self.show or next_map < 0) and hold_start is None and (next_map < 0 or not self.live.get("stay")):
                 clock0 = 0 if self.sim else start
                 def countdown_frame(): self.fx.vfx_frame(int((self.now() - clock0) * 1000) & 0x3fffffff)
                 self.fade(0, countdown_frame)                      # the countdown fades out,
                 for _ in self.playlist:                            # the screens: each fades in and out by itself;
-                    cls, secs = self.playlist[self.next_screen % len(self.playlist)]; self.next_screen += 1
+                    cls, secs, spec = self.playlist[self.next_screen % len(self.playlist)]; self.next_screen += 1
                     self.screen_tapped = False
-                    cls(self).run(secs)                            # a tap on one goes to the next, and from the
+                    screen = cls(self); screen.spec = spec        # (its settings from app.json: a weather screen's place)
+                    screen.run(secs)                               # a tap on one goes to the next, and from the
                     if not self.screen_tapped or self.want_settings: break    # last back to the countdown
                 self.fade(256, countdown_frame)                    # and the countdown comes back
                 next_map = self.now() - (0 if self.sim else start) + self.countdown_secs

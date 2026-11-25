@@ -22,6 +22,11 @@ WORK (a folder of pictures, any size: they're scaled to 800x480; the same camera
                    spiral, comet, heartbeat; without it, all of them)} (the command line overrides it)
     twinkle_mask.png  optional, with "orb": white where the lights show (paint out what's in front of
                    the sphere: trees, its legs); without it, the whole circle
+    scene.json "smoke": {"points": [[x, y], ...], "scale": 0.8, "wind": 0 (-1 left .. 1 right), "rate": 4}:
+                   smoke rising from those points (a campfire, a chimney: up to 8); "birds": true: now and
+                   then a few birds cross the sky, by day; "foam": {"points": [[x, y, r], ...], "amount": 1.0,
+                   "flow": "still" | "left" | "right" | "falling" | "toward"}: white water at those points
+                   (on the scene's water, if it has some)
     water.png      optional: white where there's water: it ripples ("water" effect; scene.json "water":
                    {"strength": 1.0, "speed": 1.0}; painted or found in the previewer's Scene Builder)
     twinkle_points.json  optional, with "orb": the lights' places, [[x, y], ...] (photo_scene.py finds
@@ -270,6 +275,13 @@ def pack(work, out_dir, greeting=None, horizon=None, stars=True):
         print("twinkle: %d lights on the orb" % len(pts))
     elif os.path.exists(tw): os.remove(tw)
     theme = {"effects": effects, "horizon": horizon, "fireworks_scale": conf.get("fireworks_scale", 0.85), "cards": dict(CARDS, **conf.get("cards", {}))}
+    if conf.get("smoke", {}).get("points"):                              # (smoke from points: a campfire, a chimney)
+        if "smoke" not in effects: effects.append("smoke")
+        theme["smoke"] = conf["smoke"]
+    if conf.get("birds") and "birds" not in effects: effects.append("birds")
+    if conf.get("foam", {}).get("points"):                               # (white water: a waterfall's foot, rapids, surf)
+        if "foam" not in effects: effects.append("foam")
+        theme["foam"] = conf["foam"]
     if "water" in effects: theme["water"] = {"strength": conf.get("water", {}).get("strength", 1.0), "speed": conf.get("water", {}).get("speed", 1.0)}
     if conf.get("show"):                                                  # (the lights' show: its patterns, in turn)
         bad = [n for n in conf["show"].get("program", []) if n not in SHOW]

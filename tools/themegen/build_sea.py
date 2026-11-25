@@ -6,7 +6,7 @@
 The fleet map's region (tools/themegen/build_map.py's REGION: the Caribbean, the Gulf of Mexico,
 Florida and the Bahamas) in cells of STEP degrees: a bit each, 1 where it's sea. A cell counts as land
 if most of it is within about MARGIN degrees of land (Natural Earth's coastlines, assets/map/
-ne_50m_land.geojson), so a route keeps a little offshore. apps/cruise/schedule.py finds the way
+ne_50m_land.geojson), so a route keeps a little offshore. the runtime's ships/fetch.py finds the way
 through it from port to port (around Florida, past Cuba) rather than across land.
 
 The file: a first line "SEA lon0 lat0 step cols rows\\n", then the bits, row by row from the south,

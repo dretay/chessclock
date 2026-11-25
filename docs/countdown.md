@@ -9,7 +9,7 @@ and Settings. The app brings the trip:
 | `app.json` | | its id, name, version, the runtime and api it needs, its scene, screens, settings and countdown wording |
 | `run` | | `exec /apps/countdown/launch`: the runtime, for this app |
 | a **scene** | `scenes/NAME/` | the picture behind the countdown (`THEME` picks one, else app.json's default) |
-| **screens** | e.g. `map.py` | shown in turn with the countdown: a class taking the runtime's App, with `run(seconds)`; app.json names its file and class and the settings for its seconds and on/off |
+| **screens** | `"type"`s | shown in turn with the countdown: the runtime's screen types (waits, weather, ships: see Screens below), or a class of the app's own taking the runtime's App, with `run(seconds)` |
 | a **service** | `service` | its background job, e.g. fetching data, beside it (S99app runs it with `APP_DATA`); every one so far needs the network, and sleeps on a kernel without WiFi |
 | its **settings and data** | `/apps/data/ID/` | `countdown.conf` (made the first time: [the runtime's README](../apps/countdown/README.md#settings)), and whatever it fetches (`APP_DATA`, or `app.module.data_dir` for a screen) |
 | `defaults.conf` | | its own settings' first values |
@@ -61,7 +61,13 @@ light: pixels, their light, their window, so windows switch one at a time at nig
 - `water` (with a `water.raw.gz`: how much each pixel ripples, painted or found in the Scene Builder):
   `{"strength": 1.0, "speed": 1.0}`; without the file, the water is the sea below the horizon, off the
   ship (the cruise's);
-- `effects`: the library's scene effects it has (`water`, `wake`, `smoke`, `gulls`, `dolphins`,
+- `smoke`: `{"points": [[x, y], ...], "scale": 0.8, "wind": 0, "rate": 4}`: smoke rising from those points
+  (up to 8: a campfire, a chimney; wind -1 left to 1 right; rate 2 light to 8 heavy); without it, the
+  ship's two funnels (`stacks`). `birds` in `effects`: now and then a few cross the sky, by day (the
+  cruise's gulls, for any scene); `foam`: `{"points": [[x, y, r], ...], "amount": 1.0, "flow": "still" |
+  "left" | "right" | "falling" | "toward"}`: white water at those points (up to 16: a waterfall's foot,
+  rapids, surf; falling throws up spray), on the scene's own water if it has some, else wherever placed;
+- `effects`: the library's scene effects it has (`water`, `wake`, `smoke`, `gulls`/`birds`, `dolphins`,
   `raft`, `twinkle`); without the list, all of them. Fireworks, window light and the cards are every
   scene's. `twinkle`: coloured lights on the subject at night (EPCOT's orb), from the scene's
   `twinkle.bin.gz` (their places, and each one's place on the sphere), fading in through dusk: a
@@ -82,11 +88,11 @@ leave out what's in front of it). With the previewer open on the app, it restart
 ## The apps so far
 
 **The cruise** (`apps/cruise/`): the Disney Dream (`scenes/dream/`; `scenes/dream-blender/` is a
-Blender-rendered version, not installed), the fleet map (`map.py`, its Caribbean chart in `map/`, made
+Blender-rendered version, not installed), the fleet map (the runtime's "ships" screen type, its Caribbean chart in the app's `map/`, made
 by `tools/themegen/build_map.py`), placing each Disney ship where its itinerary says: at a port
 between its arrival and departure, or partway along the leg to the next (by sea, around Florida and
 Cuba: `map/sea.bin`, from `tools/themegen/build_sea.py`). The schedules come from CruiseMapper's ship
-pages, fetched over WiFi by `schedule.py` (the app's service: each ship about twice a day) into
+pages, fetched over WiFi by the runtime's `ships/fetch.py` (the shared fetcher loop: each ship about twice a day) into
 `/apps/data/cruise/schedule.json`; until then the map shows `schedule_example.json` (a real fetch, its
 times moved to now). It reads CruiseMapper's page layout: if they change it, the log says "couldn't
 read" and the map keeps the last schedules. Settings > Theme: the ship the map follows (`MAP_SHIP`).
@@ -98,18 +104,29 @@ parchment cards, the windows' light), with none of the ship's effects, and the p
 **EPCOT** (`apps/epcot/`): the park's wait times, on a placeholder scene (a plain sky by day, dusk and
 night) until its art is made.
 
-**The parks' wait times** are the runtime's (`apps/countdown/parks/`, runtime API 3), shared by every
-park app: the board (`board.py`, a screen with `"from": "runtime"` in the app's `app.json`), and ride
+**Screens** (runtime API 4): what shows in turn with the countdown is a list of screen types in the
+app's `app.json` (`apps/countdown/screens.py`), any number, in order, each for its seconds:
+`{"type": "waits"}` (a park's ride wait times), `{"type": "weather", "place": ..., "lat": ..., "lon":
+..., "units": "F"}` (the forecast for planning a hike: now, which days bring rain or snow, and ten days
+in cards, each with its rain (how likely) or snow (how much); the trip's day outlined in gold; from Open-Meteo, free, no key, credited on the screen; `apps/countdown/weather/`). An app's
+`service` is `exec ../countdown/screens.sh`: the fetchers its screens need, one at a time, each as often
+as its type says (ride waits every 5 minutes, the weather every half hour), so only one Python is ever
+fetching. (A screen of an app's own: `{"file", "class"}`, as the cruise's fleet map, for now.)
+
+**The parks' wait times** are the runtime's (`apps/countdown/parks/`), shared by every
+park app: the board (`board.py`, the "waits" screen type), and ride
 waits, park hours and show times from ThemeParks.wiki (`waits.py`, free, no key; fetched every 5
-minutes by `parks/service`, which the app's own `service` runs, then it exits, so it takes memory only
+minutes by the shared fetcher loop (`screens.sh`), then it exits, so it takes memory only
 for the seconds of a fetch) into `/apps/data/<app>/waits.json`, else the app's `waits_example.json`.
 The park and its night show are the app's `app.json` `"park": {"id": ThemeParks.wiki id, "show": ...}`;
 `"short_names"` shortens long ride names. Settings > Theme: the rides the board shows (`RIDES`);
 `SHOW_NAME` and `PARK` in the app's settings override the show and park.
 
-**A new one:** `python3 tools/apps/new.py ID --name NAME [--park PARK --show SHOW]` (e.g. `new.py epcot
---name EPCOT --park EPCOT --show "Luminous The Symphony of Us"`) makes the app with a placeholder scene
-and, for a park, its wait times and an example of them; it runs at once in the previewer. Real art goes
+**A new one:** `python3 tools/apps/new.py ID --name NAME [--park PARK --show SHOW] [--weather PLACE]`
+(e.g. `new.py epcot --name EPCOT --park EPCOT --show "Luminous The Symphony of Us"`; `new.py yosemite
+--name Yosemite --weather "Yosemite Valley" --date-label "Trail day"`) makes the app with a placeholder
+scene and, for a park, its wait times, for a place, its weather (the place looked up by name), each
+with an example of them; it runs at once in the previewer. Real art goes
 in `tools/themegen/work/ID/` (day, dusk and night pictures from one camera; optional mask.png,
 windows.png, scene.json), packed into the app's scene by `tools/themegen/scene_pack.py`.
 

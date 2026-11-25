@@ -288,6 +288,14 @@ class Preview:
         except (OSError, ValueError): out["conf"] = {}
         out["kept"] = os.path.exists(os.path.join(ps.app_dirs(app)[1], "scene.json"))
         scene, _ = ps.dirs(app, out["showing"])
+        try: th = json.load(open(os.path.join(scene, "theme.json")))
+        except (OSError, ValueError): th = {}
+        out["foam"] = th.get("foam") or {}
+        out["smoke"], out["birds"] = th.get("smoke") or {}, "birds" in th.get("effects", []) or "gulls" in th.get("effects", [])
+        out["screens"] = m.get("screens", [])                            # (the app's screens, and the types there are)
+        sys.path.insert(0, RUNTIME); import screens as screen_types
+        out["screen_types"] = sorted(screen_types.TYPES)
+        scene, _ = ps.dirs(app, out["showing"])
         try: theme = json.load(open(os.path.join(scene, "theme.json")))
         except (OSError, ValueError): theme = {}
         out["cards"], out["horizon"] = theme.get("cards") or {}, theme.get("horizon")
@@ -347,6 +355,35 @@ class Preview:
         self.install_line = ""
         return self.busy("installing %s on the device" % app, run)
 
+    def set_screens(self, screens):
+        """The app's screens (app.json "screens") as the builder has them: known types only; a weather screen
+        with a place but no lat/lon looked up by name (tools/apps/new.py), and an example of its weather
+        fetched if the app hasn't one; the app's service the shared fetcher loop if any of them fetch."""
+        sys.path.insert(0, os.path.join(RUNTIME)); import screens as screen_types
+        sys.path.insert(0, os.path.join(REPO, "tools", "apps")); import new as newapp
+        d = os.path.join(APPS, self.app); p = os.path.join(d, "app.json")
+        meta = json.load(open(p)); out = []
+        for s in screens:
+            s = {k: v for k, v in s.items() if v not in (None, "")}
+            if s.get("type") not in screen_types.TYPES:
+                if s.get("file"): out.append(s)                       # (a screen of the app's own: as it was)
+                continue
+            if s["type"] == "weather" and s.get("place") and not ("lat" in s and "lon" in s and s.get("looked_up") == s["place"]):
+                name, lat, lon = newapp.find_place(s["place"]); s.update(place=name, lat=lat, lon=lon, looked_up=name)
+                if not os.path.exists(os.path.join(d, "weather_example.json")):
+                    with open(os.path.join(d, "weather_example.json"), "w") as f: json.dump(newapp.example_weather(s, d), f, indent=1)
+            if isinstance(s.get("secs"), str) and s["secs"].isdigit(): s["secs"] = int(s["secs"])
+            out.append(s)
+        meta["screens"] = out
+        if any(s.get("type") for s in out): meta["api"] = max(meta.get("api", 2), 4)
+        with open(p + ".tmp", "w") as f: json.dump(meta, f, indent=2); f.write("\n")
+        os.replace(p + ".tmp", p)
+        svc = os.path.join(d, "service")
+        if screen_types.plan(p) and not (os.path.exists(svc) and "screens.sh" in open(svc).read()):
+            with open(svc, "w") as f: f.write("#!/bin/sh\n# %s's background job: what its screens show (the countdown runtime's shared fetcher loop).\nexec ../countdown/screens.sh\n" % meta.get("name", self.app))
+            os.chmod(svc, 0o755)
+        self.say("screens: %s" % ", ".join(s.get("type") or s.get("id", "?") for s in out))
+
     def builder_do(self, c):
         ps, app, act = self.themegen(), self.app, c.get("action")
         if "name" in c: name = c["name"]
@@ -362,6 +399,26 @@ class Preview:
             cards = c.get("cards"); hz = c.get("horizon")
             if hz is None: ps.set_layout(app, name, cards=cards); return {"ok": True}
             return self.busy("setting the horizon", lambda: ps.set_layout(app, name, cards=cards, horizon=hz))
+        if act == "effect":                                             # (smoke, birds: at once)
+            ps.set_effect(app, name, c["key"], c.get("value")); return {"ok": True}
+        if act == "smoke_add":                                          # (a click on the picture: a smoke source there)
+            scene, work = ps.dirs(app, name)
+            try: sm = json.load(open(os.path.join(work, "scene.json"))).get("smoke") or {}
+            except (OSError, ValueError): sm = json.load(open(os.path.join(scene, "theme.json"))).get("smoke") or {}
+            sm = dict({"scale": 0.8, "wind": 0, "rate": 4}, **sm); sm["points"] = (sm.get("points") or [])[:7] + [[int(c["x"]), int(c["y"])]]
+            ps.set_effect(app, name, "smoke", sm); return {"ok": True, "smoke": len(sm["points"])}
+        if act == "foam_add":                                           # (a click on the picture: foam there, at the size chosen)
+            scene, work = ps.dirs(app, name)
+            try: fo = json.load(open(os.path.join(work, "scene.json"))).get("foam") or {}
+            except (OSError, ValueError): fo = json.load(open(os.path.join(scene, "theme.json"))).get("foam") or {}
+            fo = dict({"amount": 1.0, "flow": "still", "size": 12}, **fo)
+            r = int(c.get("r") or fo.get("size", 12))
+            fo["points"] = (fo.get("points") or [])[:15] + [[int(c["x"]), int(c["y"]), r]]
+            ps.set_effect(app, name, "foam", fo); return {"ok": True, "foam": len(fo["points"])}
+        if act == "screens":                                            # (the app's screens: app.json, written)
+            return self.busy("setting the screens", lambda: self.set_screens(c.get("screens") or []))
+        if act == "screen_now":
+            i = int(c.get("index", 0)); self.live(screen=i, screen_go=self.live_state.get("screen_go", 0) + 1); return {"ok": True}
         if act == "show":
             return self.busy("setting the show", lambda: ps.set_show(app, name, c.get("program") or [], c.get("secs", 12)))
         return {"error": "no action %s" % act}

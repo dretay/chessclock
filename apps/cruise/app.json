@@ -1,9 +1,9 @@
 {
   "id": "cruise",
   "name": "Disney cruise",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "runtime": "countdown",
-  "api": 2,
+  "api": 4,
   "exclude": [
     "map/preview_*.png",
     "scenes/*/SOURCES.md",
@@ -18,9 +18,7 @@
   },
   "screens": [
     {
-      "id": "map",
-      "file": "map.py",
-      "class": "MapScreen",
+      "type": "ships",
       "enabled": "MAP",
       "secs": "MAP_SECS"
     }

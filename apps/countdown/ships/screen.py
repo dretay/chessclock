@@ -1,4 +1,6 @@
-"""The fleet map: where the Disney ships are scheduled to be, shown in turn with the countdown.
+"""The fleet map: where the Disney ships are scheduled to be, shown in turn with the countdown. Part of the
+countdown runtime: the "ships" screen type (screens.py), for an app with the map's imagery in its own
+"map" folder (the cruise's), its ship in its settings (MAP_SHIP, SHIP).
 
 The Caribbean from space, NASA's Blue Marble by day and Black Marble (city lights) at night, centred on
 the ship picked in Settings (MAP_SHIP): it gets a pulsing ring, its sailing so far (a line through the
@@ -166,9 +168,8 @@ class MapScreen:
 
     def __init__(self, app):
         self.app, self.fx = app, app.fx
-        here = os.path.dirname(os.path.abspath(__file__))
-        self.map_dir = os.environ.get("VACATION_MAP_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "map"))
-        if not os.path.isdir(self.map_dir): self.map_dir = os.path.join(here, "map")
+        # the imagery: the app's own (its "map" folder: tiles from tools/themegen/build_map.py; 7 MB, so not the runtime's)
+        self.map_dir = os.environ.get("VACATION_MAP_DIR") or os.path.join(app.module.dir, "map")
         self.meta = json.load(open(os.path.join(self.map_dir, "map.json")))
         m = self.meta; self.T = m["tile"]; self.WW, self.WH = self.T * m["cols"], self.T * m["rows"]
         self.K = self.WW / (2 * math.pi); self.merc_top = merc(m["lat_top"])
@@ -404,7 +405,7 @@ class MapScreen:
         app, fx = self.app, self.fx
         live = os.environ.get("VACATION_SCHEDULE") or os.path.join(app.module.data_dir, "schedule.json")
         example = not os.path.exists(live)
-        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schedule_example.json") if example else live
+        path = os.path.join(app.module.dir, "schedule_example.json") if example else live   # (the app's example)
         self.ships, fetched = read_schedule(path, time.time(), example)
         # NASA's Earth by day (Blue Marble) or at night (Black Marble, the city lights), with the ship picture's
         # day and night

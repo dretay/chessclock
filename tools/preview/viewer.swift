@@ -306,6 +306,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
     var hourSlider: NSSlider!, hourLabel: NSTextField!, liveBox: NSButton!
     var hourSent: TimeInterval = 0
     var eraseBox: NSPopUpButton!, eraseNote: NSTextField!, patternMenu: NSPopUpButton!
+    var addTarget = "lights"                         // (a click in "add" mode: an orb light, or a smoke source)
     let appMenu = NSMenu(title: "App"), timeMenu = NSMenu(title: "Time")
     var liveDataItem: NSMenuItem!, onTopItem: NSMenuItem!
     var state: [String: Any] = [:]
@@ -320,7 +321,12 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         view = ScreenView(frame: NSRect(x: 0, y: 0, width: W, height: H))
         view.touch = { [weak self] line in self?.writeTouch(line) }
         view.onStroke = { [weak self] s in self?.erase(["erase": s]) }
-        view.onAdd = { [weak self] x, y in self?.erase(["add": [[x, y]]]) }
+        view.onAdd = { [weak self] x, y in
+            guard let self else { return }
+            if self.addTarget == "smoke" { self.placeAt("smoke_add", x, y) }
+            else if self.addTarget == "foam" { self.placeAt("foam_add", x, y) }
+            else { self.erase(["add": [[x, y]]]) }
+        }
         view.onDropFile = { [weak self] u in self?.uploadPhoto(u) }
         view.onZoom = { [weak self] z in self?.showZoom(z) }
         view.onLayout = { [weak self] change in
@@ -652,7 +658,8 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         if let kind = body["flash"] as? String { flash(kind); return }
         if body["askPassphrase"] != nil { askPassphrase(); return }
         guard let mode = body["editMode"] as? String else { return }
-        view.erasing = ["erase", "wpaint", "werase", "qpaint", "qerase"].contains(mode); view.adding = mode == "add"
+        view.erasing = ["erase", "wpaint", "werase", "qpaint", "qerase"].contains(mode); view.adding = ["add", "smokeadd", "foamadd"].contains(mode)
+        addTarget = mode == "smokeadd" ? "smoke" : mode == "foamadd" ? "foam" : "lights"
         view.brushTarget = view.erasing ? mode : "erase"; view.strokeColour()
         if let b = body["brush"] as? Int { view.brush = mode == "erase" ? 10 : b }
         view.layoutMode = ["cards", "horizon", "wrect", "qrect"].contains(mode) ? mode : ""
@@ -660,6 +667,14 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         if let h = body["cardH"] as? Int { view.cardH = h }
         if let g = body["gap"] as? Int { view.cardGap = g }
         eraseBox.selectItem(at: mode == "erase" ? 1 : mode == "add" ? 2 : 0)
+    }
+    // a smoke source, or foam, where the picture was clicked
+    func placeAt(_ action: String, _ x: Int, _ y: Int) {
+        var req = URLRequest(url: url("/builder/do"))
+        req.httpMethod = "POST"; req.httpBody = try? JSONSerialization.data(withJSONObject: ["action": action, "x": x, "y": y])
+        URLSession.shared.dataTask(with: req) { [weak self] _, _, _ in
+            DispatchQueue.main.async { self?.builder.evaluateJavaScript("window.smokeAdded && window.smokeAdded()") }
+        }.resume()
     }
     // window glass painted, rubbed out or boxed on the picture
     func region(_ kind: String, _ body: [String: Any]) {

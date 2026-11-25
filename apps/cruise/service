@@ -1,17 +1,4 @@
 #!/bin/sh
-# The cruise app's background job: the Disney ships' schedules (each one's current sailing, port by port)
-# into $APP_DATA/schedule.json for the fleet map. /etc/init.d/S99app runs it beside the app (in this
-# folder, with APP_DATA set); with no WiFi in the kernel it just sleeps. schedule.py checks every half
-# hour and fetches only the ships that are due (each about twice a day, and when its sailing ends), then
-# exits (its Python and TLS need memory the countdown and WiFi barely leave); after a failure it waits
-# longer each time (1 minute, doubling, up to 15), and every 10 seconds until there's network time.
-[ -d /sys/class/ieee80211 ] || [ -n "$APP_NETWORK" ] || exec sleep 2147483647   # (no WiFi: nothing to fetch with; APP_NETWORK: the previewer)
-retry=60
-while true; do
-	python3 -S -OO -u schedule.py --once
-	case $? in
-		0) retry=60; sleep 1800 ;;
-		2) sleep 10 ;;
-		*) sleep $retry; retry=$((retry * 2)); [ $retry -gt 900 ] && retry=900 ;;
-	esac
-done
+# The cruise app's background job: what its screens show (the countdown runtime's shared fetcher loop:
+# the ships' schedules).
+exec ../countdown/screens.sh

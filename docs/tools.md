@@ -52,11 +52,15 @@ dusk and night made from it, the lights on a sphere found if that box is ticked;
 the horizon on the picture (or type them), the countdown's size (40% to 130%) and three digits' size, and "See it with 3 digits" (150 days
 before the trip); for any countdown app, a photo's scene or not. Its effects, for the scene showing:
 lights on a sphere (found, a circle given, or removed; the show's patterns and how long each; one
-held to watch; erasing and adding lights on the picture), and On the device: Install on the device
+held to watch; erasing and adding lights on the picture), Screens (the app's screens in turn with the
+countdown: add a type, its seconds and settings, a weather screen's place looked up by name; reorder,
+remove, Show now; Save writes them into the app's app.json), and On the device: Install on the device
 (tools/board/deploy.py over USB: the app's kept scene with the system and runtime it runs on, then the
 app that runs; Signed asks for the key's passphrase then, in a dialog, and keeps it nowhere), window lights (found automatically in the
 photo, dark windows in a plain wall or lit ones at dusk, a guess to touch up; or painted on the picture,
-brush or box, or erased; the light's colour), water (found automatically, a guess, or painted on the
+brush or box, or erased; the light's colour), smoke (click where it rises from: a campfire, a chimney;
+its size, wind, thickness), foam (click where the water churns: its size, which way it flows, how
+much), birds (on or off), water (found automatically, a guess, or painted on the
 picture: it ripples, gentle to choppy, slow to fast; the cruise's sea stays its own), fireworks. The same from the command line:
 `python3 tools/themegen/photo_scene.py PHOTO epcot --try --orb auto`; `--list epcot`, `--keep NAME
 epcot`, `--back epcot` ([countdown apps](countdown.md#scenes)). `--browser` (or no `swiftc`) shows the same in a page at

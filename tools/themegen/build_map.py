@@ -1,7 +1,7 @@
 """Make the fleet map on a desktop: NASA satellite imagery of the Caribbean (Blue Marble by day,
 Black Marble's city lights at night) in Mercator, with the cruise ports marked, cut into tiles.
 The board loads the few tiles around the ship it's following and draws the ships on top
-(apps/cruise/map.py).
+(the countdown runtime's "ships" screen, apps/countdown/ships/screen.py).
 
     python3 tools/themegen/build_map.py   -> apps/cruise/map/tiles/{day,night}/X_Y.rgb.gz and apps/cruise/map/map.json
     (the first run downloads about 20 pieces of imagery)

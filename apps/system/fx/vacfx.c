@@ -87,7 +87,11 @@ static int toggles_per_min = 90;
 static int16_t rlo[H], rhi[H], nlo[H], nhi[H];
 
 /* scene */
-static int stack_x[2], stack_y[2], smoke_q8 = 205, fw_q8 = 218;
+static int stack_x[8], stack_y[8], smoke_q8 = 205, fw_q8 = 218;
+static int smoke_n = 2, smoke_wind_q8 = -256, smoke_rate = 6, smoke_dense_q8 = 256;
+/* a scene's own foam (vfx_foam): white water churning at points, each with its radius: how much, which way */
+static int foam_n, foam_xyr[16][3], foam_amount_q8 = 256, foam_flow, foamp_acc, foams_acc;   /* smoke: how many sources (the ship's two funnels, or a scene's
+                                                                   own: vfx_smoke), the wind (-256 left .. 256 right), puffs a second */
 static int bow_x, bow_y, stern_x, stern_y, hull_dx = -256, hull_dy;   /* unit vector bow -> stern, Q8 */
 
 /* particles: kind, position and velocity in 1/256 px and 1/256 px per s */
@@ -105,7 +109,7 @@ static int mast_x = -1, mast_y, amb_q8 = 256, ntube; static int tube[32][2];
 static int next_gulls_ms = 5000, next_pod_ms = 10000, next_raft_ms = 8000, raft_start = -1, raft_dur;
 /* which of the scene's own effects run (vfx_effects): the ship has them all; a castle, none of them.
    Fireworks, window lights and the cards are every scene's. */
-enum { FX_WATER = 1, FX_WAKE = 2, FX_SMOKE = 4, FX_GULLS = 8, FX_DOLPHINS = 16, FX_RAFT = 32, FX_TWINKLE = 64, FX_ALL = 127 };
+enum { FX_WATER = 1, FX_WAKE = 2, FX_SMOKE = 4, FX_GULLS = 8, FX_DOLPHINS = 16, FX_RAFT = 32, FX_TWINKLE = 64, FX_FOAM = 128, FX_ALL = 255 };
 static int fx_on = FX_ALL;
 static int hold_lvl, hold_drawn;           /* the press-and-hold bar under the cards */
 
@@ -430,6 +434,29 @@ static void step_particles(int dt) {
         p->x = (bow_x + rr(-4, 2)) << 8; p->y = (wl_at(bow_x) - 1) << 8;
         p->vx = rr(2, 9) * 256 - (hull_dx * rr(0, 4)); p->vy = -rr(5, 13) * 256; p->life = rr(300, 550);
     }
+    /* a scene's own foam: at its points, within each one's radius, moving as its flow says (0 churning in
+       place, 1 drifting left, 2 right, 3 falling, 4 spreading toward the viewer); it's drawn only on the
+       scene's water when it has some (water.raw.gz), anywhere otherwise (p->ty 1 says so) */
+    foamp_acc += (fx_on & FX_FOAM) && foam_n ? dt * 28 * foam_n * foam_amount_q8 / 256 : 0;
+    while (foamp_acc >= 1000) {
+        foamp_acc -= 1000; part_t *p = spawn(P_FOAM); if (!p) break;
+        const int *f = foam_xyr[rnd() % (uint32_t)foam_n], r = f[2] > 0 ? f[2] : 1;
+        p->x = (f[0] << 8) + (rr(-r, r) + rr(-r, r)) * 128; p->y = (f[1] << 8) + (rr(-r, r) + rr(-r, r)) * 64;   /* (flatter than wide: water seen at an angle) */
+        p->vx = rr(-4, 4) * 256; p->vy = rr(-2, 2) * 256;
+        if (foam_flow == 1) p->vx = -rr(8, 18) * 256;
+        else if (foam_flow == 2) p->vx = rr(8, 18) * 256;
+        else if (foam_flow == 3) { p->vy = rr(18, 40) * 256; p->vx = rr(-3, 3) * 256; }
+        else if (foam_flow == 4) { p->vy = rr(4, 12) * 256; p->vx = rr(-10, 10) * 256; }
+        p->life = rr(700, 1700); p->size = (int16_t)rr(420, 820); p->col = (uint32_t)rr(150, 235); p->ty = 1;   /* (flecks 3 to 6 px: near, not a distant ship's) */
+    }
+    /* and, for falling water, spray thrown up from its foot */
+    foams_acc += (fx_on & FX_FOAM) && foam_n && foam_flow == 3 ? dt * 6 * foam_n * foam_amount_q8 / 256 : 0;
+    while (foams_acc >= 1000) {
+        foams_acc -= 1000; part_t *p = spawn(P_SPLASH); if (!p) break;
+        const int *f = foam_xyr[rnd() % (uint32_t)foam_n];
+        p->x = (f[0] + rr(-f[2], f[2])) << 8; p->y = (f[1] + f[2] / 2) << 8;
+        p->vx = rr(-8, 8) * 256; p->vy = -rr(6, 14) * 256; p->life = rr(300, 550);
+    }
     /* the stern wake: churned water streaming away behind the ship */
     wake_acc += (fx_on & FX_WAKE) ? dt * 16 : 0;
     while (wake_acc >= 1000) {
@@ -440,13 +467,14 @@ static void step_particles(int dt) {
         p->life = rr(2500, 4500); p->size = (int16_t)rr(256, 512); p->col = (uint32_t)rr(77, 128);
     }
     /* funnel smoke */
-    smoke_acc += (fx_on & FX_SMOKE) ? dt * 6 : 0;
+    smoke_acc += (fx_on & FX_SMOKE) ? dt * smoke_rate : 0;
     while (smoke_acc >= 1000) {
         smoke_acc -= 1000;
-        for (int s = 0; s < 2; s++) {
+        for (int s = 0; s < smoke_n; s++) {
             part_t *p = spawn(P_SMOKE); if (!p) break;
             p->x = (stack_x[s] << 8) + (rr(-640, 640) * smoke_q8 >> 8); p->y = (stack_y[s] + 2) << 8;
-            p->vx = -(rr(9, 14) * smoke_q8); p->vy = -(rr(6, 9) * smoke_q8);
+            p->vx = (rr(9, 14) * smoke_q8) * smoke_wind_q8 / 256 + (smoke_wind_q8 == 0 ? rr(-3, 3) * smoke_q8 : 0);   /* (still air: it wavers) */
+            p->vy = -(rr(6, 9) * smoke_q8);
             p->life = rr(4500, 6500); p->ty = (int16_t)rr(0, 1023);
         }
     }
@@ -503,6 +531,11 @@ static void step_particles(int dt) {
         switch (p->kind) {
         case P_FOAM: case P_WAKE:
             p->x += p->vx * dt / 1000; p->y += p->vy * dt / 1000;
+            if (p->ty == 1) {                               /* (a scene's foam: it keeps moving; falling water speeds up) */
+                if (foam_flow == 3) p->vy += 60 * 256 * dt / 1000;
+                else { p->vx = p->vx * (256 - dt / 40) >> 8; p->vy = p->vy * (256 - dt / 40) >> 8; }
+                break;
+            }
             p->vx = p->vx * drag_foam >> 8; p->vy = p->vy * (256 - dt * 177 / 256) >> 8; break;
         case P_SMOKE: {
             const int wob = sin_lut[((p->ty + p->age / 8) & (LUT - 1))] * 5 / 2 * smoke_q8 >> 14;   /* sideways drift */
@@ -567,7 +600,7 @@ static void draw_particles(void) {
     const int sr = lerp_i(lerp_i(128, 150, dusk_lvl), 52, night_lvl), sg = lerp_i(lerp_i(122, 118, dusk_lvl), 54, night_lvl),
               sb = lerp_i(lerp_i(116, 100, dusk_lvl), 62, night_lvl);
     const uint32_t smoke_col = (uint32_t)sr << 16 | (uint32_t)sg << 8 | (uint32_t)sb;
-    const int smoke_str = lerp_i(87, 44, night_lvl), fw_bright = 141 + (115 * night_lvl >> 8);
+    const int smoke_str = clampi(lerp_i(87, 44, night_lvl) * smoke_dense_q8 >> 8, 0, 240), fw_bright = 141 + (115 * night_lvl >> 8);
     for (int k = 0; k < np; k++) {
         const part_t *p = &parts[k]; const int u = (int)((int64_t)p->age * 256 / (p->life ? p->life : 1));   /* 0..256 */
         switch (p->kind) {
@@ -576,7 +609,7 @@ static void draw_particles(void) {
             const int grow = p->kind == P_WAKE ? 256 + u * 4 : 256 + u * 2;
             const int rx = p->size * grow >> 8, ry = (p->size >> 1) * (256 + u * (p->kind == P_WAKE ? 2 : 1)) >> 8;
             blob(p->x, p->y, rx, ry, p->kind == P_WAKE ? wake_col : foam_col, (a * (int)p->col >> 8) * (p->kind == P_WAKE ? 180 : 256) >> 8,
-                 prof_soft, 0, 1);
+                 prof_soft, 0, p->ty == 1 && !wcustom ? 0 : 1);    /* (a scene's foam with no water of its own: anywhere) */
             break; }
         case P_SMOKE: {
             const int f = u, inv = 256 - f;
@@ -1067,6 +1100,25 @@ static void use_small_cards(int on) {
     load_set(on ? &small_set : &big_set); using_small = on;
 }
 void vfx_cards_scale3(int q8) { scale3_q8 = clampi(q8, 0, 256); }
+
+/* a scene's own foam: n points (x, y, radius triples, up to 16), how much (amount_q8: 256 normal), which way
+   (flow: 0 churning in place, 1 drifting left, 2 right, 3 falling, with spray, 4 spreading toward the viewer) */
+void vfx_foam(int n, const int *xyr, int amount_q8, int flow) {
+    foam_n = clampi(n, 0, 16);
+    for (int k = 0; k < foam_n; k++) { foam_xyr[k][0] = xyr[3 * k]; foam_xyr[k][1] = xyr[3 * k + 1]; foam_xyr[k][2] = clampi(xyr[3 * k + 2], 1, 80); }
+    foam_amount_q8 = clampi(amount_q8, 32, 1024); foam_flow = clampi(flow, 0, 4);
+}
+
+/* a scene's own smoke (instead of the ship's two funnels, which vfx_scene sets): n sources at xy (x, y
+   pairs, up to 8), how big (scale_q8: 256 the funnels' size), the wind (-256 blowing left, 0 still: it
+   rises, wavering, 256 right), puffs a second from each (the funnels: 6), how dense (256: the funnels', faint
+   at their distance). After vfx_scene. */
+void vfx_smoke(int n, const int *xy, int scale_q8, int wind_q8, int rate, int density_q8) {
+    smoke_dense_q8 = clampi(density_q8, 64, 1024);           /* (how opaque: the funnels' 256; a campfire close by, more) */
+    smoke_n = clampi(n, 0, 8);
+    for (int k = 0; k < smoke_n; k++) { stack_x[k] = xy[2 * k]; stack_y[k] = xy[2 * k + 1]; }
+    smoke_q8 = clampi(scale_q8, 40, 768); smoke_wind_q8 = clampi(wind_q8, -256, 256); smoke_rate = clampi(rate, 1, 30);
+}
 
 /* the countdown's size (theme.json cards.scale, 0.4 to 1.3 of the cards as drawn): the cards, their shadow
    and the last day's colon, scaled once (the three-digit size, scale3, then applies to these). Called

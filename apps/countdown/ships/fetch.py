@@ -2,8 +2,8 @@
 into $APP_DATA/schedule.json for the fleet map (map.py), which places each ship from it: at a port
 between its arrival and departure, or partway along the leg between two ports.
 
-The cruise app's service (S99app runs it beside the app; with no WiFi it sleeps) runs this with --once
-every half hour; it fetches only the ships that are due: each about every 12 hours, and soon after its
+Part of the countdown runtime: the "ships" screen type's fetcher, run by the app's service (the runtime's
+screens.sh; with no WiFi it sleeps) with --once every half hour, in the app's folder; it fetches only the ships that are due: each about every 12 hours, and soon after its
 sailing ends (for the next one). The schedules come from CruiseMapper's ship pages (the current sailing's
 table: ports, with local arrival and departure times), one page every few seconds; each port's place from
 its page there, once (kept in ports.json). Each leg's route through the water (around Florida rather than
@@ -22,7 +22,7 @@ DATA = os.environ.get("APP_DATA", "/apps/data/cruise")
 OUT = os.path.join(DATA, "schedule.json")
 PORTS_FILE = os.path.join(DATA, "ports.json")          # CruiseMapper's port id -> [name, lat, lon]
 ROUTES_FILE = os.path.join(DATA, "routes.json")        # "from>to" -> [[lat, lon], ...]
-SEA_FILE = os.path.join(HERE, "map", "sea.bin")
+SEA_FILE = os.path.join("map", "sea.bin")                # (the app's map folder: the fetcher runs in the app's folder)
 SITE = "https://www.cruisemapper.com"
 SHIPS = {"Disney Magic": "Disney-Magic-684", "Disney Wonder": "Disney-Wonder-692",
          "Disney Dream": "Disney-Dream-548", "Disney Fantasy": "Disney-Fantasy-649",

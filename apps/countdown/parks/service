@@ -1,18 +1,3 @@
 #!/bin/sh
-# A park app's background job (the countdown runtime's, for any app with a "park" in its app.json):
-# ride wait times from ThemeParks.wiki into $APP_DATA/waits.json for the wait-times screen. The app's own
-# service runs this (`exec ../countdown/parks/service`), in the app's folder with APP_DATA set; with
-# no WiFi in the kernel it just sleeps. waits.py fetches once and exits each time (its Python and TLS
-# need memory the countdown and WiFi barely leave): every 5 minutes, waiting longer after each failure
-# (1 minute, doubling, up to 15), and every 10 seconds until there's network time.
-[ -d /sys/class/ieee80211 ] || [ -n "$APP_NETWORK" ] || exec sleep 2147483647   # (no WiFi: nothing to fetch with; APP_NETWORK: the previewer)
-HERE=$(cd "$(dirname "$0")" && pwd)
-retry=60
-while true; do
-	python3 -S -OO -u "$HERE/waits.py" --once
-	case $? in
-		0) retry=60; sleep 300 ;;
-		2) sleep 10 ;;
-		*) sleep $retry; retry=$((retry * 2)); [ $retry -gt 900 ] && retry=900 ;;
-	esac
-done
+# (older park apps' service: the runtime's shared one now, screens.sh)
+exec "$(cd "$(dirname "$0")" && pwd)/../screens.sh"

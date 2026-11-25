@@ -550,6 +550,25 @@ def set_show(app, name, program, secs):
     scene_pack.pack(work, scene)
 
 
+def set_effect(app, name, key, value):
+    """An effect's settings for a trial (or the app's own scene): "smoke" ({"points", "scale", "wind",
+    "rate"}; no points: none), "foam" ({"points": [[x, y, r]], "amount", "flow"}) or "birds" (true or false). Into scene.json, and the scene's theme.json at
+    once (no repack: the previewer restarts with it)."""
+    scene, work = dirs(app, name)
+    sp = os.path.join(work, "scene.json")
+    if os.path.exists(sp):
+        conf = json.load(open(sp)); conf[key] = value; json.dump(conf, open(sp, "w"), indent=1)
+    tp = os.path.join(scene, "theme.json"); theme = json.load(open(tp))
+    fx = [e for e in theme.get("effects", []) if e != key]
+    if key in ("smoke", "foam"):
+        if value and value.get("points"): fx.append(key); theme[key] = value
+        else: theme.pop(key, None)
+    elif key == "birds" and value: fx.append("birds")
+    theme["effects"] = fx
+    with open(tp + ".tmp", "w") as f: json.dump(theme, f, indent=1)
+    os.replace(tp + ".tmp", tp)
+
+
 def set_layout(app, name, cards=None, horizon=None):
     """Where the countdown's cards go ({"center_x", "top", "gap", "scale3"}) and the horizon, for a trial or
     the app's own scene. The cards: only theme.json changes (at once). The horizon: the scene packed again

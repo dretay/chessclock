@@ -51,9 +51,13 @@ def check_modules():
             if not os.path.exists(os.path.join(scene, f)): fail("%s: scene %s has no %s" % (name, sc.get("default"), f))
         if not (os.path.exists(os.path.join(scene, "mask.raw.gz")) or os.path.exists(os.path.join(scene, "ship.raw.gz"))):
             fail("%s: scene %s has no mask.raw.gz" % (name, sc.get("default")))
+        sys.path.insert(0, os.path.join(APPS, "countdown")); import screens as screen_types
         for s in m.get("screens", []):
+            if s.get("type") and s["type"] not in screen_types.TYPES: fail("%s: screen type %s: there's no such type" % (name, s["type"])); continue
+            s = screen_types.resolve(s)                                                       # (a type: the runtime's file)
             where = os.path.join(APPS, "countdown") if s.get("from") == "runtime" else d       # (a screen the runtime has: the parks' board)
-            if not os.path.exists(os.path.join(where, s.get("file", ""))): fail("%s: screen %s: no %s" % (name, s.get("id"), s.get("file")))
+            if not os.path.exists(os.path.join(where, s.get("file", ""))): fail("%s: screen %s: no %s" % (name, s.get("id") or s.get("type"), s.get("file")))
+            if s.get("fetch") and not os.path.exists(os.path.join(APPS, "countdown", s["fetch"])): fail("%s: screen %s: no fetcher %s" % (name, s.get("type"), s["fetch"]))
         svc = os.path.join(d, "service")
         if os.path.exists(svc) and not os.access(svc, os.X_OK): fail("%s: service isn't executable" % name)
         for st in m.get("settings", []):

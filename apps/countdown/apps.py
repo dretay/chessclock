@@ -14,7 +14,7 @@ a defaults.conf (its own settings' first values).
   scene.default otherwise). engine "scene": the drawing library's (vfx_*); its theme.json says which
   of its effects the scene has ("effects"; all of them, the ship's, if it doesn't say).
 - screens: shown in turn with the countdown, each for its "secs" setting (seconds) while its
-  "enabled" setting isn't 0. A screen is a class taking the App, with run(seconds) (see the cruise's map.py).
+  "enabled" setting isn't 0. A screen is a class taking the App, with run(seconds) (see ships/screen.py, the fleet map).
   Its "file" is in the app's folder, or with "from": "runtime" in this runtime's (api 3): parks/board.py,
   the wait-times board any park app can show (with "park": {"id": ThemeParks.wiki id, "show": tonight's
   show's name} in its app.json, and `exec ../countdown/parks/service` as its service).
@@ -27,8 +27,9 @@ SYSTEM = os.environ.get("SYSTEM_DIR") or os.path.join(os.path.dirname(HERE), "sy
 if SYSTEM not in sys.path: sys.path.insert(0, SYSTEM)
 from sysapps import DEVICE_CONF, DEVICE_KEYS, read_conf, device_path, read_settings, manifest_path, installed   # noqa: E402
 
-API = 3                                  # the app.json "api" this runtime understands (also in the API file):
-                                         # 3 added screens from the runtime ("from": "runtime": the parks' wait times)
+API = 4                                  # the app.json "api" this runtime understands (also in the API file):
+                                         # 3 added screens from the runtime ("from": "runtime": the parks' wait times);
+                                         # 4 screen types ("type": "waits", "weather": screens.py) and their shared fetcher
 CONF = "countdown.conf"                  # each app's settings, in its APP_DATA
 OLD_DATA = "/apps/data/vacation"         # where every trip's settings and data were before apps
 APP_KEYS = ("MODULE",)                   # settings that meant something only before apps
@@ -81,14 +82,17 @@ class App:
         """[(spec from app.json, the screen's class)], in order; a screen that won't load is left out."""
         if self.dir not in sys.path: sys.path.insert(0, self.dir)          # (so a screen can import its own files)
         out = []
+        import screens as screen_types
         for spec in self.meta.get("screens", []):
+            spec = screen_types.resolve(spec)                              # ("type": the runtime's: its file and class)
+            if "file" not in spec: print("countdown: %s's screen %s: no type %s" % (self.id, spec.get("id"), spec.get("type")), flush=True); continue
             path = os.path.join(HERE if spec.get("from") == "runtime" else self.dir, spec["file"])
             try:
-                loader = importlib.util.spec_from_file_location("%s_%s" % (self.id, spec["id"]), path)
+                loader = importlib.util.spec_from_file_location("%s_%s" % (self.id, spec.get("id") or spec.get("type")), path)
                 mod = importlib.util.module_from_spec(loader); loader.loader.exec_module(mod)
                 out.append((spec, getattr(mod, spec["class"])))
             except Exception as e:                                        # (one broken screen shouldn't stop the countdown)
-                print("countdown: %s's screen %s didn't load: %s" % (self.id, spec.get("id"), e), flush=True)
+                print("countdown: %s's screen %s didn't load: %s" % (self.id, spec.get("id") or spec.get("type"), e), flush=True)
         return out
 
 

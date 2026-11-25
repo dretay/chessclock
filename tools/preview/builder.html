@@ -47,6 +47,10 @@
   .patterns { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; }
   .patterns label { display: flex; gap: 5px; align-items: center; }
   .off { opacity: .5; }
+  .scr { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; }
+  .scr .top { display: flex; align-items: center; gap: 6px; }
+  .scr .top b { flex: 1; font-weight: 600; }
+  .scr input[type=text] { flex: 1; min-width: 0; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; font: inherit; }
 </style>
 </head>
 <body>
@@ -74,6 +78,16 @@
       <div class="row"><button id="install" class="primary">Install on the device</button></div>
       <p class="note" id="installnote">The app's kept scene, with the system and runtime it runs on, over USB (only what changed is copied); then it's the app that runs.</p>
     </div>
+  </section>
+
+  <section id="screensec">
+    <h2>Screens <span class="note">shown in turn with the countdown</span></h2>
+    <div id="screenlist"></div>
+    <div class="row note">
+      <select id="addtype"></select><button id="addscreen">Add</button>
+      <button id="savescreens" class="primary">Save screens</button>
+    </div>
+    <p class="note" id="screensnote"></p>
   </section>
 
   <section id="layout">
@@ -139,12 +153,35 @@
         Pace <select id="qspeed"><option value="0.6">Slow</option><option value="1" selected>Normal</option><option value="1.6">Fast</option></select>
         <button id="qset">Set</button></div>
     </div>
+    <div class="effect" id="smokecard">
+      <h3>Smoke</h3>
+      <p class="note" id="smokestate">Rising from points you place: a campfire, a chimney.</p>
+      <div class="row"><button id="smplace">Place smoke</button><button id="smdone">Done</button><button id="smclear">Clear</button></div>
+      <div class="row note">Size <select id="smscale"><option value="0.5">Wisp</option><option value="0.8" selected>Normal</option><option value="1.3">Big</option></select>
+        Wind <select id="smwind"><option value="0" selected>Still</option><option value="-1">Left</option><option value="1">Right</option></select></div>
+      <div class="row note">Thickness <select id="smrate"><option value="2">Light</option><option value="4" selected>Normal</option><option value="8">Heavy</option></select>
+        <button id="smset">Set</button></div>
+    </div>
+    <div class="effect" id="foamcard">
+      <h3>Foam</h3>
+      <p class="note" id="foamstate">White water at points you place: a waterfall's foot, rapids, surf.</p>
+      <div class="row"><button id="foplace">Place foam</button><button id="fodone">Done</button><button id="foclear">Clear</button></div>
+      <div class="row note">Size <select id="fosize"><option value="6">Small</option><option value="12" selected>Medium</option><option value="24">Large</option></select>
+        Flow <select id="foflow"><option value="still" selected>Churning</option><option value="left">Drifting left</option><option value="right">Drifting right</option>
+        <option value="falling">Falling</option><option value="toward">Toward you</option></select></div>
+      <div class="row note">Amount <select id="foamount"><option value="0.5">Light</option><option value="1" selected>Normal</option><option value="2">Heavy</option></select>
+        <button id="foset">Set</button></div>
+    </div>
+    <div class="effect">
+      <h3>Birds</h3>
+      <label class="check"><input type="checkbox" id="birds"><span>Now and then a few birds cross the sky, by day</span></label>
+    </div>
     <div class="effect">
       <h3>Fireworks</h3>
       <p class="note">Every scene has them at night, going up from its horizon into open sky.</p>
       <div class="row"><button id="fw">Some now</button><button id="show">The nightly show</button></div>
     </div>
-    <p class="note">Coming as effects any scene can have: water shimmer, stars, fireflies, falling leaves or snow.</p>
+    <p class="note">Coming as effects any scene can have: foam, something gliding along a path, stars, fireflies, falling leaves or snow.</p>
   </section>
 </main>
 <script>
@@ -196,7 +233,27 @@ function card(name, label, current, tags) {
 function render(s) {
   $("appname").textContent = "· " + s.name;
   $("status").innerHTML = s.busy ? `<div class="busy">${s.busy}…</div>` : s.error ? `<div class="error">${s.error}</div>` : "";
-  for (const id of ["photos", "effects", "layout"]) $(id).classList.toggle("off", !s.countdown);
+  for (const id of ["photos", "effects", "layout", "screensec"]) $(id).classList.toggle("off", !s.countdown);
+  // smoke and birds, for the scene showing
+  const sm = s.smoke || {};
+  if (!$("smplace").classList.contains("primary"))
+    $("smokestate").textContent = sm.points && sm.points.length ? `Rising from ${sm.points.length} point${sm.points.length > 1 ? "s" : ""}.` : "Rising from points you place: a campfire, a chimney.";
+  if (document.activeElement.tagName !== "SELECT") {
+    if (sm.scale) $("smscale").value = String(sm.scale); if (sm.wind !== undefined) $("smwind").value = String(sm.wind); if (sm.rate) $("smrate").value = String(sm.rate);
+  }
+  $("birds").checked = !!s.birds;
+  const fo = s.foam || {};
+  if (!$("foplace").classList.contains("primary"))
+    $("foamstate").textContent = fo.points && fo.points.length ? `Churning at ${fo.points.length} point${fo.points.length > 1 ? "s" : ""}.` : "White water at points you place: a waterfall's foot, rapids, surf.";
+  if (document.activeElement.tagName !== "SELECT") {
+    if (fo.amount) $("foamount").value = String(fo.amount); if (fo.flow) $("foflow").value = fo.flow; if (fo.size) $("fosize").value = String(fo.size);
+  }
+  // the screens: from the app, unless there's a draft being changed
+  const key = JSON.stringify(s.screens || []);
+  if (key !== draftKey && !$("screensec").contains(document.activeElement)) {
+    draftKey = key; draft = JSON.parse(key); renderScreens();
+  }
+  if (!$("addtype").options.length) $("addtype").innerHTML = (s.screen_types || []).map(t => `<option value="${t}">${TYPE_NAMES[t] || t}</option>`).join("");
   $("install").disabled = !!s.busy;
   if (s.install) $("installnote").textContent = s.install;
   if (!s.countdown) { $("cards").innerHTML = '<p class="note">This app has no scene to build (the countdown apps do).</p>'; return; }
@@ -264,6 +321,10 @@ function setMode(m) {
     native.postMessage({ editMode: m, cardW: Math.round(size[0] * k), cardH: Math.round(size[1] * k), gap: c.gap || 12, brush });
   }
   for (const id of ["wpaint", "wrect", "werase", "qpaint", "qrect", "qerase"]) $(id).classList.toggle("primary", m === id);
+  $("smplace").classList.toggle("primary", m === "smokeadd");
+  $("foplace").classList.toggle("primary", m === "foamadd");
+  if (m === "foamadd") $("foamstate").textContent = !native ? "In a browser, placing needs the App Preview window." : "Click on the picture where the water churns (up to 16).";
+  if (m === "smokeadd") $("smokestate").textContent = !native ? "In a browser, placing needs the App Preview window." : "Click on the picture where smoke rises from (up to 8).";
   if (["qpaint", "qrect", "qerase"].includes(m)) {
     control({ hour: "12" });                          // (water shows best by day)
     $("waterstate").textContent = !native ? "In a browser, painting needs the App Preview window." : m === "qrect" ? "Drag a box over the water on the picture."
@@ -318,6 +379,69 @@ $("show").onclick = () => { night(); control({ show: true }); };
 
 $("stay").onchange = () => control({ stay: $("stay").checked });
 control({ stay: true });                            // (building a scene: stay on it)
+
+// ---- smoke and birds
+function smokeSettings() { return { scale: +$("smscale").value, wind: +$("smwind").value, rate: +$("smrate").value }; }
+$("smplace").onclick = () => setMode("smokeadd");
+$("smdone").onclick = () => setMode("");
+$("smclear").onclick = () => act({ action: "effect", key: "smoke", value: null });
+$("smset").onclick = () => act({ action: "effect", key: "smoke", value: Object.assign({}, (S && S.smoke) || {}, smokeSettings()) });
+$("birds").onchange = () => act({ action: "effect", key: "birds", value: $("birds").checked });
+window.smokeAdded = () => refresh();               // (from the window, after a click)
+function foamSettings() { return { amount: +$("foamount").value, flow: $("foflow").value, size: +$("fosize").value }; }
+$("foplace").onclick = async () => { await act({ action: "effect", key: "foam", value: Object.assign({}, (S && S.foam) || {}, foamSettings()) }); setMode("foamadd"); };
+$("fodone").onclick = () => setMode("");
+$("foclear").onclick = () => act({ action: "effect", key: "foam", value: null });
+$("foset").onclick = () => act({ action: "effect", key: "foam", value: Object.assign({}, (S && S.foam) || {}, foamSettings()) });
+
+// ---- the screens: a draft, saved into the app's app.json
+const TYPE_NAMES = { waits: "Ride wait times", weather: "Weather", ships: "Ship map" };
+let draft = null, draftKey = "";
+function screenTitle(s) { return TYPE_NAMES[s.type] || s.type || s.id || "a screen of the app's own"; }
+function renderScreens() {
+  const list = $("screenlist"); list.innerHTML = "";
+  if (!draft.length) list.innerHTML = '<p class="note">None: just the countdown.</p>';
+  draft.forEach((s, i) => {
+    const div = document.createElement("div"); div.className = "scr";
+    const secs = typeof s.secs === "number" ? s.secs : null;
+    div.innerHTML = `<div class="top"><b>${screenTitle(s)}</b>
+        <button data-a="up" title="Earlier">↑</button><button data-a="down" title="Later">↓</button>
+        <button data-a="now">Show now</button><button data-a="del" title="Remove">✕</button></div>
+      <div class="row note">${secs !== null || !s.secs ? `For <input type="number" data-k="secs" value="${secs ?? 30}" min="5" max="600"> seconds`
+                                                       : `For as long as the app's setting says (${s.secs})`}</div>`;
+    if (s.type === "weather") div.insertAdjacentHTML("beforeend",
+      `<div class="row note">Place <input type="text" data-k="place" value="${(s.place || "").replace(/"/g, "&quot;")}" placeholder="a town, a park, a peak">
+       <select data-k="units"><option value="F">°F</option><option value="C">°C</option></select></div>`);
+    if (s.type === "waits") div.insertAdjacentHTML("beforeend", '<p class="note">The park in the app (app.json "park").</p>');
+    if (s.type === "ships") div.insertAdjacentHTML("beforeend", "<p class=\"note\">The ship it follows: the app's Settings (Follow). Needs the map's imagery in the app's map folder.</p>");
+    div.querySelectorAll("[data-k]").forEach(e => {
+      if (e.dataset.k === "units") e.value = s.units || "F";
+      e.oninput = e.onchange = () => { s[e.dataset.k] = e.type === "number" ? +e.value : e.value; };
+    });
+    div.querySelectorAll("button[data-a]").forEach(b => b.onclick = () => {
+      const a = b.dataset.a;
+      if (a === "up" && i > 0) [draft[i - 1], draft[i]] = [draft[i], draft[i - 1]];
+      if (a === "down" && i < draft.length - 1) [draft[i + 1], draft[i]] = [draft[i], draft[i + 1]];
+      if (a === "del") draft.splice(i, 1);
+      if (a === "now") { control({ stay: true }); post("/builder/do", { action: "screen_now", index: i }); return; }
+      renderScreens();
+    });
+    list.appendChild(div);
+  });
+}
+$("addscreen").onclick = () => {
+  const t = $("addtype").value;
+  draft.push(t === "weather" ? { type: "weather", place: "", units: "F", secs: 30 } : { type: t, secs: 60 });
+  renderScreens();
+};
+$("savescreens").onclick = async () => {
+  if (draft.some(s => s.type === "weather" && !s.place)) return say("A weather screen needs a place.");
+  const r = await post("/builder/do", { action: "screens", screens: draft });
+  if (r.error) return say(r.error);
+  $("screensnote").textContent = "Saved: the app restarts with them.";
+  draftKey = "";                                     // (the next state's list replaces the draft)
+  refresh();
+};
 
 // ---- on the device
 // the key's passphrase, asked when it's needed: the window's own dialog (its text hidden); in a browser, a prompt
