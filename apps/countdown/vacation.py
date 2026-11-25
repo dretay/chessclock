@@ -306,6 +306,7 @@ class App:
         if fired("fireworks"): self.fx.vfx_fireworks(random.randint(4, 7))
         if fired("show"): self.start_show(t)
         if fired("birds"): self.fx.vfx_demo(1)                                              # (birds across, now)
+        if fired("fireflies"): self.fx.vfx_demo(4)                                          # (fireflies out, now)
         if bool(new.get("windows_hold")) != bool(old.get("windows_hold")):                 # (painting windows: all lit, still)
             self.fx.vfx_windows_hold(1 if new.get("windows_hold") else 0)
         if new.get("pattern", -1) != old.get("pattern", -1): self.fx.vfx_twinkle_pin(int(new.get("pattern", -1)))

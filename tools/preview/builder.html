@@ -219,8 +219,9 @@
     </div>
     <div class="effect" id="fflycard">
       <h3>Fireflies</h3>
-      <p class="note" id="fflystate">Soft glows wandering and blinking, from dusk: click where they gather (trees, a meadow, the water's edge).</p>
+      <p class="note" id="fflystate">Now and then after dusk, a few soft glows wander and blink: click where they gather (trees, a meadow, the water's edge).</p>
       <div class="row"><button id="ffplace">Place fireflies</button><button id="ffdone">Done</button><button id="ffclear">Clear</button></div>
+      <div class="row"><button id="ffnow">Some now</button><span class="note">(they come out now and then, from dusk)</span></div>
       <div class="row note">Area <select id="ffsize"><option value="20">Small</option><option value="40" selected>Medium</option><option value="80">Large</option></select>
         How many <select id="ffamount"><option value="0.5">A few</option><option value="1" selected>Some</option><option value="2">Lots</option></select></div>
     </div>
@@ -546,6 +547,7 @@ $("ffdone").onclick = () => setMode("");
 $("ffclear").onclick = () => act({ action: "effect", key: "fireflies", value: null });
 for (const id of ["ffsize", "ffamount"]) $(id).onchange = () => { if (S && S.fireflies && S.fireflies.points) act({ action: "effect", key: "fireflies", value: Object.assign({}, S.fireflies, fflySettings()) }); };
 window.firefliesAdded = () => refresh();
+$("ffnow").onclick = () => { night(); control({ fireflies: true }); };
 function mistSettings() { return { amount: +$("mistamount").value, when: $("mistwhen").value }; }
 $("mistdraw").onclick = () => { control({ hour: "6.3" }); setMode("mistbox"); };          // (at dawn: when it's thickest)
 $("mistdone").onclick = () => setMode("");

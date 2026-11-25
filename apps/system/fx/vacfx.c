@@ -116,6 +116,8 @@ enum { FX_WATER = 1, FX_WAKE = 2, FX_SMOKE = 4, FX_GULLS = 8, FX_DOLPHINS = 16, 
        FX_FIREFLIES = 256, FX_MIST = 512, FX_ALL = 1023 };
 /* fireflies: soft yellow-green glows wandering in zones (x, y, r), each blinking now and then, from dusk */
 static int fly_n, fly_xyr[16][3], fly_amount_q8 = 256, fly_acc;
+/* now and then (like the birds): a spell of 15 to 28 s when a few are out, then a minute to two and a half of none */
+static int fly_spell_ms, fly_next_ms = 4000;
 /* mist: a drifting band in a box, thickest at dawn and dusk (mode 0) or all day (1); drawn as rows are
    refreshed (a few each frame, like the sea), from a soft noise tile that drifts sideways */
 #define MIST_TW 512
@@ -283,7 +285,7 @@ static void mist_light(void) {
     const int dr = lerp_i(226, 238, dusk_lvl), dg = lerp_i(232, 200, dusk_lvl), db = lerp_i(238, 186, dusk_lvl);
     mist_col_r = lerp_i(dr, 64, night_lvl); mist_col_g = lerp_i(dg, 74, night_lvl); mist_col_b = lerp_i(db, 98, night_lvl);
     /* dawn and dusk (mode 0): thick in the half light, a faint haze by day, light at night; always (1): steady */
-    const int f = mist_mode ? 200 : clampi(70 + (186 * dusk_lvl >> 8) + (60 * night_lvl >> 8), 0, 256);
+    const int f = mist_mode ? 110 : clampi(36 + (120 * dusk_lvl >> 8) + (30 * night_lvl >> 8), 0, 256);   /* (subtle: a veil, not a wall) */
     mist_str = clampi(mist_amount_q8 * f >> 8, 0, 400);
 }
 static void mist_row(int y, int x0, int x1, int t_ms, uint32_t *dst) {
@@ -297,7 +299,7 @@ static void mist_row(int y, int x0, int x1, int t_ms, uint32_t *dst) {
     for (int x = a; x <= b; x++) {
         int al = (sy * mist_ex[x] >> 8) * nrow[(x + drift) & (MIST_TW - 1)] >> 8;
         if (al <= 1) continue;
-        if (al > 200) al = 200;
+        if (al > 150) al = 150;
         const uint32_t p = dst[x]; int R = (p >> 16) & 255, G = (p >> 8) & 255, B = p & 255;
         R += (mist_col_r - R) * al >> 8; G += (mist_col_g - G) * al >> 8; B += (mist_col_b - B) * al >> 8;
         dst[x] = (uint32_t)R << 16 | (uint32_t)G << 8 | (uint32_t)B;
@@ -486,13 +488,16 @@ static void step_particles(int dt) {
     {
         const int dark = night_lvl > (dusk_lvl * 160 >> 8) ? night_lvl : dusk_lvl * 160 >> 8;
         int live = 0; for (int k = 0; k < np; k++) live += parts[k].kind == P_FLY;
-        const int want = (fx_on & FX_FIREFLIES) && fly_n && dark > 70 ? fly_n * 5 * fly_amount_q8 / 256 : 0;
+        if (fly_spell_ms > 0) fly_spell_ms -= dt;
+        else if ((fly_next_ms -= dt) <= 0) { fly_spell_ms = rr(15000, 28000); fly_next_ms = rr(60000, 150000); }
+        const int per = clampi(2 * fly_amount_q8 / 256, 1, 6);          /* (a few in each place: 1, 2 or 4) */
+        const int want = (fx_on & FX_FIREFLIES) && fly_n && dark > 70 && fly_spell_ms > 0 ? fly_n * per : 0;
         fly_acc += live < want ? dt : 0;
-        while (fly_acc >= 160 && live < want) {
-            fly_acc -= 160; part_t *p = spawn(P_FLY); if (!p) break; live++;
+        while (fly_acc >= 700 && live < want) {                          /* (they come out one by one) */
+            fly_acc -= 700; part_t *p = spawn(P_FLY); if (!p) break; live++;
             const int z = (int)(rnd() % (uint32_t)fly_n), r = fly_xyr[z][2];
             p->x = (fly_xyr[z][0] + rr(-r, r)) << 8; p->y = (fly_xyr[z][1] + rr(-r / 2, r / 2)) << 8;
-            p->ty = (int16_t)z; p->life = rr(30000, 75000); p->size = (int16_t)rr(2600, 5200);   /* blink: every 2.6 to 5.2 s */
+            p->ty = (int16_t)z; p->life = rr(10000, 22000); p->size = (int16_t)rr(4500, 9000);   /* blink: every 4.5 to 9 s */
             p->col = (uint32_t)rr(0, 5000);
         }
         if (!want) fly_acc = 0;
@@ -1140,7 +1145,7 @@ void vfx_dim(void) {
     for (int y = 0; y < H; y++) { uint32_t *r = fb + y * fb_stride; for (int x = 0; x < W; x++) r[x] = (r[x] >> 2) & 0x3f3f3f; }
 }
 /* for previews: 1 gulls, 2 dolphins, 3 the raft, now */
-void vfx_demo(int what) { if (what == 1) { next_gulls_ms = 0; gulls_now = 1; } if (what == 2) next_pod_ms = 0; if (what == 3) { raft_start = -1; next_raft_ms = 0; } }
+void vfx_demo(int what) { if (what == 1) { next_gulls_ms = 0; gulls_now = 1; } if (what == 4) fly_spell_ms = 30000; if (what == 2) next_pod_ms = 0; if (what == 3) { raft_start = -1; next_raft_ms = 0; } }
 
 /* three digits on a scene that asks for it (theme.json cards.scale3; the castle's cards sit to one side
    and three of them would reach it): a smaller copy of the cards, made the first time it's needed */
@@ -1218,7 +1223,7 @@ void vfx_mist(int x0, int y0, int x1, int y1, int amount_q8, int mode) {
                 const int cw = o ? 16 : 32, ch = o ? 8 : 16, nx = MIST_TW / cw, ny = MIST_TH / ch;
                 const int gx = x / cw, gy = y / ch, fx = (x % cw) * 256 / cw, fy = (y % ch) * 256 / ch;
                 const int sx = fx * fx * (768 - 2 * fx) >> 16, sy_ = fy * fy * (768 - 2 * fy) >> 16;   /* smoothstep */
-                #define G(i, j) (o ? g1[(j) % ny][(i) % nx] : g2[(j) % ny][(i) % nx])
+                #define G(i, j) (o ? g2[(j) % ny][(i) % nx] : g1[(j) % ny][(i) % nx])   /* (o 0: the coarse 16x8 grid, g1; 1: the fine 32x16, g2) */
                 const int a = G(gx, gy) + ((G(gx + 1, gy) - G(gx, gy)) * sx >> 8), b = G(gx, gy + 1) + ((G(gx + 1, gy + 1) - G(gx, gy + 1)) * sx >> 8);
                 #undef G
                 v[o] = a + ((b - a) * sy_ >> 8);

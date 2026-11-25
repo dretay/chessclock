@@ -737,6 +737,7 @@ def serve(pv, port):
                 if "hour" in c: pv.hour = str(c["hour"]); pv.live(hour=float(c["hour"]) if str(c["hour"]) != "" else None)
                 if c.get("fireworks"): pv.live(fireworks=pv.live_state.get("fireworks", 0) + 1)
                 if c.get("birds"): pv.live(birds=pv.live_state.get("birds", 0) + 1)
+                if c.get("fireflies"): pv.live(fireflies=pv.live_state.get("fireflies", 0) + 1)
                 if "windows_hold" in c: pv.live(windows_hold=bool(c["windows_hold"]))
                 if c.get("show"): pv.live(show=pv.live_state.get("show", 0) + 1)
                 if "pattern" in c: pv.live(pattern=int(c["pattern"]))                # (the lights' show: one pattern held, or -1)
