@@ -27,9 +27,9 @@ PAGE1_ROWS_DEVICE = [("Today", 78, PAGE1_ROWS[1][2])]
 PAGE1_BUTTONS_APP = {"cancel": (24, 404, 150, 458), "fireworks": (162, 412, 310, 450), "theme": (324, 412, 472, 450),
                      "device": (486, 412, 634, 450), "save": (646, 404, 776, 458)}
 PAGE1_SPLITS_APP = [(156, "cancel"), (317, "fireworks"), (479, "theme"), (640, "device"), (9999, "save")]
-PAGE1_BUTTONS_DEVICE = {"cancel": (24, 404, 150, 458), "display": (162, 412, 390, 450), "wifi": (406, 412, 634, 450),
-                        "save": (646, 404, 776, 458)}
-PAGE1_SPLITS_DEVICE = [(156, "cancel"), (398, "display"), (640, "wifi"), (9999, "save")]
+PAGE1_BUTTONS_DEVICE = {"cancel": (24, 404, 150, 458), "display": (162, 412, 306, 450), "wifi": (318, 412, 462, 450),
+                        "dev": (474, 412, 634, 450), "save": (646, 404, 776, 458)}
+PAGE1_SPLITS_DEVICE = [(156, "cancel"), (312, "display"), (468, "wifi"), (640, "dev"), (9999, "save")]
 PAGE1_SPLITS = [(156, "cancel"), (278, "display"), (398, "fireworks"), (518, "theme"), (640, "wifi"), (9999, "save")]   # bottom row, by x
 
 # ---- page 6: display (the device's settings: every app's)
@@ -94,7 +94,7 @@ STRINGS = {
               "That didn't look right: nothing changed", "Opening apps...", "Daytime", "Night", "Opening device settings..."],
     "small": ["date & time", "bursts", "nightly show", "back to the countdown", "Calibrate touch", "Fireworks ›",
               "Demo show", "Demo show on exit", "fireworks!",
-              "Theme ›", "Nothing to set for this theme", "Apps ›", "one moment", "Device ›", "back to the app", "Display ›", "brightness", "every app shares these", "Get apps ›", "Install", "Update", "Installed",
+              "Theme ›", "Nothing to set for this theme", "Apps ›", "one moment", "Device ›", "back to the app", "Display ›", "brightness", "every app shares these", "Developer: on", "Developer: off", "Get apps ›", "Install", "Update", "Installed",
               "WiFi ›", "Touch", "Rescan", "Forget network", "Scanning...", "Not connected", "Connecting to ",
               "Connected to ", "No WiFi hardware (is the ESP32 connected?)", "Tap a network to join it",
               "open", "shift", "del", "123", "abc", "space", "Join", "Password for ", "Joining...",

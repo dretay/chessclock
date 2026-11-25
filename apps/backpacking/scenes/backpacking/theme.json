@@ -1,8 +1,8 @@
 {
  "effects": [
-  "water",
   "birds",
-  "smoke"
+  "smoke",
+  "water"
  ],
  "horizon": 257,
  "fireworks_scale": 0.85,
@@ -18,13 +18,21 @@
   "speed": 1.0
  },
  "smoke": {
-  "scale": 0.8,
+  "scale": 0.5,
   "wind": 0,
   "rate": 2,
   "points": [
    [
     398,
     335
+   ],
+   [
+    662,
+    314
+   ],
+   [
+    73,
+    304
    ]
   ]
  }

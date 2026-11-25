@@ -77,7 +77,9 @@ class Host:
 
 
 def main():
-    found = picker.installed_apps()
+    # (any installed app's scene to draw over, signed or not: Device settings must always open, developer mode
+    # included, even on a board locked to signed apps with none of them a countdown app)
+    found = picker.apps.installed(picker.ROOT)
     by_id = {a[0]: a for a in found}
     cur = picker.current()
     scene = picker.scene_of(by_id[cur][2]) if cur in by_id else None

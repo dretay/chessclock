@@ -94,7 +94,7 @@ def main():
 
     if not signed:
         status, _ = board("[ -f /apps/data/locked ]", 30)
-        if status == 0: sys.exit("the board is locked to signed apps: --signed, or `app unlock` on the board first")
+        if status == 0: sys.exit("the board only runs signed apps: --signed, or turn on Settings > Device > Developer on the board (or `app unlock`) first")
     board("/etc/init.d/S99app stop >/dev/null 2>&1")
     print("stopped the app")
     copied = []

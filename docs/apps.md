@@ -131,7 +131,12 @@ and the ways to get a bad one in.
 and that it wasn't changed; it doesn't limit what it can do. That's the right trade while every app
 is yours.
 
-**Locking to signed apps:** `app lock` on the board (`/apps/data/locked`): from then on S99app starts
+**Developer mode, or only signed apps:** Settings > Device › **Developer: on / off** (on by default).
+On, any app runs; off, only signed ones. It's the same switch as `app lock` (off) and `app unlock` (on)
+on the board's console, and takes effect when Device settings close (the app starts again then).
+Device settings always open, whatever's signed, so developer mode can always be turned back on.
+
+**Locking to signed apps** (developer mode off, or `app lock`: `/apps/data/locked`): from then on S99app starts
 only an app whose `.signature` checks out against the trusted keys, and its runtime's
 (`modinstall --verify-installed`), else the first one that does; the picker shows only those;
 `deploy.py` without `--signed` refuses. `app unlock` undoes it; `app` lists which apps are signed.

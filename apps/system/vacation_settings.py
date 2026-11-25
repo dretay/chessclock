@@ -43,6 +43,9 @@ PICKER = os.environ.get("APP_PICKER") or os.path.join(os.path.dirname(os.path.ab
 
 
 
+LOCKED = os.path.join(os.environ.get("PICKER_DATA") or "/apps/data", "locked")   # (S99app, the picker, deploy.py read it)
+
+
 def has_picker(): return os.access(PICKER, os.X_OK) and not os.environ.get("VACATION_SIM_CLOCK")
 
 
@@ -98,6 +101,8 @@ class Settings:
         self.cols1 = {}
         for _, top, cols in self.rows1: self.cols1.update(L.columns(cols, top))
         self.cols2 = L.columns(L.PAGE2_ROW_B[2], L.PAGE2_ROW_B[1])
+        # developer mode (Device page): on, any app runs; off, only signed ones (the board's `app lock`: DATA/locked)
+        self.dev_on = self.dev_was = not os.path.exists(LOCKED)
         self.ids = {}; self.txt = Text(self.fx)
 
     # ---------------------------------------------------------------- the theme's setting (page 3)
@@ -263,6 +268,10 @@ class Settings:
             self.text("button", "‹ Back" if name == "back" else "Cancel", cx, y0 + 38, L.IVORY, "m")
         elif name == "forget" and self.wifi_state[0] == "off":
             pass                                            # (nothing to forget)
+        elif name == "dev":                                 # developer mode: gold when on (unsigned apps run)
+            if self.dev_on: self.round(box, 12, (238, 206, 138) if hot else L.GOLD, 255)
+            else: self.round(box, 12, (255, 255, 255), 40 if hot else 0, (255, 255, 255), 70)
+            self.text("small", "Developer: on" if self.dev_on else "Developer: off", cx, y0 + 25, L.DARK if self.dev_on else L.DIM, "m")
         elif name == "demo" and self.demo:                  # armed
             self.round(box, 12, (238, 206, 138) if hot else L.GOLD, 255)
             self.text("small", "Demo show on exit", cx, y0 + 25, L.DARK, "m")
@@ -458,6 +467,7 @@ class Settings:
         if not again: return None
         if target in ("save", "cancel"): return target
         if target == "demo": self.demo = not self.demo; self.draw_button("demo"); return None
+        if target == "dev": self.dev_on = not self.dev_on; self.draw_button("dev"); return None
         if target in ("apps", "device"): return target
         if target == "fireworks": self.page = 2; self.draw_page()
         elif target == "theme": self.page = 3; self.draw_page()
@@ -792,8 +802,16 @@ class Settings:
         print("settings: saved", flush=True)
 
     def save_device(self):
-        """The device's settings (every app's): the brightness (device.conf), and the clock if it was changed."""
+        """The device's settings (every app's): the brightness (device.conf), developer mode (DATA/locked: off,
+        only signed apps run, from the next start, which is when Device settings close), and the clock if it was
+        changed."""
         v = self.v
+        if self.dev_on != self.dev_was:
+            try:
+                if self.dev_on: os.remove(LOCKED)
+                else: open(LOCKED, "w").close()
+                os.sync(); print("settings: developer mode %s" % ("on: any app runs" if self.dev_on else "off: only signed apps run"), flush=True)
+            except OSError as e: print("settings: developer mode: %s" % e, flush=True)
         if self.bright != [self.app.day_bright, self.app.night_bright]:
             dev = self.app.device_path or self.app.conf_path
             write_conf_value(dev, "DAY_BRIGHTNESS", self.bright[0]); write_conf_value(dev, "NIGHT_BRIGHTNESS", self.bright[1])

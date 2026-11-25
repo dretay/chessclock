@@ -82,9 +82,10 @@ def network():
 def installed_apps():
     found = apps.installed(ROOT)
     if os.path.exists(os.path.join(DATA, "locked")):                # (locked to signed apps: only those)
-        import subprocess
-        found = [a for a in found if subprocess.run(["modinstall", "--verify-installed", a[2]], stdout=subprocess.DEVNULL,
-                                                    stderr=subprocess.DEVNULL).returncode == 0]
+        import shutil, subprocess
+        if shutil.which("modinstall"):                                  # (the board's; a desktop preview has none)
+            found = [a for a in found if subprocess.run(["modinstall", "--verify-installed", a[2]], stdout=subprocess.DEVNULL,
+                                                        stderr=subprocess.DEVNULL).returncode == 0]
     return found
 
 

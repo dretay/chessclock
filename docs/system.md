@@ -41,8 +41,8 @@ plus 1)).
 **Security.** No network logins: the board has no ssh server (not even in the WiFi build), and root has
 no usable password. The consoles (UART0, and the micro-USB port as a USB serial port) give a root shell
 straight away: whoever can plug a cable into the board can use it, as with any appliance. Apps install
-only through `modinstall` with a trusted signature, or over USB by the developer; `app lock` goes
-further and runs only signed apps ([apps](apps.md)).
+only through `modinstall` with a trusted signature, or over USB by the developer; developer mode off
+(Settings > Device ›, or `app lock`) goes further and runs only signed apps ([apps](apps.md)).
 
 **Surviving power cuts and hangs.** The base system is mounted read-only (`ro` in the boot script's
 kernel arguments, and nothing remounts it), so pulling the plug can't damage it; `rw` makes it writable
