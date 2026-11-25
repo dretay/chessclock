@@ -1,0 +1,16 @@
+# The Mac-side tools' Python (the previewer, the Scene Builder, the board tools, the check): run them with
+# `uv run`, e.g. `uv run tools/preview/preview.py castle` (uv keeps .venv in step with this and uv.lock by
+# itself). tools/setup.sh sets the rest up. The board's own Python is Buildroot's, not this.
+[project]
+name = "licheepi-nano-tools"
+version = "0"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "pyserial",           # the board's console over USB
+    "Pillow",             # pictures: scenes, cards, icons, renders
+    "fonttools",          # the card font's lining figures (tools/themegen/make_lining_font.py)
+    "pyflakes",           # lint
+]
+
+[tool.uv]
+package = false           # (tools, not a package to install)

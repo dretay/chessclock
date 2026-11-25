@@ -9,12 +9,17 @@ own drawing code:
 1. every app's app.json parses; a countdown app's names what's there (its screens, its default scene
    with everything the drawing library loads, an executable run, and service if it has one);
 2. every Python file of the apps compiles; and modinstall (tools/test/test_modinstall.py) installs a
-   signed app and refuses tampered or unsafe ones;
+   signed app and refuses tampered or unsafe ones; awkward photos (tools/test/test_photos.py: no sky, tiny,
+   portrait, dark, flat...) each become a scene that runs, in seconds;
 3. renders, per countdown app: the countdown at noon and at 10 PM, and its screens (with their example data),
    on the preview clock (VACATION_SIM_CLOCK: the same frames every run), as PNGs, with the frames'
    SHA-256 in hashes.json. --compare reports which differ (and writes a diff image of each).
 
 Run it before and after a change that shouldn't change what's on screen (--save, then --compare).
+A baseline guards the shared code (the runtime, the drawing library), not the apps' own looks: it keeps
+a fingerprint of each app's own files (content.json), and --compare takes an app whose files have changed
+since (a scene kept, its screens, its settings: your edits), or that's new, as its own new baseline,
+saying so; only an app whose files are as they were has to match.
 Needs a C compiler (cc), zlib and Pillow. Exits non-zero if a check fails or a render differs.
 """
 import glob, hashlib, json, os, shutil, subprocess, sys, tempfile
@@ -131,11 +136,44 @@ def check_picker(out):
     shutil.rmtree(tmp, ignore_errors=True)
 
 
-def compare(now, name):
+def fingerprint(mod):
+    """An app's own files (its scene, app.json, settings, screens' examples: what the app's author changes),
+    as one SHA-256; not the shared code it runs on."""
+    h = hashlib.sha256(); d = os.path.join(APPS, mod)
+    for root, dirs, files in os.walk(d):
+        dirs[:] = sorted(x for x in dirs if x != "__pycache__")
+        for f in sorted(files):
+            if f == "preview.png" or f.endswith(".pyc"): continue
+            p = os.path.join(root, f); h.update(os.path.relpath(p, d).encode() + b"\0")
+            with open(p, "rb") as fh: h.update(hashlib.sha256(fh.read()).digest())
+    return h.hexdigest()
+
+
+def compare(now, name, mods):
     from PIL import Image, ImageChops
     base = os.path.join(OUT, name)
     try: old = json.load(open(os.path.join(base, "hashes.json")))
     except OSError: fail("no baseline %s (make one with --save %s)" % (name, name)); return
+    try: content = json.load(open(os.path.join(base, "content.json")))
+    except (OSError, ValueError): content = None                        # (a baseline from before fingerprints: all of it as it is)
+    SHOTS = ("noon", "night", "screen")
+    def keys(m): return ["%s-%s" % (m, s) for s in SHOTS]
+    if content is None: content = {m: fingerprint(m) for m in mods if any(k in old for k in keys(m))}
+    # an app whose own files changed since the baseline (or a new one): what it looks like now is its baseline
+    renewed = []
+    for m in mods:
+        fp = fingerprint(m)
+        if content.get(m) == fp: continue
+        for k in [k for k in keys(m) if k in now]:
+            old[k] = now[k]; shutil.copy(os.path.join(OUT, "now", k + ".png"), os.path.join(base, k + ".png"))
+        print("%s: %s: its renders are its baseline now" % (m, "new" if m not in content else "its own files changed (your edits)"))
+        content[m] = fp; renewed.append(m)
+    for m in [m for m in content if m not in mods]:                      # (an app that's gone)
+        for k in keys(m): old.pop(k, None)
+        content.pop(m); renewed.append(m); print("%s: gone: dropped from the baseline" % m)
+    if renewed:
+        json.dump(old, open(os.path.join(base, "hashes.json"), "w"), indent=1)
+    json.dump(content, open(os.path.join(base, "content.json"), "w"), indent=1)
     for k in sorted(set(old) | set(now)):
         if k not in now or k not in old: fail("%s: only in %s" % (k, "the baseline" if k in old else "this run")); continue
         if old[k] == now[k]: print("same", k); continue
@@ -155,12 +193,17 @@ def main():
     r = subprocess.run([sys.executable, os.path.join(REPO, "tools", "test", "test_catalog.py")], capture_output=True, text=True)
     if r.returncode: fail("catalog:\n" + "\n".join(l for l in (r.stdout + r.stderr).splitlines() if not l.startswith("ok")))
     else: print("catalog: a signed catalog loads and installs (runtime first), a changed one is refused")
+    r = subprocess.run([sys.executable, os.path.join(REPO, "tools", "test", "test_photos.py")], capture_output=True, text=True)
+    if r.returncode: fail("photos:\n" + "\n".join(l for l in (r.stdout + r.stderr).splitlines() if not l.startswith("ok")))
+    else: print("photos: %d awkward ones (no sky, tiny, dark, flat...) each a scene that runs, in seconds" % r.stdout.count("ok "))
     now = render(mods, os.path.join(OUT, "now"))
     check_picker(os.path.join(OUT, "now"))
     if "--save" in args:
         name = args[args.index("--save") + 1]; dst = os.path.join(OUT, name)
-        shutil.rmtree(dst, ignore_errors=True); shutil.copytree(os.path.join(OUT, "now"), dst); print("baseline saved:", os.path.relpath(dst, REPO))
-    if "--compare" in args: compare(now, args[args.index("--compare") + 1])
+        shutil.rmtree(dst, ignore_errors=True); shutil.copytree(os.path.join(OUT, "now"), dst)
+        json.dump({m: fingerprint(m) for m in mods}, open(os.path.join(dst, "content.json"), "w"), indent=1)
+        print("baseline saved:", os.path.relpath(dst, REPO))
+    if "--compare" in args: compare(now, args[args.index("--compare") + 1], mods)
     print("%d problem(s)" % len(failures) if failures else "all good")
     sys.exit(1 if failures else 0)
 

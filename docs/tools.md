@@ -1,12 +1,26 @@
 # Development tools
 
-The tools need pyserial and Pillow. Homebrew's Python won't take packages directly, so give the
-project a virtualenv of its own (ignored by git), and activate it in each new terminal:
+On a new Mac, `tools/setup.sh` sets up what git doesn't hold, and says what else is missing (safe to
+run again: it only does what's missing). Python is the project's own, through [uv](https://docs.astral.sh/uv/)
+(`brew install uv`): the version in `.python-version`, uv's copy of it rather than Homebrew's (a Homebrew
+upgrade can't break the environments), with the tools' packages (`pyproject.toml`, pinned in `uv.lock`) in `.venv` and the AI's in
+`tools/themegen/work/aienv`; an environment not made that way is made afresh:
 
 ```sh
-python3 -m venv .venv && .venv/bin/pip install -r tools/requirements.txt     # once
-source .venv/bin/activate                                                    # then python3 is this one
+tools/setup.sh            # Python (uv's), the tools' environment (.venv: pyproject.toml's packages at uv.lock's
+                          # versions) and the card fonts (assets/fonts/: Google Fonts, OFL), then checks for
+                          # cc, swiftc, Apple's container and gh
+tools/setup.sh --ai       # also the Scene Builder's "find automatically" (PyTorch, transformers and the
+                          # segmentation model: ~1 GB; without it, sky, water and windows go by colour)
+uv run tools/preview/preview.py castle    # any tool: uv run, from anywhere in the project (it uses this
+                                          # project's .venv, whatever virtualenv is active, and keeps it in step)
 ```
+
+The tools below are written as `tools/...`: run each with `uv run` in front (or `source .venv/bin/activate`
+once in a terminal, then as written).
+
+The photos scenes were made from are yours and stay out of git (`assets/`); the scenes made from them
+are in the apps, in git.
 
 ## Previewing apps on the Mac — `tools/preview/`
 
@@ -84,7 +98,7 @@ brush or box, or erased; the light's colour), smoke (click where it rises from: 
 its size, wind, thickness), foam (click where the water churns: its size, which way it flows, how
 much), birds (on or off), water (found automatically, a guess, or painted on the
 picture: it ripples, gentle to choppy, slow to fast; the cruise's sea stays its own), fireworks. The same from the command line:
-`python3 tools/themegen/photo_scene.py PHOTO epcot --try --orb auto`; `--list epcot`, `--keep NAME
+`uv run tools/themegen/photo_scene.py PHOTO epcot --try --orb auto`; `--list epcot`, `--keep NAME
 epcot`, `--back epcot` ([countdown apps](countdown.md#scenes)). `--browser` (or no `swiftc`) shows the same in a page at
 http://localhost:8800. Settings > Apps opens the real app
 picker. Each app keeps its own settings and data in `build/preview/data/`. The chess clock's DejaVu

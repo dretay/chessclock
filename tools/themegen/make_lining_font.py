@@ -2,7 +2,7 @@
 cards) and fixed at the SemiBold weight. Pillow here has no libraqm, so it can't turn on the
 font's 'lnum' feature itself: this points the digit characters at the lining glyphs instead.
 
-    pip install fonttools
+    (fonttools: in .venv, by tools/setup.sh)
     python3 tools/themegen/make_lining_font.py
     -> assets/fonts/CormorantGaramond-SemiBold-Lining.ttf   (SIL Open Font License, like the original)
 """

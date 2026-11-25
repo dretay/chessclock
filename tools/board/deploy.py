@@ -81,7 +81,7 @@ def main():
     key = key or DEFAULT_KEY
     if signed and not os.path.exists(key): sys.exit("no signing key at %s (tools/apps/keygen.sh makes one; --key KEY)" % key)
     try: import serial                                                          # (before asking for the passphrase)
-    except ImportError: sys.exit("%s has no pyserial: pip install -r tools/requirements.txt (in a virtualenv: see docs/tools.md)" % sys.executable)
+    except ImportError: sys.exit("%s has no pyserial: run it with uv run (tools/setup.sh; see docs/tools.md)" % sys.executable)
 
     if signed:
         import pack

@@ -286,22 +286,41 @@ class Preview:
         import photo_scene
         return photo_scene
 
-    def busy(self, what, fn, again_ok=False):
+    def busy(self, what, fn, again_ok=False, limit=120):
         """A slow step (making a scene from a photo: seconds) in the background; the page shows it. again_ok:
         a redo that may come while another runs (a paint stroke's: the stroke is saved already): it runs once
-        more when that one's done, rather than being refused (quick strokes would seem to vanish)."""
+        more when that one's done, rather than being refused (quick strokes would seem to vanish).
+        limit: seconds it may take; past that it's given up on, the page says so and the builder is free again
+        (a stuck step can't hang it: Python can't stop the thread, but nothing waits for it any more). Any
+        error, even one that would end a thread (SystemExit), is reported."""
         with self.lock_busy:
             if self.builder_busy:
                 if again_ok: self.builder_again = (what, fn); return {"ok": True, "queued": True}
                 return {"error": "busy: " + self.builder_busy}
             self.builder_busy, self.builder_error = what, ""
+            self.job = job = getattr(self, "job", 0) + 1
+        def give_up():
+            with self.lock_busy:
+                if self.job != job or not self.builder_busy: return
+                self.job += 1; self.builder_again = None
+                self.builder_error = "%s took over %d seconds and was given up: something in it is stuck (if the builder misbehaves, quit and reopen the preview)" % (self.builder_busy, limit)
+                self.builder_busy = ""
+            self.say("builder: " + self.builder_error)
+        timer = threading.Timer(limit, give_up); timer.daemon = True; timer.start()
         def run(what, fn):
+            nonlocal timer
             while True:
                 try: fn()
-                except Exception as e: self.builder_error = "%s: %s" % (what, e); self.say("builder: " + self.builder_error)
+                except BaseException as e:                                # (SystemExit too: an error, not a hang)
+                    with self.lock_busy:
+                        if self.job == job: self.builder_error = "%s: %s" % (what, e or type(e).__name__)
+                    self.say("builder: %s: %s" % (what, e or type(e).__name__))
+                timer.cancel()
                 with self.lock_busy:
+                    if self.job != job: return                            # (given up on: the builder has moved on)
                     if not self.builder_again: self.builder_busy = ""; return
                     (what, fn), self.builder_again = self.builder_again, None; self.builder_busy = what
+                timer = threading.Timer(limit, give_up); timer.daemon = True; timer.start()
         threading.Thread(target=run, args=(what, fn), daemon=True).start()
         return {"ok": True}
 
@@ -363,7 +382,8 @@ class Preview:
         path = os.path.join(d, name)
         with open(path, "wb") as f: f.write(data)
         ps = self.themegen()
-        return self.busy("making a scene from %s" % name, lambda: ps.try_photo(self.app, path, "auto" if orb == "auto" else None))
+        return self.busy("making a scene from %s" % name, lambda: ps.try_photo(self.app, path, "auto" if orb == "auto" else None),
+                         limit=420)                              # (the first one may fetch the segmentation model: ~100 MB)
 
     def install(self, c):
         """The app on the device (tools/board/deploy.py, over USB): its kept scene, with the system and the

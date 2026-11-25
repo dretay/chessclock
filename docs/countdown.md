@@ -123,7 +123,7 @@ The park and its night show are the app's `app.json` `"park": {"id": ThemeParks.
 `"short_names"` shortens long ride names. Settings > Theme: the rides the board shows (`RIDES`);
 `SHOW_NAME` and `PARK` in the app's settings override the show and park.
 
-**A new one:** `python3 tools/apps/new.py ID --name NAME [--park PARK --show SHOW] [--weather PLACE]`
+**A new one:** `uv run tools/apps/new.py ID --name NAME [--park PARK --show SHOW] [--weather PLACE]`
 (e.g. `new.py epcot --name EPCOT --park EPCOT --show "Luminous The Symphony of Us"`; `new.py yosemite
 --name Yosemite --weather "Yosemite Valley" --date-label "Trail day"`) makes the app with a placeholder
 scene and, for a park, its wait times, for a place, its weather (the place looked up by name), each

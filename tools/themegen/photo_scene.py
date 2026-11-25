@@ -607,8 +607,9 @@ def segmentation(work):
     day, png, js = (os.path.join(work, f) for f in ("day.png", "segment.png", "segment.json"))
     fresh = os.path.exists(png) and os.path.exists(js) and os.path.getmtime(png) >= os.path.getmtime(day)
     if not fresh:
-        if not os.path.exists(AIENV): return None
-        r = subprocess.run([AIENV, os.path.join(HERE, "segment.py"), day, png, js], capture_output=True, text=True)
+        if not os.path.exists(AIENV) or os.environ.get("PHOTO_SCENE_NO_AI"): return None
+        try: r = subprocess.run([AIENV, os.path.join(HERE, "segment.py"), day, png, js], capture_output=True, text=True, timeout=300)
+        except subprocess.TimeoutExpired: print("segment: the model took too long: by colour instead"); return None
         if r.returncode or not os.path.exists(png):
             print("segment: the model didn't run (%s): by colour instead" % (r.stderr.strip().splitlines() or ["?"])[-1]); return None
     try: return Image.open(png).convert("L"), {int(k): v for k, v in json.load(open(js))["labels"].items()}
