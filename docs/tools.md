@@ -76,7 +76,7 @@ builder's Birds card has the same as "Some now"). A screen's **Show now** in the
 first if it has changed (the app has only the screens its app.json has), then shows that one.
 Painted windows are lit like real ones (`scene_pack.painted_light`): a soft edge, brighter in the
 middle, each window its own lamp, and a glow on the stone round it. **Group** (drag a box over several windows: every window it touches switches on and off as one light, e.g. a lantern's panes or a building's floor; `group` boxes in `windows_edits.json`, kept as `window_groups.json`), **Behind** (drag a box round a lit lantern or window: the darkest of the three tones the box splits into on the day photo, its ironwork or frame, goes in front of the light; `behind` boxes in `windows_edits.json`) and a window's **Frame** brush (paint what stays dark in front of its light (a lantern's bars,
-mullions, leading: `window_frame.png`, from the `frame` strokes and `behind` boxes; Undo takes one back)); the light shows between them and their glow is blocked too. While the Window lights card is open,
+mullions, leading: `window_frame.png`, from the `frame` strokes and `behind` boxes; Undo takes one back)); the light shows between them and their glow is blocked too. In a brush mode (painting or erasing windows, water or a frame; rubbing out lights), an outline circle at the pointer shows the brush's size on the picture, at the zoom it's at. While the Window lights card is open,
 or a window is being painted, every window is lit and holds still (live.json `windows_hold`).
 
 The **Scene Builder** panel (View › Scene Builder ⌘B; `tools/preview/builder.html`, in the window, or at

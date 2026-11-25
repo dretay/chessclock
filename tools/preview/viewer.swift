@@ -39,7 +39,8 @@ final class ScreenView: NSView {
     var touch: (String) -> Void = { _ in }
     var lastMove = 0.0
     // erasing lights (the Controls panel): a drag is a brush, not a touch; on release, its circles go to onStroke
-    var erasing = false, adding = false
+    var erasing = false { didSet { showBrush() } }
+    var adding = false
     var onStroke: ([[Int]]) -> Void = { _ in }
     var onAdd: (Int, Int) -> Void = { _, _ in }
     var onDropFile: (URL) -> Void = { _ in }
@@ -52,7 +53,10 @@ final class ScreenView: NSView {
     let guideLabel = CATextLayer()
     var rest: (Int, Int)? = nil                      // (where the guide sits between drags: the horizon's line, the countdown's outline now)
     var stroke: [[Int]] = []
-    var brush = 10
+    var brush = 10 { didSet { showBrush() } }
+    // the brush's outline at the pointer, at its size on the picture (painting, erasing, a frame), while a brush mode is on
+    let brushLayer = CAShapeLayer()
+    private var pointer: CGPoint? = nil
     var brushTarget = "erase"                        // "erase" (the orb's lights), "wpaint" / "werase" (window glass), "qpaint" / "qerase" (water)
     var onPaint: (String, [[Int]]) -> Void = { _, _ in }
     private var boxStart: (Int, Int)? = nil
@@ -84,10 +88,29 @@ final class ScreenView: NSView {
         guideLabel.backgroundColor = NSColor(red: 0.89, green: 0.75, blue: 0.47, alpha: 0.95).cgColor
         guideLabel.cornerRadius = 3; guideLabel.alignmentMode = .center; guideLabel.isHidden = true
         layer?.addSublayer(guideLabel)
+        brushLayer.fillColor = nil; brushLayer.lineWidth = 1.5
+        brushLayer.strokeColor = NSColor(white: 1, alpha: 0.95).cgColor
+        brushLayer.shadowColor = NSColor.black.cgColor; brushLayer.shadowOpacity = 0.9; brushLayer.shadowRadius = 1.2; brushLayer.shadowOffset = .zero
+        layer?.addSublayer(brushLayer)
         registerForDraggedTypes([.fileURL])
     }
     required init?(coder: NSCoder) { fatalError() }
     override var acceptsFirstResponder: Bool { true }
+
+    // ---------------------------------------------------------------- the brush's outline, following the pointer
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for t in trackingAreas { removeTrackingArea(t) }
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+    }
+    override func mouseMoved(with event: NSEvent) { pointer = convert(event.locationInWindow, from: nil); showBrush() }
+    override func mouseExited(with event: NSEvent) { pointer = nil; showBrush() }
+    func showBrush() {
+        CATransaction.begin(); CATransaction.setDisableActions(true); defer { CATransaction.commit() }
+        guard erasing, let p = pointer, bounds.contains(p) else { brushLayer.path = nil; return }
+        let r = max(2, CGFloat(brush) * k)
+        brushLayer.path = CGPath(ellipseIn: CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r), transform: nil)
+    }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     // a photo dropped on the picture: the Scene Builder makes a trial of it
@@ -99,7 +122,7 @@ final class ScreenView: NSView {
               let u = urls.first else { return false }
         onDropFile(u); return true
     }
-    override func layout() { super.layout(); for l in [strokeLayer, guideLayer, flashLayer] as [CALayer] { l.frame = bounds } }
+    override func layout() { super.layout(); for l in [strokeLayer, guideLayer, flashLayer, brushLayer] as [CALayer] { l.frame = bounds }; showBrush() }
 
     // ---------------------------------------------------------------- the picture, and the zoom
     private var visW: CGFloat { CGFloat(W) / zoom }
@@ -117,7 +140,7 @@ final class ScreenView: NSView {
         if let img = lastImage { layer?.contents = crop(img) }
         flashLayer.contents = crop(flashImage)
         CATransaction.commit()
-        drawStroke(); showRest()
+        drawStroke(); showRest(); showBrush()
         onZoom(zoom)
     }
     /* zoom to z (1 to 8), keeping the screen point (sx, sy) where it is in the view */
@@ -301,6 +324,7 @@ final class ScreenView: NSView {
         if !layoutMode.isEmpty { let (x, y) = screenPoint(event); drawGuide(x, y); return }
         if adding { return }
         if erasing {
+            pointer = convert(event.locationInWindow, from: nil); showBrush()
             let (x, y) = screenPoint(event)
             if let last = stroke.last {                  // (fill in between, so a quick stroke leaves no gaps)
                 let dx = x - last[0], dy = y - last[1], n = max(abs(dx), abs(dy)) / max(1, brush / 2)
