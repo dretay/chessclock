@@ -440,7 +440,7 @@ class Preview:
         ship = conf_value(os.path.join(APPS, app, "defaults.conf"), "SHIP") or "Disney Dream"
         out = []
         for s in m.get("screens", []):
-            if s.get("type") == "waits": s = dict(s, park=pname, park_id=park.get("id", ""), show=park.get("show", ""))
+            if s.get("type") == "waits": s = dict(s, park=pname, park_id=park.get("id", ""))
             elif s.get("type") == "ships": s = dict(s, ship=ship)
             out.append(s)
         return out
@@ -459,7 +459,7 @@ class Preview:
         for s in screens:
             s = dict(s)
             if s.get("type") == "waits":                                 # (the park: the app's, app.json "park"; looked up by name)
-                ptext, show = (s.pop("park", "") or "").strip(), (s.pop("show", "") or "").strip()
+                ptext = (s.pop("park", "") or "").strip(); s.pop("show", None)
                 pid = (s.pop("park_id", "") or "").strip()
                 park = dict(meta.get("park") or {})
                 if not ptext and not pid: raise ValueError("a wait-times screen needs a park (pick one)")
@@ -472,7 +472,7 @@ class Preview:
                     if pid != park.get("id"):
                         with open(os.path.join(d, "waits_example.json"), "w") as f: json.dump(newapp.example_waits(pid, pname), f, indent=1)
                     park.update(id=pid, name=pname)
-                park["show"] = show
+                park.pop("show", None)
                 meta["park"] = park
             if s.get("type") == "ships":                                 # (the app's own ship: SHIP, and the one the map follows)
                 ship = s.pop("ship", "")

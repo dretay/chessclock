@@ -123,12 +123,12 @@ park app: the board (`board.py`, the "waits" screen type), and ride
 waits, park hours and show times from ThemeParks.wiki (`waits.py`, free, no key; fetched every 5
 minutes by the shared fetcher loop (`screens.sh`), then it exits, so it takes memory only
 for the seconds of a fetch) into `/apps/data/<app>/waits.json`, else the app's `waits_example.json`.
-The park and its night show are the app's `app.json` `"park": {"id": ThemeParks.wiki id, "show": ...}`;
+The park is the app's `app.json` `"park": {"id": ThemeParks.wiki id, "name": ...}`;
 `"short_names"` shortens long ride names. Settings > Theme: the rides the board shows (`RIDES`);
-`SHOW_NAME` and `PARK` in the app's settings override the show and park.
+`PARK` in the app's settings overrides the park.
 
-**A new one:** `uv run tools/apps/new.py ID --name NAME [--park PARK --show SHOW] [--weather PLACE]`
-(e.g. `new.py epcot --name EPCOT --park EPCOT --show "Luminous The Symphony of Us"`; `new.py yosemite
+**A new one:** `uv run tools/apps/new.py ID --name NAME [--park PARK] [--weather PLACE]`
+(e.g. `new.py epcot --name EPCOT --park EPCOT`; `new.py yosemite
 --name Yosemite --weather "Yosemite Valley" --date-label "Trail day"`) makes the app with a placeholder
 scene and, for a park, its wait times, for a place, its weather (the place looked up by name), each
 with an example of them; it runs at once in the previewer. Real art goes

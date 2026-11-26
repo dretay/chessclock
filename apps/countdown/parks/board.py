@@ -6,8 +6,7 @@ Over the scene, blurred and dimmed (the scene's settings_bg), a panel of rides i
 one's standby wait, coloured by how long (green to 15 min, gold to 40, coral beyond), or "Down" when
 it's broken down. The ones picked in Settings > Theme (RIDES in vacation.conf, names joined with |),
 else every ride with a wait, longest first. Above: the park, today's hours, how old the waits are;
-below: tonight's fireworks or night show (SHOW_NAME in the app's settings, else app.json
-"park": {"show": ...}).
+below: the data's credit.
 
 The waits come from waits.py (the app's service, parks/service), in its data folder's waits.json
 (/apps/data/<app>/waits.json); without it (no WiFi), waits_example.json in the app's folder.
@@ -100,11 +99,7 @@ class WaitsScreen:
                 ww = t.draw("small", word, right, y, CORAL if status == "DOWN" else L.DIM, "r")
                 room = COL_W - 44 - ww - 14
             t.draw("small", t.fit("small", name, room), cx + 24, y, L.IVORY if status == "OPERATING" else L.DIM)
-        # tonight's fireworks, and the credit
-        show_name = app.conf.get("SHOW_NAME") or (app.module.meta.get("park") or {}).get("show", "")
-        for s in data.get("shows", []):
-            if plain(s.get("name", "")) == show_name and s.get("times"):
-                t.draw("small", "%s at %s" % (show_name, clock(s["times"][0])), 36, 460, GOLD); break
+        # the credit
         t.draw("small", "Wait times: ThemeParks.wiki", L.W - 24, 462, L.DIM, "r")
         fx.vfx_ui_flush()
 

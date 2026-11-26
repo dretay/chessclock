@@ -16,8 +16,8 @@ a defaults.conf (its own settings' first values).
 - screens: shown in turn with the countdown, each for its "secs" setting (seconds) while its
   "enabled" setting isn't 0. A screen is a class taking the App, with run(seconds) (see ships/screen.py, the fleet map).
   Its "file" is in the app's folder, or with "from": "runtime" in this runtime's (api 3): parks/board.py,
-  the wait-times board any park app can show (with "park": {"id": ThemeParks.wiki id, "show": tonight's
-  show's name} in its app.json, and `exec ../countdown/parks/service` as its service).
+  the wait-times board any park app can show (with "park": {"id": ThemeParks.wiki id, "name": its name}
+  in its app.json, and `exec ../countdown/parks/service` as its service).
 - data and settings: its own folder, APP_DATA (/apps/data/<id>): countdown.conf, and whatever it fetches.
 """
 import importlib.util, json, os, sys

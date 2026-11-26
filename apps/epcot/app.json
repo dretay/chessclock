@@ -5,8 +5,7 @@
   "runtime": "countdown",
   "api": 4,
   "park": {
-    "id": "47f90d2c-e191-4239-a466-5892ef59a88b",
-    "show": "Luminous The Symphony of Us"
+    "id": "47f90d2c-e191-4239-a466-5892ef59a88b"
   },
   "exclude": [
     "scenes/*/preview.png",

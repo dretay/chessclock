@@ -2,10 +2,10 @@
 """Start a new countdown app: a folder in apps/ that runs at once (in the previewer, or deployed),
 with a placeholder scene to replace with real art.
 
-    python3 tools/apps/new.py ID --name NAME [--park PARK] [--show SHOW] [--weather PLACE] [--units F|C]
+    python3 tools/apps/new.py ID --name NAME [--park PARK] [--weather PLACE] [--units F|C]
                               [--greeting TEXT] [--date-label TEXT]
 
-e.g.  python3 tools/apps/new.py epcot --name EPCOT --park EPCOT --show "Luminous The Symphony of Us"
+e.g.  python3 tools/apps/new.py epcot --name EPCOT --park EPCOT
       python3 tools/apps/new.py yosemite --name "Yosemite" --weather "Yosemite Valley" --date-label "Trail day"
 
 --park: a theme park (its ThemeParks.wiki name, or part of it, or its entity id): the app then shows that
@@ -96,7 +96,7 @@ def example_waits(park_id, name):
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("id"); ap.add_argument("--name", required=True)
-    ap.add_argument("--park"); ap.add_argument("--show", default="")
+    ap.add_argument("--park")
     ap.add_argument("--weather", help="a place: its forecast, a screen of its own"); ap.add_argument("--units", default="F", choices=("F", "C"))
     ap.add_argument("--greeting", default="Have a magical day!")
     ap.add_argument("--date-label", default="Park day")
@@ -113,7 +113,7 @@ def main():
         print("new: the weather for %s (%s, %s)" % (name, lat, lon))
 
     meta = {"id": a.id, "name": a.name, "version": "0.1.0", "runtime": "countdown", "api": 4 if (park or weather) else 2}
-    if park: meta["park"] = {"id": park[0], "show": a.show}
+    if park: meta["park"] = {"id": park[0], "name": park[1]}
     meta["exclude"] = ["scenes/*/preview.png", "splash/preview.png"]
     meta["scene"] = {"engine": "scene", "dir": "scenes", "default": a.id}
     screens = []
@@ -133,8 +133,8 @@ def main():
                  "WAITS=1", "WAITS_SECS=60",
                  "# the rides it shows (Settings > Theme picks them; names joined with |): empty for all of them",
                  "RIDES=",
-                 "# tonight's show the board names, and the park (a ThemeParks.wiki entity id), if not app.json's \"park\"",
-                 "SHOW_NAME=", "PARK="]
+                 "# the park (a ThemeParks.wiki entity id), if not app.json's \"park\"",
+                 "PARK="]
     open(os.path.join(d, "defaults.conf"), "w").write("\n".join(conf) + "\n")
     shutil.copy(os.path.join(APPS, "castle", "run"), os.path.join(d, "run"))
     shutil.copy(os.path.join(APPS, "castle", "splash.sh"), os.path.join(d, "splash.sh"))

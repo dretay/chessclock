@@ -6,7 +6,7 @@
   "api": 4,
   "park": {
     "id": "75ea578a-adc8-4116-a54d-dccb60765ef9",
-    "show": "Happily Ever After"
+    "name": "Magic Kingdom"
   },
   "exclude": [
     "scenes/*/preview.png",

@@ -91,7 +91,7 @@ the horizon on the picture (or type them), the cards' look (Parchment; Black spl
 before the trip); for any countdown app, a photo's scene or not. Its effects, for the scene showing:
 lights on a sphere (found, a circle given, or removed; the show's patterns and how long each; one
 held to watch; erasing and adding lights on the picture), Screens (the app's screens in turn with the
-countdown: add a type, its seconds and settings: a weather screen's place (type a name, Find, and pick the right one of the places it could mean: Open-Meteo's geocoding; saved only once it's checked, ✓), a wait-times screen's park (picked from ThemeParks.wiki's list, by destination; into app.json "park", with its example waits) and tonight's show, a ship map's ship (the app's SHIP and MAP_SHIP); a name that can't be found says so; reorder,
+countdown: add a type, its seconds and settings: a weather screen's place (type a name, Find, and pick the right one of the places it could mean: Open-Meteo's geocoding; saved only once it's checked, ✓), a wait-times screen's park (picked from ThemeParks.wiki's list, by destination; into app.json "park", with its example waits), a ship map's ship (the app's SHIP and MAP_SHIP); a name that can't be found says so; reorder,
 remove, Show now; Save writes them into the app's app.json), and On the device: Install on the device
 (tools/board/deploy.py over USB: the app's kept scene with the system and runtime it runs on, then the
 app that runs; Signed asks for the key's passphrase then, in a dialog, and keeps it nowhere), window lights (found automatically in the

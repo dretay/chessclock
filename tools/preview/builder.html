@@ -596,8 +596,7 @@ function renderScreens() {
     }
     if (s.type === "waits") {
       div.insertAdjacentHTML("beforeend",
-        `<div class="row note">Park <select data-w="park" style="flex:1;min-width:0"><option value="">${PARKS ? "Pick a park…" : "Loading the parks…"}</option></select></div>
-         <div class="row note">Tonight's show <input type="text" data-k="show" value="${esc(s.show)}" placeholder="optional"></div>`);
+        `<div class="row note">Park <select data-w="park" style="flex:1;min-width:0"><option value="">${PARKS ? "Pick a park…" : "Loading the parks…"}</option></select></div>`);
       wirePark(div, s);
     }
     if (s.type === "ships") div.insertAdjacentHTML("beforeend",
@@ -668,7 +667,7 @@ function wirePlace(div, s) {
 $("addscreen").onclick = () => {
   const t = $("addtype").value;
   draft.push(t === "weather" ? { type: "weather", place: "", units: "F", secs: 30 }
-           : t === "waits" ? { type: "waits", park: "", park_id: "", show: "", secs: 60 }
+           : t === "waits" ? { type: "waits", park: "", park_id: "", secs: 60 }
            : t === "ships" ? { type: "ships", ship: ((S && S.ship_names) || ["Disney Dream"])[0], secs: 60 } : { type: t, secs: 60 });
   renderScreens();
 };
