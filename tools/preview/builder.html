@@ -98,6 +98,7 @@
   <div class="row note"><button id="foldall">Collapse all</button><button id="openall">Expand all</button></div>
   <label class="check"><input type="checkbox" id="stay" checked><span>Stay on the scene (the app's other screens wait; a tap still shows them)</span></label>
   <div class="row note">Zoom <button id="zout">−</button><button id="zin">+</button><button id="zfit">Fit</button></div>
+  <label class="check"><input type="checkbox" id="origphoto" checked><span>Zoomed in, show the original photo (sharper; untick to see the scene as the device draws it)</span></label>
   <p class="note" style="margin-top:-10px">Or the mouse wheel or a pinch on the picture; the middle button, or two fingers, to move around.</p>
   <div id="status"></div>
 
@@ -539,6 +540,8 @@ function findorbFor(s) {
   $("findorb").checked = v === null ? !!((s.conf || {}).orb) : v === "1";
 }
 $("birdsnow").onclick = () => control({ birds: true });   // (to see them: whether the scene has them on or not)
+$("origphoto").onchange = () => { if (native) native.postMessage({ originalPhoto: $("origphoto").checked }); };
+window.originalShown = on => { $("origphoto").checked = on; };
 window.smokeAdded = () => refresh();
 // fireflies: zones clicked on the picture; mist: a box dragged on it; fireworks: on or off for this scene
 function fflySettings() { return { amount: +$("ffamount").value, size: +$("ffsize").value }; }

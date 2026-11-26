@@ -67,6 +67,11 @@ final class ScreenView: NSView {
     private var lastImage: CGImage?
     // what "find automatically" found, over the picture for a moment (an 800x480 picture, faded out)
     let flashLayer = CALayer()
+    // zoomed in: the original photo, sharper than the device's 800x480 (the strokes and guides over it)
+    let photoLayer = CALayer()
+    var originalImage: CGImage? = nil { didSet { redisplayPublic() } }
+    var showOriginal = UserDefaults.standard.object(forKey: "ShowOriginalPhoto") as? Bool ?? true { didSet { redisplayPublic() } }
+    func redisplayPublic() { redisplay() }
     private var flashImage: CGImage?
 
     override init(frame: NSRect) {
@@ -76,6 +81,8 @@ final class ScreenView: NSView {
         layer?.magnificationFilter = .nearest            // (the device's own pixels, crisp)
         layer?.backgroundColor = NSColor.black.cgColor
         flashLayer.contentsGravity = .resize; flashLayer.magnificationFilter = .nearest; flashLayer.opacity = 0
+        photoLayer.contentsGravity = .resize; photoLayer.magnificationFilter = .linear; photoLayer.isHidden = true
+        layer?.addSublayer(photoLayer)
         layer?.addSublayer(flashLayer)
         strokeLayer.fillColor = NSColor(red: 1, green: 0.24, blue: 0.24, alpha: 0.35).cgColor
         layer?.addSublayer(strokeLayer)
@@ -122,7 +129,7 @@ final class ScreenView: NSView {
               let u = urls.first else { return false }
         onDropFile(u); return true
     }
-    override func layout() { super.layout(); for l in [strokeLayer, guideLayer, flashLayer, brushLayer] as [CALayer] { l.frame = bounds }; showBrush() }
+    override func layout() { super.layout(); for l in [strokeLayer, guideLayer, flashLayer, brushLayer, photoLayer] as [CALayer] { l.frame = bounds }; showBrush() }
 
     // ---------------------------------------------------------------- the picture, and the zoom
     private var visW: CGFloat { CGFloat(W) / zoom }
@@ -139,6 +146,8 @@ final class ScreenView: NSView {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         if let img = lastImage { layer?.contents = crop(img) }
         flashLayer.contents = crop(flashImage)
+        let orig = showOriginal && zoom > 1.01 ? originalImage : nil
+        photoLayer.isHidden = orig == nil; photoLayer.contents = crop(orig)
         CATransaction.commit()
         drawStroke(); showRest(); showBrush()
         onZoom(zoom)
@@ -465,7 +474,27 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         }.resume()
     }
 
+    // the original photo of the scene showing: fetched again when it changes (another trial, another photo)
+    var originalKey = ""
+    func fetchOriginal(_ key: String) {
+        originalKey = key
+        if key.isEmpty { view.originalImage = nil; return }
+        URLSession.shared.dataTask(with: url("/builder/photo")) { [weak self] data, resp, _ in
+            let ok = (resp as? HTTPURLResponse)?.statusCode == 200
+            let img = ok ? data.flatMap { NSImage(data: $0) }?.cgImage(forProposedRect: nil, context: nil, hints: nil) : nil
+            DispatchQueue.main.async { if self?.originalKey == key { self?.view.originalImage = img } }
+        }.resume()
+    }
+    @objc func toggleOriginal() {
+        view.showOriginal.toggle(); UserDefaults.standard.set(view.showOriginal, forKey: "ShowOriginalPhoto")
+        originalItem?.state = view.showOriginal ? .on : .off
+        builder?.evaluateJavaScript("window.originalShown && window.originalShown(\(view.showOriginal))")
+    }
+    var originalItem: NSMenuItem?
+
     func update(_ s: [String: Any]) {
+        if let key = s["photo_key"] as? String, key != originalKey { fetchOriginal(key) }
+        builder?.evaluateJavaScript("window.originalShown && window.originalShown(\(view.showOriginal))")   // (the page's box, in step)
         state = s
         let apps = (s["apps"] as? [[String]]) ?? []
         let current = s["app"] as? String ?? ""
@@ -552,6 +581,9 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         viewMenu.addItem(item("Zoom In", #selector(zoomIn), "=", [.command, .option]))
         viewMenu.addItem(item("Zoom Out", #selector(zoomOut), "-", [.command, .option]))
         viewMenu.addItem(item("Zoom to Fit", #selector(zoomFit), "0", [.command, .option]))
+        originalItem = item("Original Photo When Zoomed In", #selector(toggleOriginal), "p", [.command, .option])
+        originalItem?.state = view.showOriginal ? .on : .off
+        viewMenu.addItem(originalItem!)
         viewMenu.addItem(item("Save Screenshot to Desktop", #selector(screenshot), "s"))
         NSApp.mainMenu = main
     }
@@ -775,6 +807,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
     func userContentController(_ uc: WKUserContentController, didReceive message: WKScriptMessage) {
         guard let body = message.body as? [String: Any] else { return }
         if let z = body["zoom"] as? String { if z == "in" { zoomIn() } else if z == "out" { zoomOut() } else { zoomFit() }; return }
+        if let o = body["originalPhoto"] as? Bool { if o != view.showOriginal { toggleOriginal() }; return }
         if let kind = body["flash"] as? String { flash(kind); return }
         if body["askPassphrase"] != nil { askPassphrase(); return }
         guard let mode = body["editMode"] as? String else { return }

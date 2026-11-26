@@ -324,6 +324,32 @@ class Preview:
         threading.Thread(target=run, args=(what, fn), daemon=True).start()
         return {"ok": True}
 
+    def photo_work(self):
+        """The work folder of the scene showing (a trial's, or the app's own), or None."""
+        if manifest(self.app).get("runtime") != "countdown": return None
+        ps = self.themegen(); cur = current_trial(self.app)
+        return ps.dirs(self.app, os.path.basename(os.path.dirname(cur)) if cur else "")[1]
+
+    def photo_key(self):
+        """Changes when the scene showing's original photo does (the window fetches it again): "" if none."""
+        work = self.photo_work()
+        try: conf = json.load(open(os.path.join(work, "scene.json")))
+        except (OSError, ValueError, TypeError): return ""
+        p = conf.get("photo") or ""
+        if not os.path.exists(p) or conf.get("plates_fixed"): return ""
+        return "%s|%s|%s" % (p, os.path.getmtime(p), conf.get("crop"))
+
+    def photo_jpeg(self):
+        """The original photo, cut as the scene is, as a JPEG (cached by its key)."""
+        key = self.photo_key()
+        if not key: return None
+        if getattr(self, "_photo", (None,))[0] != key:
+            import io
+            img = self.themegen().original(self.photo_work())
+            if img is None: self._photo = (key, None)
+            else: b = io.BytesIO(); img.save(b, "JPEG", quality=90); self._photo = (key, b.getvalue())
+        return self._photo[1]
+
     def builder_state(self):
         app = self.app; m = manifest(app)
         out = {"app": app, "name": m.get("name", app), "countdown": m.get("runtime") == "countdown", "stay": bool(self.live_state.get("stay")),
@@ -693,7 +719,12 @@ def serve(pv, port):
                          "countdown": manifest(pv.app).get("runtime") == "countdown", "log": list(pv.log)[-200:],
                          "target": pv.target, "remote_note": pv.remote.note if pv.remote else "",
                          "stay": bool(pv.live_state.get("stay")), "pattern": pv.live_state.get("pattern", -1)}
+                try: state["photo_key"] = pv.photo_key()
+                except Exception: state["photo_key"] = ""
                 return self.send(200, json.dumps(state).encode())
+            if self.path.startswith("/builder/photo"):                 # (the original photo, for the window zoomed in)
+                data = pv.photo_jpeg()
+                return self.send(200, data, "image/jpeg") if data else self.send(404, b"{}")
             self.send(404, b"{}")
 
         def do_POST(self):

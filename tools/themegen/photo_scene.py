@@ -42,6 +42,21 @@ def cut(photo, crop):
     return photo.crop(crop_box(photo, crop)).resize((W, H), Image.LANCZOS)
 
 
+def original(work, max_w=3200):
+    """The scene's photo as it's cut for the scene (the same 5:3 box), at the photo's own resolution (up to
+    max_w wide): what the previewer shows zoomed in, sharper than the device's 800x480. None if there's
+    no photo (a scene made by hand), or its photo is the plate itself."""
+    try: conf = json.load(open(os.path.join(work, "scene.json")))
+    except (OSError, ValueError): return None
+    p = conf.get("photo") or ""
+    if not os.path.exists(p) or conf.get("plates_fixed"): return None
+    img = Image.open(p).convert("RGB")
+    img = img.crop(crop_box(img, tuple(conf["crop"]) if conf.get("crop") else None))
+    if img.width <= W: return None                                      # (no sharper than the device's)
+    if img.width > max_w: img = img.resize((max_w, round(img.height * max_w / img.width)), Image.LANCZOS)
+    return img
+
+
 def find_sky(day):
     """255 where it isn't sky: blue-tinted and joined to the top edge, and whatever floats free of the ground (at a quarter size,
     so clouds' edges don't break it up), smoothed."""
@@ -708,9 +723,16 @@ def find_windows_into(work, scene):
 
 
 def clear_found_windows(work, scene):
-    """All the windows gone: those found automatically and those painted. How many windows lit (none)."""
+    """All the windows gone: those found automatically and those painted, and a scene's own fixed lights
+    (the cruise's cabins: "lights_fixed", kept as "lights_fixed_was" so they could be had back by hand).
+    How many windows lit (none)."""
     for f in ("windows_base.png", "windows_edits.json"):
         if os.path.exists(os.path.join(work, f)): os.remove(os.path.join(work, f))
+    sp = os.path.join(work, "scene.json")
+    try: conf = json.load(open(sp))
+    except (OSError, ValueError): conf = {}
+    if conf.get("lights_fixed"):                                        # (cleared means none: not back to the cabins)
+        conf["lights_fixed_was"] = conf.pop("lights_fixed"); json.dump(conf, open(sp, "w"), indent=1)
     return rewindow(work, scene)
 
 
