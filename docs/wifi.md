@@ -54,6 +54,34 @@ Bluetooth). The firmware version must match the driver's (`ESP_HOSTED_VERSION` i
 The device tree (`board/licheepi_nano/linux/suniv-f1c100s-licheepi-nano-custom.dts`) names these for
 the driver (`reset-gpios`, `handshake-gpios`, `data-ready-gpios`, `spi-max-frequency`).
 
+**Checking the wiring on the device:** with no ESP32 answering, Settings > Device › WiFi › has **Check
+wiring**: what the ESP32's driver has said since it last started (the kernel log), as one finding (no sign
+of it at all; it signals but answers only zeros; it answers garbled) and the wires to check, by the ESP32
+D1 mini's silkscreen names (its JTAG names for IO12-15: TDI MISO, TCK MOSI, TMS clock, TDO CS). **Try
+again** restarts its driver (`S35wifi restart`: the ESP reset, wlan0 waited for) and checks again, or goes
+on to the networks if it answers (`vacation_wifi.wiring_check`, `restart_esp`).
+
+### The wiring test
+
+When Check wiring isn't enough, flash the ESP32 with the **wiring test** firmware (its source, a small
+ESP-IDF project, in `tools/wifi/wiretest/`) in place of its WiFi firmware:
+
+```sh
+tools/wifi/build_esp_firmware.sh esp32 --wiretest      # -> tools/wifi/out/wiretest-esp32/
+tools/wifi/flash_esp.sh esp32 PORT --wiretest
+```
+
+Each of the ESP's six signal pins then plays its own rhythm: high, then low, for a prime number of
+milliseconds (TDO/IO15 5, TCK/IO13 7, TMS/IO14 11, TDI/IO12 13, IO2 17, IO4 19), so no two can be confused;
+it prints the table on its own USB serial too. On the Nano, Check wiring's **Wiring test** pauses the WiFi
+(its driver stopped, the SPI controller unbound), listens on its six pins for two seconds through Linux's
+GPIO character device (`/dev/gpiochip0`), and names what each heard: right, swapped (and with which), silent
+(not connected) or garbled (touching another wire). Then it pulls the reset line (PCLK to EN) low a moment:
+every rhythm stopping for the restart says that wire is right too. Afterwards the SPI controller is bound
+again and the WiFi started (`apps/system/wiretest.py`). Flash the WiFi firmware back when it's all right.
+The ESP32-C3's pins are to be added to the firmware's table (and `wiretest.py`'s) when the protoboard's C3
+is wired.
+
 ## On the board
 
 `S35wifi` starts it all in the background (`/var/log/wifi.log`): the driver, then wpa_supplicant,

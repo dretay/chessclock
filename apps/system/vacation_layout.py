@@ -60,6 +60,7 @@ PAGE3_BUTTONS = {"back": (36, 404, 236, 458), "prev": (290, 412, 370, 450), "nex
 WIFI_STATUS_Y = 104                                             # "Connected to ..." under the title
 WIFI_PANEL = (20, 124, 780, 392)                                # the networks, a row each
 WIFI_ROW_H, WIFI_ROWS = 52, 5
+WIFI_WIRETEST = (582, 136, 766, 178)                             # (no ESP32: the wiring test, top right of the panel)
 WIFI_BUTTONS = {"back": (36, 404, 236, 458), "rescan": (300, 412, 500, 450), "forget": (564, 412, 764, 450)}
 KB_FIELD = (20, 70, 780, 128)                                   # the password as typed
 KB_TOP, KB_KEY_H, KB_GAP, KB_X0, KB_X1 = 140, 56, 8, 20, 780
@@ -96,7 +97,7 @@ STRINGS = {
               "Demo show", "Demo show on exit", "fireworks!",
               "Theme ›", "Nothing to set for this theme", "Apps ›", "one moment", "Device ›", "back to the app", "Display ›", "brightness", "every app shares these", "Developer: on", "Developer: off", "Get apps ›", "Install", "Update", "Installed",
               "WiFi ›", "Touch", "Rescan", "Forget network", "Scanning...", "Not connected", "Connecting to ",
-              "Connected to ", "No WiFi hardware (is the ESP32 connected?)", "Tap a network to join it",
+              "Connected to ", "No WiFi hardware (is the ESP32 connected?)", "Check wiring", "Try again", "Wiring test", "Listening to the wires...", "Tap a network to join it",
               "open", "shift", "del", "123", "abc", "space", "Join", "Password for ", "Joining...",
               "Couldn't connect: check the password", "Saved on the board", "No networks found",
               "WiFi isn't running yet"],

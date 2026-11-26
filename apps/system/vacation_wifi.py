@@ -23,6 +23,47 @@ def present():
     return bool(os.environ.get("VACATION_WIFI_FAKE")) or os.path.isdir("/sys/class/net/" + IFACE)
 
 
+def wiring_check(log=None):
+    """When there's no wlan0: what the ESP32's driver has said since it last started (the kernel log), as
+    (finding, [advice lines]) for the WiFi page's "Check wiring". The pins are the ESP32 D1 mini's
+    silkscreen names (its JTAG names for IO12-15). log: the kernel log's text (default: dmesg)."""
+    if present(): return "The ESP32 answers: the WiFi hardware is fine.", ["No networks? That's the router, or the distance to it."]
+    if log is None:
+        try:
+            import subprocess
+            log = os.environ.get("VACATION_WIFI_LOG") and open(os.environ["VACATION_WIFI_LOG"]).read() or \
+                subprocess.run(["dmesg"], capture_output=True, text=True, timeout=5).stdout
+        except (OSError, ValueError, Exception): log = ""
+    lines = [l for l in log.splitlines() if "esp32_spi" in l]
+    for i in range(len(lines) - 1, -1, -1):                              # (since the driver last started)
+        if "esp_spi_probe" in lines[i]: lines = lines[i:]; break
+    text = "\n".join(lines)
+    if not lines:
+        if not os.path.exists("/etc/init.d/S35wifi") and not os.environ.get("VACATION_WIFI_LOG"):
+            return "This system has no WiFi (it isn't the WiFi build).", []
+        return "The WiFi driver isn't running.", ["Try again starts it."]
+    gave_up = "terminal failure" in text or "exhausted" in text
+    end = ["It gave up after 3 resets: Try again once it's fixed."] if gave_up else []
+    zeros = "zero SPI RX payload" in text
+    garbled = any(k in l.lower() for l in lines if "zero SPI RX payload" not in l for k in ("mismatch", "invalid", "corrupt", "bad header", "unexpected"))
+    if garbled:
+        return "It answers, but garbled.", ["The ground wire between the boards: short and firm.", "Shorter SPI wires, away from the display cable.",
+                                           "MOSI: ESP TCK (IO13) to Nano A1.", "CS: ESP TDO (IO15) to Nano A0."] + end
+    if zeros:
+        return "It signals the board, but its answers are all zeros.", ["Is it flashed with the WiFi firmware? (tools/wifi/flash_esp.sh)",
+                                                                       "MISO: ESP TDI (IO12) to Nano A3 (not SD1).", "Clock: ESP TMS (IO14) to Nano A2 (not CLK).",
+                                                                       "CS: ESP TDO (IO15) to Nano A0."] + end
+    return "No sign of the ESP32 at all.", ["Power: 3.3 V, and the ground wire between the boards.", "Reset: ESP EN (RST) to Nano PCLK.",
+                                            "Data ready: ESP IO4 to Nano D7.", "Handshake: ESP IO2 to Nano D6."] + end
+
+
+def restart_esp():
+    """The ESP32's driver unloaded and loaded again (S35wifi restart: the ESP reset, wlan0 waited for)."""
+    import subprocess
+    if os.environ.get("VACATION_WIFI_LOG"): time.sleep(2); return                # (a desktop's test: nothing to restart)
+    subprocess.run(["/etc/init.d/S35wifi", "restart"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=90)
+
+
 def psk_for(ssid, password):
     """WPA's hashed key for a network and its password (what wpa_passphrase works out)."""
     return hashlib.pbkdf2_hmac("sha1", password.encode(), ssid.encode(), 4096, 32).hex()

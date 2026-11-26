@@ -94,6 +94,8 @@ class Settings:
         self.wpa = None; self.nets = []; self.job = None; self.scanning = False
         self.wifi_state = ("off", ""); self.wifi_msg = ""; self.next_status = 0.0
         self.joining = None                # (ssid, give up at) while connecting
+        self.check = None; self.esp_restart = None   # "Check wiring": (finding, advice) shown, and Try again's thread
+        self.wiretest = None                          # the wiring test's thread, and its result: [(headline, lines)]
         self.join_ssid = ""; self.typed = ""; self.kb_layer = "letters"; self.kb_shift = False; self.keys = []
         dev = kind == "device"
         self.rows1 = L.PAGE1_ROWS_DEVICE if dev else L.PAGE1_ROWS_APP
@@ -256,6 +258,11 @@ class Settings:
         self.text("value", self.text_of(k), cx, top + 79, L.IVORY, "m", a)
 
     def draw_button(self, name):
+        if name == "wiretest":                              # (inside the WiFi page's panel: drawn on the panel)
+            x0, y0, x1, y1 = box = L.WIFI_WIRETEST; hot = self.pressed == name
+            self.under_panel((x0 - 2, y0 - 2, x1 + 2, y1 + 2))
+            self.round(box, 12, L.GOLD if hot else (255, 255, 255), 150 if hot else 30, L.GOLD, 200)
+            self.text("small", "Wiring test", (x0 + x1) // 2, y0 + 27, L.DARK if hot else L.GOLD, "m"); return
         if name == "apps": x0, y0, x1, y1 = box = L.PAGE1_APPS
         else: x0, y0, x1, y1 = box = {1: self.b1, 2: L.PAGE2_BUTTONS, 3: L.PAGE3_BUTTONS, 4: L.WIFI_BUTTONS, 5: L.KB_BUTTONS,
                                       6: L.PAGE6_BUTTONS}[self.page][name]
@@ -266,8 +273,8 @@ class Settings:
         elif name in ("cancel", "back", "kb_cancel"):
             self.round(box, 14, (255, 255, 255), 60 if hot else 22, (255, 255, 255), 120)
             self.text("button", "‹ Back" if name == "back" else "Cancel", cx, y0 + 38, L.IVORY, "m")
-        elif name == "forget" and self.wifi_state[0] == "off":
-            pass                                            # (nothing to forget)
+        elif name == "forget" and self.wifi_state[0] == "off" and (wifi.present() or self.check is None):
+            pass                                            # (nothing to forget; Try again only after a check)
         elif name == "dev":                                 # developer mode: gold when on (unsigned apps run)
             if self.dev_on: self.round(box, 12, (238, 206, 138) if hot else L.GOLD, 255)
             else: self.round(box, 12, (255, 255, 255), 40 if hot else 0, (255, 255, 255), 70)
@@ -279,6 +286,8 @@ class Settings:
             self.round(box, 12, (255, 255, 255), 40 if hot else 0, (255, 255, 255), 70)
             if name in ("prev", "next"):
                 self.text("button", "‹" if name == "prev" else "›", cx, y0 + 30, L.IVORY if self.pages() > 1 else L.DIM, "m"); return
+            if name in ("rescan", "forget") and not wifi.present():                     # (no ESP32: check it, restart it)
+                self.text("small", "Check wiring" if name == "rescan" else "Try again", cx, y0 + 25, L.IVORY, "m"); return
             label = {"calibrate": "Touch", "display": "Display ›", "touch": "Calibrate touch", "device": "Device ›", "fireworks": "Fireworks ›", "theme": "Theme ›", "wifi": "WiFi ›", "demo": "Demo show", "apps": "Apps ›",
                      "rescan": "Rescan", "forget": "Forget network"}[name]
             self.text("small", label, cx, y0 + 25, L.DIM, "m")
@@ -474,6 +483,10 @@ class Settings:
         elif target in ("prev", "next"):
             self.theme_page = (self.theme_page + (1 if target == "next" else -1)) % self.pages(); self.draw_page()
         elif target == "wifi": self.page = 4; self.draw_page(); self.start_scan()
+        elif target == "wiretest": self.run_wiretest()
+        elif target == "rescan" and not wifi.present(): self.run_check()
+        elif target == "forget" and not wifi.present():
+            if self.check is not None: self.restart_esp()
         elif target == "rescan": self.start_scan()
         elif target == "forget" and self.wifi_state[0] != "off": self.start_job("forget", lambda w: w.forget())
         elif target == "kb_cancel": self.page = 4; self.draw_page()
@@ -554,6 +567,35 @@ class Settings:
             except (wifi.WifiError, OSError) as e: job["error"] = e
         job["thread"] = threading.Thread(target=work, daemon=True); self.job = job; job["thread"].start()
 
+    # ---- no ESP32: Check wiring (what its driver said, and which wires) and Try again (its driver restarted)
+    def run_check(self):
+        self.check = wifi.wiring_check(); print("settings: wiring check: %s" % self.check[0], flush=True)
+        self.draw_page()
+
+    def restart_esp(self):
+        if self.esp_restart and self.esp_restart.is_alive(): return
+        self.check = ("Restarting the ESP32...", ["This takes up to half a minute."]); self.draw_page()
+        self.esp_restart = threading.Thread(target=wifi.restart_esp, daemon=True); self.esp_restart.start()
+
+    def draw_check(self):
+        x0, y0, x1, y1 = L.WIFI_PANEL
+        finding, advice = self.check
+        self.text("label", self.fit("label", finding, L.WIFI_WIRETEST[0] - x0 - 30), x0 + 20, y0 + 40, L.GOLD)
+        step, top = (30, 82) if len(advice) <= 6 else (27, 74)              # (the wiring test's seven lines: a little closer)
+        for i, line in enumerate(advice[:7]): self.text("small", self.fit("small", line, x1 - x0 - 40), x0 + 20, y0 + top + i * step, L.IVORY)
+        if not (self.wiretest and self.wiretest[0].is_alive()): self.draw_button("wiretest")
+
+    def run_wiretest(self):
+        """The wiring test (wiretest.py: the ESP32 running its test firmware), in the background: a few seconds."""
+        if self.wiretest and self.wiretest[0].is_alive(): return
+        import wiretest
+        res = []
+        def work():
+            try: res.append(wiretest.run())
+            except Exception as e: res.append(("Couldn't run the wiring test.", [str(e)[:70]]))
+        self.check = ("Listening to the wires...", ["The WiFi is paused for it: a few seconds."]); self.draw_page()
+        self.wiretest = (threading.Thread(target=work, daemon=True), res); self.wiretest[0].start()
+
     def start_scan(self):
         if not wifi.present(): self.wifi_msg = "No WiFi hardware (is the ESP32 connected?)"; self.draw_wifi_status(); return
         self.scanning = True; self.wifi_msg = ""; self.draw_wifi_status()
@@ -561,6 +603,14 @@ class Settings:
 
     def wifi_tick(self, now):
         """A finished background job, and what wpa_supplicant says now (once a second)."""
+        if self.wiretest and not self.wiretest[0].is_alive():               # (the wiring test done: its findings)
+            res = self.wiretest[1]; self.wiretest = None
+            self.check = res[0] if res else ("Couldn't run the wiring test.", []); print("settings: wiring test: %s" % self.check[0], flush=True)
+            self.draw_page(); return
+        if self.esp_restart and not self.esp_restart.is_alive():          # (Try again done: check again, or on to networks)
+            self.esp_restart = None
+            if wifi.present(): self.check = None; self.draw_page(); self.start_scan(); return
+            self.run_check()
         job = self.job
         if job and not job["thread"].is_alive():
             self.job = None
@@ -653,6 +703,7 @@ class Settings:
     def draw_wifi_page(self):
         self.text("title", "WiFi", 36, 58, L.IVORY)
         self.panel(L.WIFI_PANEL)
+        if self.check is not None and not wifi.present(): self.draw_check()
         for i in range(min(len(self.nets), L.WIFI_ROWS)): self.draw_net_row(i)
         if not self.nets and not self.scanning and wifi.present():
             self.text("small", "No networks found", L.W // 2, (L.WIFI_PANEL[1] + L.WIFI_PANEL[3]) // 2, L.DIM, "m")
@@ -661,6 +712,8 @@ class Settings:
 
     def hit_wifi(self, x, y):
         if y >= 396: return "back" if x < 268 else "rescan" if x < 532 else "forget"
+        bx0, by0, bx1, by1 = L.WIFI_WIRETEST
+        if self.check is not None and not wifi.present() and bx0 - 8 <= x < bx1 + 8 and by0 - 8 <= y < by1 + 8: return "wiretest"
         x0, y0, x1, y1 = L.WIFI_PANEL
         if y0 <= y < y1:
             i = (y - y0 - 3) // L.WIFI_ROW_H

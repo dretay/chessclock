@@ -1,0 +1,4 @@
+# a 1 ms tick: each pin's rhythm (5 to 19 ms a half) to the millisecond
+CONFIG_FREERTOS_HZ=1000
+# no WiFi or Bluetooth here: just the pins
+CONFIG_BT_ENABLED=n
