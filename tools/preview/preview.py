@@ -116,6 +116,8 @@ class Preview:
         self.target, self.remote = "local", None          # (the Controls panel: this Mac's preview, or the device over USB: remote.py)
         self.builder_busy, self.builder_error, self.builder_again = "", "", None
         self.install_line = ""
+        self.publish_line = ""
+        self.release, self.release_at, self.release_busy = None, 0.0, False   # (Publish: what's published, against what's here)
         self.lock_busy = threading.Lock()
         self.live(hour=None)
         self.proc = self.svc = None
@@ -335,7 +337,7 @@ class Preview:
         app = self.app; m = manifest(app)
         out = {"app": app, "name": m.get("name", app), "countdown": m.get("runtime") == "countdown", "stay": bool(self.live_state.get("stay")),
                "busy": self.builder_busy, "error": self.builder_error, "trials": [], "showing": "", "kept": False, "conf": {},
-               "install": self.install_line,
+               "install": self.install_line, "publish": self.publish_line, "release": self.release_state(),
                "apps": [[a, n] for a, n in apps() if manifest(a).get("runtime") == "countdown"]}
         if not out["countdown"]: return out
         ps = self.themegen()
@@ -416,6 +418,63 @@ class Preview:
             self.install_line = "installed%s" % (" (signed)" if c.get("signed") else "")
         self.install_line = ""
         return self.busy("installing %s on the device" % app, run)
+
+    # ---------------------------------------------------------------- publishing (tools/apps/publish.py)
+    def release_names(self):
+        """What Publish covers: this app, and (a countdown app) the runtime and system package it runs on."""
+        return [self.app, "countdown", "system"] if manifest(self.app).get("runtime") == "countdown" else [self.app]
+
+    def release_state(self, refresh=False):
+        """{"apps": [tools/apps/published.status() each], "gh": "" or what's missing, "repo"} for the Scene
+        Builder, worked out in the background (it fetches the catalog), at most a minute old; None at first."""
+        stale = refresh or time.time() - self.release_at > 60 or (self.release or {}).get("app") != self.app
+        if stale and not self.release_busy:
+            self.release_busy = True
+            def work():
+                try:
+                    sys.path.insert(0, os.path.join(REPO, "tools", "apps")); import published
+                    if refresh: published._catalog.clear()
+                    names = self.release_names(); cat = published.catalog()
+                    gh = ""
+                    if not shutil.which("gh"): gh = "needs the GitHub CLI: brew install gh, then gh auth login"
+                    elif subprocess.run(["gh", "auth", "status"], capture_output=True).returncode: gh = "log the GitHub CLI in: gh auth login"
+                    self.release = {"app": self.app, "repo": published.github_repo(), "gh": gh,
+                                    "apps": [published.status(n, cat) for n in names]}
+                except Exception as e:
+                    self.release = {"app": self.app, "error": str(e), "apps": []}
+                finally:
+                    self.release_at, self.release_busy = time.time(), False
+            threading.Thread(target=work, daemon=True).start()
+        return self.release
+
+    def set_version(self, c):
+        sys.path.insert(0, os.path.join(REPO, "tools", "apps")); import published
+        name = c.get("name") or self.app
+        if name not in self.release_names(): return {"error": "not one of this app's: %s" % name}
+        try: published.set_version(name, str(c.get("version", "")).strip())
+        except (ValueError, OSError) as e: return {"error": str(e)}
+        self.say("%s: version %s" % (name, c.get("version")))
+        self.release_state(refresh=True)
+        return {"ok": True}
+
+    def publish(self, c):
+        """Publish (tools/apps/publish.py): the named apps (this one, its runtime, the system package: those
+        ready), signed (the passphrase to publish.py on its stdin, nowhere else), to the public catalog."""
+        names = [n for n in c.get("names", []) if n in self.release_names()]
+        if not names: return {"error": "nothing to publish"}
+        cmd = [sys.executable, os.path.join(REPO, "tools", "apps", "publish.py"), "--passphrase-stdin"] + names
+        def run():
+            self.publish_line = "starting"
+            p = subprocess.Popen(cmd, cwd=REPO, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            p.stdin.write((c.get("passphrase") or "") + "\n"); p.stdin.close()
+            for line in p.stdout:
+                line = line.rstrip()
+                if line: self.say("publish: " + line); self.publish_line = line
+            if p.wait(): raise RuntimeError(self.publish_line or "it failed")
+            self.publish_line = "published: " + ", ".join(names)
+            self.release_state(refresh=True)
+        self.publish_line = ""
+        return self.busy("publishing " + ", ".join(names), run, limit=900)
 
     def parks(self):
         """Every park ThemeParks.wiki has, by destination: [{"dest", "parks": [{"id", "name"}]}] (fetched once)."""
@@ -719,6 +778,10 @@ def serve(pv, port):
                 return self.send(200, json.dumps(pv.upload(q.get("name", ["photo.jpg"])[0], self.rfile.read(n), q.get("orb", [""])[0])).encode())
             if self.path == "/builder/install":
                 return self.send(200, json.dumps(pv.install(json.loads(body or "{}"))).encode())
+            if self.path == "/builder/version":
+                return self.send(200, json.dumps(pv.set_version(json.loads(body or "{}"))).encode())
+            if self.path == "/builder/publish":
+                return self.send(200, json.dumps(pv.publish(json.loads(body or "{}"))).encode())
             if self.path == "/builder/do":
                 return self.send(200, json.dumps(pv.builder_do(json.loads(body or "{}"))).encode())
             if self.path == "/windows":                                 # (painting window lights, in the scene on show)

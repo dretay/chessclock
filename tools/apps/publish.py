@@ -1,7 +1,7 @@
 #!/usr/bin/env -S uv run -q python
 """Publish apps to the catalog the boards install from (Settings > Apps > Get apps): GitHub Releases.
 
-    tools/apps/publish.py [--key KEY] [--repo OWNER/NAME] [--base [--images DIR]] [NAME ...]
+    tools/apps/publish.py [--key KEY] [--repo OWNER/NAME] [--passphrase-stdin] [--base [--images DIR]] [NAME ...]
     e.g. tools/apps/publish.py system countdown castle cruise
          tools/apps/publish.py --base castle          (a base system update, and an app, together)
 
@@ -53,6 +53,8 @@ def main():
     images = option("--images") or os.path.join(REPO, "build", "images-wifi")
     with_base = "--base" in a
     if with_base: a.remove("--base")
+    pass_stdin = "--passphrase-stdin" in a                  # (the Scene Builder's Publish: one line on stdin, not a prompt)
+    if pass_stdin: a.remove("--passphrase-stdin")
     names = [x for x in a if not x.startswith("-")]
     if not (names or with_base) or len(names) != len(a): sys.exit(__doc__)
     base_version = None
@@ -63,6 +65,7 @@ def main():
     if not shutil.which("gh"): sys.exit("needs the GitHub CLI: brew install gh; gh auth login")
     if gh("auth", "status", check=False).returncode: sys.exit("log the GitHub CLI in first: gh auth login")
     if not os.path.exists(key): sys.exit("no signing key at %s (tools/apps/keygen.sh)" % key)
+    if pass_stdin: pack._passphrases[key] = sys.stdin.readline().rstrip("\n")
     for n in names:
         if not os.path.isfile(os.path.join(REPO, "apps", n, "app.json")): sys.exit("no app %s in apps/" % n)
         m = layout.manifest(n)

@@ -95,6 +95,11 @@
       <button id="iacancel">Cancel</button>
     </div>
   </dialog>
+  <dialog id="publishask">
+    <h3>Publish?</h3>
+    <p class="note" id="publishwhat"></p>
+    <div class="row"><button id="paok" class="primary">Publish</button><button id="pacancel">Cancel</button></div>
+  </dialog>
   <div class="row note"><button id="foldall">Collapse all</button><button id="openall">Expand all</button></div>
   <label class="check"><input type="checkbox" id="stay" checked><span>Stay on the scene (the app's other screens wait; a tap still shows them)</span></label>
   <div class="row note">Zoom <button id="zout">−</button><button id="zin">+</button><button id="zfit">Fit</button></div>
@@ -238,11 +243,17 @@
     <p class="note" id="screensnote"></p>
   </section>
   <section id="device">
-    <h2>On the device</h2>
+    <h2>Install &amp; publish</h2>
     <div class="effect">
       <label class="check"><input type="checkbox" id="isigned"><span>Signed (packed and signed with your key: for a board locked to signed apps)</span></label>
       <div class="row"><button id="install" class="primary">Install on the device</button></div>
       <p class="note" id="installnote">The app's kept scene, with the system and runtime it runs on, over USB (only what changed is copied); then it's the app that runs.</p>
+    </div>
+    <div class="effect">
+      <p class="note">Publishing puts it in your catalog, where every frame finds it (Settings › Apps › Get apps): a frame shows an update when the version here is newer than the one it has.</p>
+      <div id="publist"><p class="note">Checking what's published…</p></div>
+      <div class="row"><button id="publish" class="primary" disabled>Publish</button></div>
+      <p class="note" id="publishnote"></p>
     </div>
   </section>
 </main>
@@ -340,6 +351,7 @@ function render(s) {
   if (!$("addtype").options.length) $("addtype").innerHTML = (s.screen_types || []).map(t => `<option value="${t}">${TYPE_NAMES[t] || t}</option>`).join("");
   $("install").disabled = !!s.busy;
   if (s.install) $("installnote").textContent = s.install;
+  renderRelease(s);
   if (!s.countdown) { $("cards").innerHTML = '<p class="note">This app has no scene to build (the countdown apps do).</p>'; return; }
   const cards = $("cards"); cards.innerHTML = "";
   if (s.kept) cards.appendChild(card("", "The scene in the app", !s.showing, !s.showing ? "showing" : "in the app"));
@@ -737,6 +749,64 @@ $("install").onclick = async () => {
   const r = await post("/builder/install", { signed, passphrase });
   passphrase = "";                                   // (not kept, here or anywhere)
   if (r.error) say(r.error);
+  refresh();
+};
+
+// ---- publishing: each of this app's (the app, the countdown runtime, the system package) version here,
+// what's published, and whether it changed since; Publish sends the ones ready (tools/apps/publish.py)
+const esc = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+function releaseReady(r) { return r && !r.error ? r.apps.filter(a => a.ready) : []; }
+function renderRelease(s) {
+  const r = s.release, list = $("publist");
+  if (s.publish) $("publishnote").textContent = s.publish;
+  if (!r) { $("publish").disabled = true; return; }
+  if (r.error) { list.innerHTML = `<p class="note">Couldn't check what's published: ${esc(r.error)}</p>`; $("publish").disabled = true; return; }
+  if (!list.contains(document.activeElement)) {
+    list.innerHTML = r.apps.map(a => {
+      const n = a.changed.length, files = a.changed.map(c => c[0] + " (" + c[1] + ")").join("\n");
+      const what = !a.published ? "not published yet"
+        : a.unknown ? `published ${esc(a.published)} (couldn't read it to compare)`
+        : n ? `<span title="${esc(files)}">${n} file${n > 1 ? "s" : ""} changed since ${esc(a.published)}</span>` : `same as the published ${esc(a.published)}`;
+      const act = a.blocked ? `<button class="pbump" data-id="${esc(a.id)}" data-v="${esc(a.next)}">Use ${esc(a.next)}</button>`
+        : a.ready ? `<span class="badge">ready</span>` : "";
+      return `<div class="row" style="align-items:center;gap:8px"><span style="min-width:9em">${esc(a.name)}</span>` +
+             `<input class="pver" data-id="${esc(a.id)}" value="${esc(a.version)}" size="7" style="width:5.5em">` +
+             `<span class="note" style="flex:1">${what}</span>${act}</div>`;
+    }).join("");
+    for (const i of list.querySelectorAll(".pver")) i.onchange = async () => {
+      const r2 = await post("/builder/version", { name: i.dataset.id, version: i.value.trim() });
+      if (r2.error) say(r2.error); i.blur(); refresh();
+    };
+    for (const b of list.querySelectorAll(".pbump")) b.onclick = async () => {
+      const r2 = await post("/builder/version", { name: b.dataset.id, version: b.dataset.v });
+      if (r2.error) say(r2.error); refresh();
+    };
+  }
+  const ready = releaseReady(r), blocked = r.apps.filter(a => a.blocked);
+  $("publish").textContent = ready.length ? "Publish " + ready.map(a => a.name + " " + a.version).join(", ") : "Publish";
+  $("publish").disabled = !!s.busy || !!r.gh || !ready.length || blocked.length > 0;
+  if (!s.publish || s.busy) $("publishnote").textContent = r.gh ? r.gh
+    : blocked.length ? `${blocked.map(a => a.name).join(", ")} changed since it was published: give it a new version (Use …) first`
+    : ready.length ? `To ${r.repo || "your catalog"}: public on GitHub` : "Everything here is published.";
+}
+function askPublish(ready, repo) {
+  const d = $("publishask");
+  $("publishwhat").innerHTML = `${ready.map(a => `<b>${esc(a.name)} ${esc(a.version)}</b>`).join(", ")}, signed with your key, ` +
+    `to the catalog at github.com/${esc(repo || "?")}. It's public: anyone can download it, and every frame using the catalog is offered it.`;
+  return new Promise(resolve => {
+    const done = v => { d.close(); resolve(v); };
+    $("paok").onclick = () => done(true); $("pacancel").onclick = () => done(false);
+    d.onclose = () => resolve(false);
+    d.showModal();
+  });
+}
+$("publish").onclick = async () => {
+  const r = S && S.release, ready = releaseReady(r);
+  if (!ready.length || !(await askPublish(ready, r.repo))) return;
+  let passphrase = await askPassphrase(); if (passphrase === null || passphrase === undefined) return;
+  const res = await post("/builder/publish", { names: ready.map(a => a.id), passphrase });
+  passphrase = "";                                   // (not kept, here or anywhere)
+  if (res.error) say(res.error);
   refresh();
 };
 

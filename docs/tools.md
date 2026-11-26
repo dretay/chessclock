@@ -92,9 +92,14 @@ before the trip); for any countdown app, a photo's scene or not. Its effects, fo
 lights on a sphere (found, a circle given, or removed; the show's patterns and how long each; one
 held to watch; erasing and adding lights on the picture), Screens (the app's screens in turn with the
 countdown: add a type, its seconds and settings: a weather screen's place (type a name, Find, and pick the right one of the places it could mean: Open-Meteo's geocoding; saved only once it's checked, ✓), a wait-times screen's park (picked from ThemeParks.wiki's list, by destination; into app.json "park", with its example waits), a ship map's ship (the app's SHIP and MAP_SHIP); a name that can't be found says so; reorder,
-remove, Show now; Save writes them into the app's app.json), and On the device: Install on the device
+remove, Show now; Save writes them into the app's app.json), and Install & publish: Install on the device
 (tools/board/deploy.py over USB: the app's kept scene with the system and runtime it runs on, then the
-app that runs; Signed asks for the key's passphrase then, in a dialog, and keeps it nowhere), window lights (found automatically in the
+app that runs; Signed asks for the key's passphrase then, in a dialog, and keeps it nowhere), and
+Publish: the app, the countdown runtime and the system package, each with its version (editable) and
+the published one, and whether its files changed since (tools/apps/published.py: the published
+package's file list against the files here; a new version number alone isn't a change); one changed at
+the published version needs a new one first (Use 1.2.2), then Publish sends the ready ones to the
+catalog (tools/apps/publish.py; asks first, then the passphrase), window lights (found automatically in the
 photo, dark windows in a plain wall or lit ones at dusk, a guess to touch up; or painted on the picture,
 brush or box, or erased; the light's colour), smoke (click where it rises from: a campfire, a chimney;
 its size, wind, thickness), foam (click where the water churns: its size, which way it flows, how
@@ -153,7 +158,9 @@ twinkle lights, into what the device loads): [countdown apps](countdown.md#scene
 
 `layout.py NAME [DEST]` (an app's files as they go on the board: the one rule the image, deploy and
 packing share), `pack.py NAME [--key KEY]` (its tarball and signed statement, for `modinstall`),
-`publish.py NAME ...` (pack, sign, and publish to the catalog on GitHub Releases), `keygen.sh` (the
+`publish.py [--base] NAME ...` (pack, sign, and publish to the catalog on GitHub Releases; --base: the
+base system too), `published.py [NAME ...]` (each app's version here, the published one, and whether it
+changed since), `keygen.sh` (the
 signing key, once), and `new.py ID --name NAME [--park PARK]` (a new countdown app, running at once on
 a placeholder scene: [countdown apps](countdown.md)): [apps](apps.md).
 

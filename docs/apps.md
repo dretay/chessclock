@@ -154,7 +154,8 @@ apps ›** downloads the catalog, checks it with `modinstall` (signed by a trust
 lists each app with Install, Update or Installed; a tap downloads the app (its runtime first if it's
 missing or too old) and installs it with `modinstall`, which checks it again. `CATALOG_URL` in
 `/apps/data/device.conf` points elsewhere. `tools/test/test_catalog.py` runs it all against a local
-server.
+server. `tools/apps/published.py` says, for each app, whether it changed since its published version
+(the Scene Builder's Publish does the same, and publishes from there).
 
 **Keys:** the private key never goes in the repository (`*.pem` is ignored); `trusted.keys` can hold
 several, so a new key can be added in one base-system update and the old one removed in a later one.
