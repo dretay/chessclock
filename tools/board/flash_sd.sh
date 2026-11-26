@@ -71,8 +71,14 @@ diskutil unmountDisk "$DISK" >/dev/null
 if [ -n "$all" ]; then
 	sudo dd if="$DIST/sdcard.img" of="$R" bs=4m status=progress
 else
-	[ -n "$uboot" ] && sudo dd if="$DIST/u-boot-sunxi-with-spl.bin" of="$R" bs=1k seek=8 conv=notrunc
+	# (sync: the last block padded with zeros to a whole 1k: the raw disk takes only whole blocks, and U-Boot's
+	# size isn't a multiple of them; the padding falls in the gap before the first partition)
+	[ -n "$uboot" ] && sudo dd if="$DIST/u-boot-sunxi-with-spl.bin" of="$R" bs=1k seek=8 conv=notrunc,sync
+	# (unmounted again before each: writing to the whole disk makes macOS look at the card afresh, and it
+	# mounts the FAT partition again, mid-flash: a write to a mounted partition fails part way)
+	diskutil unmountDisk "$DISK" >/dev/null
 	sudo dd if="$DIST/boot.vfat" of="${R}s1" bs=1m status=progress
+	diskutil unmountDisk "$DISK" >/dev/null
 	sudo dd if="$DIST/rootfs.ext4" of="${R}s2" bs=1m status=progress
 fi
 sync

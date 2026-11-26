@@ -11,7 +11,7 @@ cd "$BR"
 
 BR2_EXTERNAL=$EXT make licheepi_nano_defconfig >/dev/null
 if [ "$WIFI" = 1 ]; then
-	echo 'BR2_PACKAGE_ESP_HOSTED=y' >> .config
+	echo 'BR2_PACKAGE_ESP_HOSTED_NANO=y' >> .config
 	echo 'BR2_LINUX_KERNEL_CONFIG_FRAGMENT_FILES="$(BR2_EXTERNAL_LICHEEPI_NANO_PATH)/board/licheepi_nano/linux/wifi.fragment"' >> .config
 	echo 'BR2_PACKAGE_PYTHON3_SSL=y' >> .config
 	echo 'BR2_PACKAGE_CA_CERTIFICATES=y' >> .config
@@ -44,7 +44,7 @@ redo linux 'rm -rf "$OUT"/build/linux-custom' board/licheepi_nano/linux configs/
 redo busybox 'rm -rf "$OUT"/build/busybox-*' board/licheepi_nano/busybox.fragment
 redo uboot 'rm -rf "$OUT"/build/uboot-*' board/licheepi_nano/uboot.fragment
 redo bootscript 'rm -f "$OUT"/build/host-uboot-tools-*/.stamp_built "$OUT"/build/host-uboot-tools-*/.stamp_*installed' board/licheepi_nano/boot.cmd
-redo esp-hosted 'rm -rf "$OUT"/build/esp-hosted-*' package/esp-hosted
+redo esp-hosted 'rm -rf "$OUT"/build/esp-hosted-*' package/esp-hosted-nano
 redo modinstall 'rm -rf "$OUT"/build/modinstall-*' package/modinstall
 redo python3 'rm -rf "$OUT"/build/python3-3*' configs/licheepi_nano_defconfig      # (and wifi=, for its TLS)
 # linux-firmware's install is cheap and depends on the kernel config: always

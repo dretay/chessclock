@@ -1,7 +1,7 @@
 # Building and flashing
 
-Builds run in containers: Apple's [`container`](https://github.com/apple/container) tool on macOS,
-or Docker. Two steps: a slow one-off **base image** (the cross-compiler and a complete first
+Builds run in containers (the base image: Ubuntu 24.04 and Buildroot 2025.02): Apple's
+[`container`](https://github.com/apple/container) tool on macOS, or Docker. Two steps: a slow one-off **base image** (the cross-compiler and a complete first
 build, 1-2 hours), then **incremental builds** that take in your current files and rebuild what
 changed (seconds to minutes).
 
@@ -9,19 +9,19 @@ changed (seconds to minutes).
 
 ```sh
 # once: the base image, built natively for Apple silicon
-container build --memory 4g --cpus 8 -f Dockerfile.base --target main -t licheepi-nano-mybase:latest .
+container build --memory 4g --cpus 8 -f Dockerfile.base --target main -t licheepi-nano-mybase:2025.02 .
 
 # each time: an incremental build, into build/images/ (build/images-wifi/ with --wifi)
 tools/build/build.sh [--wifi] [--app castle] [--fresh]
 ```
 
 `tools/build/build.sh` keeps the whole Buildroot tree between builds in a container volume
-(`licheepi-out`, `licheepi-out-wifi`; ~8 GB each), seeded from the base image the first time. A build
+(`licheepi-out-2025`, `licheepi-out-wifi-2025`: named for the Buildroot inside; ~8 GB each), seeded from the base image the first time. A build
 that changes nothing takes under half a minute. Buildroot rebuilds what changed by itself, except a
 few things it can't see change; `tools/build/buildroot-make.sh` rebuilds those when their files do:
 the kernel (its patches, config, device tree), BusyBox and U-Boot (their config fragments), the boot
 script, the WiFi driver package, and Python (its TLS option). `--fresh` starts that kind of build
-over from the base image; `container volume rm licheepi-out` frees its space.
+over from the base image; `container volume rm licheepi-out-2025` frees its space.
 
 The tree lives in a volume rather than a folder on the Mac because macOS folders are
 case-insensitive and the kernel's source has files whose names differ only in case; and it's
@@ -32,7 +32,7 @@ everywhere.
 `app NAME` (or Settings > Apps) switches later. Apps change without a new image at all: `tools/board/deploy.py`
 ([apps](apps.md)).
 
-To look around inside: `container run -it -v licheepi-out:/root/buildroot licheepi-nano-mybase /bin/bash`
+To look around inside: `container run -it -v licheepi-out-2025:/root/buildroot licheepi-nano-mybase:2025.02 /bin/bash`
 (then `cd /root/buildroot; make menuconfig`, say).
 
 ### Disk space
@@ -53,7 +53,7 @@ The same two steps, with Docker in place of Apple's tool: `tools/build/build.sh`
 `container` isn't installed (or `CONTAINER=docker` to choose it).
 
 ```sh
-docker build -f Dockerfile.base --target main -t licheepi-nano-mybase:latest .
+docker build -f Dockerfile.base --target main -t licheepi-nano-mybase:2025.02 .
 tools/build/build.sh [--wifi] [--app castle] [--fresh]
 ```
 
@@ -62,7 +62,7 @@ tools/build/build.sh [--wifi] [--app castle] [--fresh]
 ```sh
 tools/board/flash_sd.sh build/images            # macOS: the kernel and base system; the apps stay
 tools/board/flash_sd.sh --all build/images      # the whole card: apps and their settings reset too
-tools/board/flash_sd.sh --uboot build/images    # ... and U-Boot (when uboot.fragment changed)
+tools/board/flash_sd.sh --uboot build/images    # ... and U-Boot (when it or uboot.fragment changed)
 ```
 
 It finds the one external disk, refuses internal or very large ones, shows the card and asks first.

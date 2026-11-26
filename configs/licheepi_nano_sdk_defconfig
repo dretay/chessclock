@@ -28,13 +28,12 @@ BR2_arm926t=y
 BR2_ENABLE_DEBUG=y
 
 #
-# Internal Buildroot toolchain, with headers matching custom kernel
+# Internal Buildroot toolchain (Buildroot 2025.02's GCC 13), with the 6.12 headers: no newer than the
+# kernel it runs on (6.18)
 #
-BR2_KERNEL_HEADERS_VERSION=y
-BR2_DEFAULT_KERNEL_VERSION="5.11.1"
+BR2_KERNEL_HEADERS_6_12=y
 BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
 BR2_TOOLCHAIN_BUILDROOT_CXX=y
-BR2_PACKAGE_HOST_LINUX_HEADERS_CUSTOM_5_11=y
 BR2_PACKAGE_GLIBC_UTILS=y
 
 #

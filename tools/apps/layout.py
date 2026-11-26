@@ -11,9 +11,9 @@ and what its app.json "exclude" lists (paths in it, * allowed); and its "native"
 into it: [{"src": "fetch.c", "out": "fetch", "libs": "-lssl -lcrypto"}] (for the board in the WiFi build
 tree, which has OpenSSL; on a Mac, against Homebrew's).
 
-The board's compiler comes from tools/build/build.sh's build tree (its licheepi-out volume, with the
-base image licheepi-nano-mybase) when that's there; otherwise from the base image alone (DEV_IMAGE,
-default licheepi-nano-mybase: its own first build has the same compiler). Apple's `container`,
+The board's compiler comes from tools/build/build.sh's build tree (its licheepi-out-2025 volume, with the
+base image licheepi-nano-mybase:2025.02) when that's there; otherwise from the base image alone (DEV_IMAGE,
+default licheepi-nano-mybase:2025.02: its own first build has the same compiler). Apple's `container`,
 or else Docker. --local: no container: $CC (default cc, the desktop's own) compiles, for the Mac or inside the build itself.
 """
 import fnmatch, json, os, shutil, subprocess, sys
@@ -53,10 +53,10 @@ def _in_container(name, script):
     if not runner: sys.exit("needs Apple's container tool or Docker, to compile %s for the board" % name)
     volume = None
     if os.path.basename(runner) == "container" and "DEV_IMAGE" not in os.environ:
-        for v in ("licheepi-out-wifi", "licheepi-out"):
+        for v in ("licheepi-out-wifi-2025", "licheepi-out-2025"):
             if subprocess.run([runner, "volume", "inspect", v], capture_output=True).returncode == 0: volume = v; break
-    where = (["-v", "%s:/root/buildroot" % volume, os.environ.get("BASE_IMAGE", "licheepi-nano-mybase")] if volume
-             else [os.environ.get("DEV_IMAGE", "licheepi-nano-mybase")])
+    where = (["-v", "%s:/root/buildroot" % volume, os.environ.get("BASE_IMAGE", "licheepi-nano-mybase:2025.02")] if volume
+             else [os.environ.get("DEV_IMAGE", "licheepi-nano-mybase:2025.02")])
     r = subprocess.run([runner, "run", "--rm", "-v", "%s:/src" % REPO] + where + ["sh", "-c", "CC=%s; %s" % (BOARD_CC, script)],
                        stdout=subprocess.DEVNULL)
     if r.returncode:

@@ -10,5 +10,8 @@ sed -i '/^# Put a getty on the serial port/a ttyS0::respawn:-/bin/sh # console s
 grep -q 'ttyGS0.*console shell' "${INITTAB}" || printf 'ttyS0::respawn:-/bin/sh # console shell (UART0)\nttyGS0::respawn:-/bin/sh # console shell (USB serial)\n' >> "${INITTAB}"
 # - the root filesystem is read-only (boot.cmd's "ro", and no remount): what used to be written to it lives
 #   on the apps partition instead. The random seed: /apps/data/system/seedrng (S00app makes the folder).
+# no cron daemon (busybox.fragment): its start script, left by an earlier build with BusyBox's crond on
+rm -f "${TARGET_DIR}/etc/init.d/S50crond"
+
 mkdir -p "${TARGET_DIR}/etc/default"
 echo 'SEEDRNG_ARGS="--seed-dir=/apps/data/system/seedrng"' > "${TARGET_DIR}/etc/default/seedrng"

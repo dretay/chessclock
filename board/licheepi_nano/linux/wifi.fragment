@@ -1,4 +1,4 @@
-# WiFi through an ESP32 on SPI1 (build with --build-arg WIFI=1; see package/esp-hosted).
+# WiFi through an ESP32 on SPI1 (build with --build-arg WIFI=1; see package/esp-hosted-nano).
 # Costs about 4 MB of the Nano's 32: too much alongside a countdown app without swap (S01swap), fine on an F1C200s.
 CONFIG_MODULES=y
 CONFIG_MODULE_UNLOAD=y

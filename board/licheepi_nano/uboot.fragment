@@ -1,4 +1,4 @@
-# Changes on top of the U-Boot fork's licheepi_nano_defconfig, for a faster boot
+# Changes on top of mainline U-Boot's licheepi_nano_defconfig, for a faster boot
 
 # boot straight away instead of counting down for 2 seconds, and don't look for a key press to
 # stop at the U-Boot prompt either: with a serial adapter wired to the console but not plugged into
@@ -7,3 +7,10 @@
 CONFIG_BOOTDELAY=-2
 # nothing is plugged into USB, so don't scan it at every boot
 # CONFIG_USE_PREBOOT is not set
+
+# boot.scr straight away, loaded low in memory: mainline's own boot scan loads it at its scriptaddr
+# (0x81d40000), which on a 32 MB board is inside the top that U-Boot keeps for itself once it has moved
+# there ("Reading file would overwrite reserved memory"), and then tries the network. boot.scr then
+# loads the kernel (0x80008000) and the device tree (0x80C00000), also low.
+CONFIG_USE_BOOTCOMMAND=y
+CONFIG_BOOTCOMMAND="load mmc 0:1 0x80b00000 boot.scr && source 0x80b00000"

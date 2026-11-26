@@ -198,7 +198,7 @@
 };
 
 // WiFi from an ESP32 running Espressif's ESP-Hosted firmware: Linux sees it
-// as wlan0 (driver: esp32_spi.ko, package/esp-hosted). Wiring, Nano header ->
+// as wlan0 (driver: esp32_spi.ko, package/esp-hosted-nano). Wiring, Nano header ->
 // ESP32 (an MH-ET LIVE MiniKit while testing; the protoboard's ESP32-C3 uses
 // the same Nano-side pins):
 //   A0 PA0 SPI1 CS (10k pull-up to 3.3V, or just the internal one) -> IO15     A1 PA1 MOSI -> IO13

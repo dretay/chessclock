@@ -6,7 +6,7 @@
 #   tools/wifi/build_esp_firmware.sh esp32 --wiretest    the wiring test instead (tools/wifi/wiretest/)
 #
 # -> tools/wifi/out/<target>/ (or out/wiretest-<target>/): the .bin files and flash_args, flashed with
-# flash_esp.sh. The ESP-Hosted version matches package/esp-hosted (the Linux driver): they must agree.
+# flash_esp.sh. The ESP-Hosted version matches package/esp-hosted-nano (the Linux driver): they must agree.
 set -e
 TARGET=${1:-esp32}
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -20,7 +20,7 @@ if [ "$2" = "--wiretest" ]; then                     # (the wiring test: its sou
     echo "wiring test firmware -> $OUT"; exit 0
 fi
 REPO=$(cd "$HERE/../.." && pwd)
-VERSION=$(sed -n 's/^ESP_HOSTED_VERSION = //p' "$REPO/package/esp-hosted/esp-hosted.mk")
+VERSION=$(sed -n 's/^ESP_HOSTED_NANO_VERSION = //p' "$REPO/package/esp-hosted-nano/esp-hosted-nano.mk")
 WORK=$HERE/work; OUT=$HERE/out/$TARGET
 mkdir -p "$WORK" "$OUT"
 if [ ! -d "$WORK/esp-hosted-linux" ]; then

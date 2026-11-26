@@ -11,9 +11,9 @@
 #
 # -> build/images[-wifi]/ (sdcard.img, boot.vfat, rootfs.ext4, ...): flash with tools/board/flash_sd.sh.
 #
-# Needs the base image, licheepi-nano-mybase (README, "Building"). The whole Buildroot tree (its
-# sources, .config, downloads and build output) lives in a container volume (licheepi-out,
-# licheepi-out-wifi), not in a folder on the Mac: macOS folders are case-insensitive, and the
+# Needs the base image, licheepi-nano-mybase:2025.02 (docs/building.md). The whole Buildroot tree (its
+# sources, .config, downloads and build output) lives in a container volume (licheepi-out-2025,
+# licheepi-out-wifi-2025), not in a folder on the Mac: macOS folders are case-insensitive, and the
 # kernel's source has files whose names differ only in case. It's mounted where the base image
 # built it (/root/buildroot): Buildroot records its own path everywhere, and moves files between
 # its config and its output, so they must be on one filesystem. The first build of each kind
@@ -21,7 +21,7 @@
 #
 # Buildroot rebuilds what changed by itself, except a few things whose changes it can't see (a
 # kernel patch, a config fragment): tools/build/buildroot-make.sh rebuilds those when their files change.
-# `container volume rm licheepi-out licheepi-out-wifi` (or `docker volume rm ...`) takes it all away.
+# `container volume rm licheepi-out-2025 licheepi-out-wifi-2025` (or `docker volume rm ...`) takes it all away.
 set -e
 cd "$(dirname "$0")/../.."
 REPO=$(pwd)
@@ -37,9 +37,12 @@ while [ $# -gt 0 ]; do
 	shift
 done
 [ -x "apps/$APP/run" ] || { echo "--app must be an app in apps/ (chess, castle, cruise)"; exit 1; }
-BASE=${BASE_IMAGE:-licheepi-nano-mybase}
-VOL=licheepi-out; IMAGES=build/images
-[ "$WIFI" = 1 ] && VOL=licheepi-out-wifi && IMAGES=build/images-wifi
+BASE=${BASE_IMAGE:-licheepi-nano-mybase:2025.02}       # (its Buildroot's version, not latest: that tag can be ambiguous)
+# (the build trees are named for the Buildroot they hold: a new Buildroot starts a new tree, the old one
+# kept until it's removed: `container volume rm licheepi-out licheepi-out-wifi`, the 2023.02 ones)
+VOL=licheepi-out-2025; IMAGES=build/images
+[ "$WIFI" = 1 ] && VOL=licheepi-out-wifi-2025 && IMAGES=build/images-wifi
+VOL=${BUILD_VOLUME:-$VOL}                         # (another build tree: e.g. beside the current one, a new Buildroot's)
 # the container tool: Apple's (macOS), else Docker
 RT=${CONTAINER:-$(command -v container >/dev/null && echo container || echo docker)}
 command -v "$RT" >/dev/null || { echo "needs Apple's container tool or Docker"; exit 1; }

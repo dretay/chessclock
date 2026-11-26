@@ -1,9 +1,11 @@
 # How the system works
 
 **The SD card**: a base system and, on a partition of their own, the apps ([apps](apps.md)). The
-base is a minimal Linux built with [Buildroot](https://buildroot.org) as a `BR2_EXTERNAL` tree
-(Buildroot itself unmodified): `configs/licheepi_nano_defconfig`, `board/licheepi_nano/`,
-`package/`.
+base is a minimal Linux built with [Buildroot](https://buildroot.org) 2025.02 (the long-term series,
+supported to March 2028) as a `BR2_EXTERNAL` tree (Buildroot itself unmodified):
+`configs/licheepi_nano_defconfig`, `board/licheepi_nano/`, `package/`. Its own toolchain (GCC 13,
+glibc, the 6.12 kernel headers) is built once in the base image; Python 3.12, OpenSSL 3.5,
+wpa_supplicant 2.12, BusyBox 1.37.
 
 **Kernel.** Mainline Linux 6.18 LTS. Mainline supports most of the F1C100s (SD card, DMA, I2C, PWM,
 watchdog, audio, USB) but not its display, so [a patch](../board/licheepi_nano/linux/patches) adds
@@ -30,10 +32,13 @@ builds on mainline's Lichee Pi Nano file and adds:
 * the micro-USB port as a USB device (a serial console for the development tools);
 * the ESP32 on SPI1, for WiFi ([wifi](wifi.md)).
 
-**Boot.** U-Boot is [a v2021.01 fork](https://github.com/unframework/u-boot/commits/2021.01-f1c100s)
-with F1C100s support, set up ([`uboot.fragment`](../board/licheepi_nano/uboot.fragment)) to boot
-without its usual 2-second countdown or a USB scan, and without checking for a key press on the
-serial console (a serial adapter left wired to the board but unplugged makes noise that reads as
+**Boot.** U-Boot is mainline (2025.01, whose `licheepi_nano_defconfig` has the board; it replaced
+[a v2021.01 fork](https://github.com/unframework/u-boot/commits/2021.01-f1c100s) that no longer builds
+with Python 3.12), set up ([`uboot.fragment`](../board/licheepi_nano/uboot.fragment)) to run `boot.scr`
+straight away, loaded low in memory (mainline's own boot scan loads it at the top of the 32 MB, which
+U-Boot keeps for itself: "would overwrite reserved memory", then it tries the network and stops at its
+prompt, a white screen), without its usual 2-second countdown or a USB scan, and without checking for a
+key press on the serial console (a serial adapter left wired to the board but unplugged makes noise that reads as
 one, and the board stopped at U-Boot's prompt with a white screen). The kernel is LZ4-compressed,
 which unpacks faster than gzip on this CPU, and boots `quiet`. The screen shows nothing until the
 first startup script (`S00app`) puts up the current app's splash image, ready-made in the screen's

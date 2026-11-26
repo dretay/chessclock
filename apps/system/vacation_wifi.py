@@ -1,5 +1,5 @@
 """WiFi for Settings > WiFi: scan, join, forget, and what's connected (wlan0, from the ESP32 on SPI;
-see package/esp-hosted).
+see package/esp-hosted-nano).
 
 Talks to wpa_supplicant over its control socket (/var/run/wpa_supplicant/wlan0), the way wpa_cli
 does, so nothing else has to start: on the 32 MB board a separate program costs more than this.

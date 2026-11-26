@@ -1,5 +1,5 @@
-config BR2_PACKAGE_ESP_HOSTED
-	bool "esp-hosted (WiFi through an ESP32 on SPI)"
+config BR2_PACKAGE_ESP_HOSTED_NANO
+	bool "esp-hosted-nano (WiFi through an ESP32 on SPI)"
 	depends on BR2_LINUX_KERNEL
 	select BR2_PACKAGE_WPA_SUPPLICANT
 	select BR2_PACKAGE_WPA_SUPPLICANT_NL80211
@@ -10,5 +10,8 @@ config BR2_PACKAGE_ESP_HOSTED
 	  Builds the esp32_spi kernel module from esp-hosted-linux and
 	  starts wlan0 at boot: wpa_supplicant (networks in
 	  /etc/wpa_supplicant.conf), DHCP and network time.
+
+	  (Named -nano: Buildroot has its own esp-hosted, from the older
+	  espressif/esp-hosted repository, which isn't this firmware's driver.)
 
 	  https://github.com/espressif/esp-hosted-linux

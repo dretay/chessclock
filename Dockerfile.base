@@ -1,35 +1,33 @@
-FROM ubuntu:18.04 AS base
+FROM ubuntu:24.04 AS base
 
 # Buildroot release version
-ARG BUILDROOT_RELEASE=2023.02
+ARG BUILDROOT_RELEASE=2025.02.20
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 # cache apt-get update results
 RUN apt-get update
 
-# install build prerequisites
-# @todo remove python3-distutils after upgrading U-Boot
+# install build prerequisites (Buildroot's, U-Boot's and genimage's on the host)
 RUN apt-get install -qy \
     bc \
     bison \
     build-essential \
-    bzr \
     chrpath \
     cpio \
-    cvs \
-    devscripts \
     diffstat \
     dosfstools \
     fakeroot \
+    file \
     flex \
     gawk \
     git \
-    libncurses5-dev \
+    libgnutls28-dev \
+    libncurses-dev \
     libssl-dev \
     locales \
     python3-dev \
-    python3-distutils \
+    python3-pyelftools \
     python3-setuptools \
     rsync \
     subversion \
@@ -74,8 +72,9 @@ WORKDIR /root/licheepi-nano
 COPY board/ board/
 COPY configs/ configs/
 COPY package/ package/
-COPY apps/chess/ apps/chess/
-COPY apps/countdown/ apps/countdown/
+# (the apps partition is laid out from apps/ by tools/apps/layout.py: post-image.sh)
+COPY apps/ apps/
+COPY tools/apps/ tools/apps/
 COPY \
     Config.in \
     external.desc \

@@ -21,7 +21,7 @@ tools/build/build.sh --wifi --app castle       # -> build/images-wifi/ (its own 
 tools/board/flash_sd.sh build/images-wifi       # kernel and base system; the apps stay
 ```
 
-The WiFi build adds `package/esp-hosted` (the `esp32_spi` driver, `S35wifi`, wpa_supplicant), the
+The WiFi build adds `package/esp-hosted-nano` (the `esp32_spi` driver, `S35wifi`, wpa_supplicant), the
 kernel options in `board/licheepi_nano/linux/wifi.fragment`, and TLS for Python (OpenSSL, the CA
 certificates). Only the kernel differs between the two builds in a way that matters for memory, and
 it can be swapped on its own over USB (copy `zImage` to the boot partition, `/dev/mmcblk0p1`).
@@ -35,8 +35,8 @@ tools/wifi/flash_esp.sh esp32                  # finds the ESP's port (any USB s
 ```
 
 Its settings are in `tools/wifi/sdkconfig.nano` (SPI mode 2; handshake and data-ready pins; no
-Bluetooth). The firmware version must match the driver's (`ESP_HOSTED_VERSION` in
-`package/esp-hosted/esp-hosted.mk`; the build script checks out the same commit).
+Bluetooth). The firmware version must match the driver's (`ESP_HOSTED_NANO_VERSION` in
+`package/esp-hosted-nano/esp-hosted-nano.mk`; the build script checks out the same commit).
 
 ## Wiring (ESP32 D1 mini / MiniKit; see the device tree)
 
@@ -113,7 +113,7 @@ wpa_cli -i wlan0 enable_network 0; wpa_cli -i wlan0 save_config
   transaction. Fixed in the firmware: `CONFIG_ESP_SPI_DEASSERT_HS_ON_CS=y` (`sdkconfig.nano`).
 - **Scans failed** (`Scan trigger failed: ret=-22`): the driver told cfg80211 it takes no extra scan
   data, and wpa_supplicant always adds some. Fixed by
-  `package/esp-hosted/0001-host-accept-and-ignore-scan-IEs.patch`.
+  `package/esp-hosted-nano/0001-host-accept-and-ignore-scan-IEs.patch`.
 - **The Nano couldn't reset the ESP** (EN stuck at 1.3 V): the D1 mini's USB auto-reset transistors
   fight any other driver of EN while its USB is connected. Power the ESP from a bench supply (USB
   unplugged) when the Nano drives its reset; flash it with USB connected, bench supply off. The

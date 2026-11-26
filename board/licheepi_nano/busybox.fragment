@@ -1,2 +1,6 @@
-# network time, for the WiFi (package/esp-hosted's S35wifi starts it): the board has no clock battery
+# network time, for the WiFi (package/esp-hosted-nano's S35wifi starts it): the board has no clock battery
 CONFIG_NTPD=y
+
+# no cron daemon: nothing here is scheduled (Buildroot 2025.02's BusyBox turned it on, with an S50crond)
+# CONFIG_CROND is not set
+# CONFIG_CRONTAB is not set
