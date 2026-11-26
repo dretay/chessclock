@@ -43,6 +43,33 @@ static long now_ms(void) {
     return ts.tv_sec * 1000L + ts.tv_nsec / 1000000L;
 }
 
+/* the pid in the pid file, or 0 */
+static int pid_in(const char *path)
+{
+    int pid = 0;
+    FILE *f = fopen(path, "r");
+    if (f) { if (fscanf(f, "%d", &pid) != 1) pid = 0; fclose(f); }
+    return pid;
+}
+
+/* A set of dots already running (the app picker's "Starting...", then the new app's own splash: two in a
+ * row) is stopped first: the app stops the dots the pid file names, so an earlier set it didn't name would
+ * pulse on over the app until its SECS ran out. Only a process that is a splashanim (/proc/PID/comm). */
+static void stop_other(const char *pid_file)
+{
+    int pid = pid_in(pid_file);
+    if (pid <= 0 || pid == (int)getpid()) return;
+    char path[64], comm[32] = "";
+    snprintf(path, sizeof path, "/proc/%d/comm", pid);
+    FILE *f = fopen(path, "r");
+    if (!f) return;
+    if (!fgets(comm, sizeof comm, f)) comm[0] = 0;
+    fclose(f);
+    if (strncmp(comm, "splashanim", 10)) return;
+    kill(pid, SIGTERM);
+    for (int i = 0; i < 50 && kill(pid, 0) == 0; i++) usleep(10000);   /* (its last frame done before ours) */
+}
+
 int main(int argc, char **argv) {
     if (argc < 3) { fprintf(stderr, "usage: splashanim X Y [SECS]\n"); return 2; }
     const int cx = atoi(argv[1]), cy = atoi(argv[2]);
@@ -84,6 +111,7 @@ int main(int argc, char **argv) {
     }
 
     const char *pid_file = getenv("SPLASH_PID") ? getenv("SPLASH_PID") : PID_FILE;
+    stop_other(pid_file);                                 /* (one set of dots at a time: see stop_other) */
     FILE *pf = fopen(pid_file, "w");
     if (pf) { fprintf(pf, "%d\n", (int)getpid()); fclose(pf); }
     signal(SIGTERM, on_term); signal(SIGINT, on_term);
@@ -112,6 +140,6 @@ int main(int argc, char **argv) {
         }
         usleep(FRAME_MS * 1000);
     }
-    unlink(pid_file);
+    if (pid_in(pid_file) == (int)getpid()) unlink(pid_file);   /* (not a newer one's) */
     return 0;
 }

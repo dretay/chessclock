@@ -252,6 +252,7 @@
     <div class="effect">
       <p class="note">Publishing puts it in your catalog, where every frame finds it (Settings › Apps › Get apps): a frame shows an update when the version here is newer than the one it has.</p>
       <div id="publist"><p class="note">Checking what's published…</p></div>
+      <label class="check"><input type="checkbox" id="pinstall" checked><span>…and install on the device (over USB, signed: no Get apps on it)</span></label>
       <div class="row"><button id="publish" class="primary" disabled>Publish</button></div>
       <p class="note" id="publishnote"></p>
     </div>
@@ -804,7 +805,7 @@ $("publish").onclick = async () => {
   const r = S && S.release, ready = releaseReady(r);
   if (!ready.length || !(await askPublish(ready, r.repo))) return;
   let passphrase = await askPassphrase(); if (passphrase === null || passphrase === undefined) return;
-  const res = await post("/builder/publish", { names: ready.map(a => a.id), passphrase });
+  const res = await post("/builder/publish", { names: ready.map(a => a.id), passphrase, install: $("pinstall").checked });
   passphrase = "";                                   // (not kept, here or anywhere)
   if (res.error) say(res.error);
   refresh();

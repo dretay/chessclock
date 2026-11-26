@@ -58,7 +58,8 @@ def lighting(hour):
 
 
 # the drawing library's scene effects (vfx_effects): theme.json lists the ones its scene has
-REMOTE_LIVE = "/tmp/countdown-live.json"           # (the board: the Mac's Controls, in RAM: gone at a reboot)
+REMOTE_LIVE = "/tmp/countdown-live.json"
+STILL_LEASE = 20                                   # (seconds "still" lasts without the Mac renewing it)           # (the board: the Mac's Controls, in RAM: gone at a reboot)
 EFFECTS = {"water": 1, "wake": 2, "smoke": 4, "gulls": 8, "birds": 8, "dolphins": 16, "raft": 32, "twinkle": 64, "foam": 128, "fireflies": 256, "mist": 512}   # ("birds": the gulls, any scene's)
 
 FADE_SECS = 0.6                                     # countdown <-> a module's screen
@@ -170,6 +171,10 @@ class App:
         self.live_every = 0.0 if os.environ.get("PREVIEW_DIR") else 0.3       # (looked at a few times a second on the board)
         self.live_looked = -1e9
         self.live_at, self.live = 0.0, {}
+        # (the Mac's Remote mirror: "still" in the live controls: the picture drawn only when something changes,
+        # so the mirror has little to send and its grabs the CPU; still_until: draw until then, still_key: what's shown)
+        self.still_until, self.still_key = 0.0, None
+        self.live_mtime = 0.0                  # (when the live controls were last written: "still" lapses without the Mac)
         self.go_screen = False
         self.daylapse = float(os.environ.get("VACATION_DAYLAPSE", "0"))
         self.log_every = float(os.environ.get("VACATION_LOG_SECS", "60"))
@@ -234,6 +239,10 @@ class App:
         screen, or back to the countdown), "hold" once one has lasted HOLD_SECS (Settings, as on the
         countdown), else None."""
         tp = self.touch
+        # (the live controls too, while a screen shows: the Controls' Settings button opens them from here, as a hold does)
+        if self.live_path is not None and hasattr(self, "run_t0"):
+            self.live_controls(now - self.run_t0)
+            if self.want_settings: self.screen_press = None; return "hold"
         for ev, x, y in (tp.poll(now) if tp else []):
             if ev == "down": self.screen_press = now
             elif ev == "up":
@@ -296,6 +305,7 @@ class App:
         self.live_looked = t
         try: at = os.path.getmtime(self.live_path)
         except (OSError, TypeError): return False
+        self.live_mtime = at
         if at == self.live_at: return False
         self.live_at = at
         try: new = json.load(open(self.live_path))
@@ -306,6 +316,9 @@ class App:
         if fired("show"): self.start_show(t)
         if fired("birds"): self.fx.vfx_demo(1)                                              # (birds across, now)
         if fired("fireflies"): self.fx.vfx_demo(4)                                          # (fireflies out, now)
+        if any(fired(k) for k in ("fireworks", "show", "birds", "fireflies")): self.still_until = self.now() + 10   # (moving: shown)
+        if fired("settings"): self.want_settings = True                                     # (the Controls' Settings button: open them now)
+        if bool(new.get("still")) != bool(old.get("still")): self.still_until = self.now() + 1.5               # (and once more, either way)
         if bool(new.get("windows_hold")) != bool(old.get("windows_hold")):                 # (painting windows: all lit, still)
             self.fx.vfx_windows_hold(1 if new.get("windows_hold") else 0)
         if new.get("pattern", -1) != old.get("pattern", -1): self.fx.vfx_twinkle_pin(int(new.get("pattern", -1)))
@@ -316,6 +329,12 @@ class App:
             if hit: self.next_screen = hit[0]; self.go_screen = True
             else: print("countdown: screen %d isn't showing (turned off in the settings, or it didn't load)" % (want + 1), flush=True)
         return new.get("hour") != old.get("hour") or not old
+
+    def still(self):
+        """The Mac's Remote mirror holding the scene still: only while it keeps saying so. remote.py rewrites the
+        live controls with every frame it takes; STILL_LEASE seconds without (the preview quit, the cable out),
+        and the scene moves again by itself."""
+        return bool(self.live.get("still")) and time.time() - self.live_mtime < STILL_LEASE
 
     def hour(self, t):
         if self.live.get("hour") is not None: return float(self.live["hour"]) % 24
@@ -353,6 +372,7 @@ class App:
         stop_after = int(os.environ.get("VACATION_FRAMES", "0"))
         next_clock_save = 0.0
         next_map = float(os.environ.get("VACATION_MAP_AFTER", self.countdown_secs))
+        self.run_t0 = 0 if self.sim else start            # (t = now - run_t0: for the screens' look at the live controls)
         while self.running:
             now = self.now(); t = now - (0 if self.sim else start)
             t_ms = int(t * 1000) & 0x3fffffff           # wraps every 12 days; the drawing copes with one odd frame
@@ -408,6 +428,7 @@ class App:
                 if settings.run():                                         # saved: pick up the new settings
                     self.conf = apps.read_settings(self.conf_path, self.device_path); self.load_conf(); days = cards = None; last_check = -1e9
                 if settings.demo: self.start_show(self.now() - (0 if self.sim else start) + 0.5)   # the demo show
+                self.still_until = self.now() + 1.5                                             # (the scene again, after Settings)
                 # (the countdown's time on screen starts again: time in Settings doesn't count, or a screen
                 # would come straight away)
                 next_map = max(next_map, self.now() - (0 if self.sim else start) + self.countdown_secs)
@@ -416,7 +437,7 @@ class App:
             # (a tap shows it even during a fireworks show; on its own timer, it waits for the show to end)
             if self.go_screen: self.go_screen = False; next_map = -1      # (the previewer's "show it now")
             # (the previewer's "Stay on the scene": no screens by themselves, a tap still brings one)
-            if self.playlist and t >= next_map and (not self.show or next_map < 0) and hold_start is None and (next_map < 0 or not self.live.get("stay")):
+            if self.playlist and t >= next_map and (not self.show or next_map < 0) and hold_start is None and (next_map < 0 or not (self.live.get("stay") or self.still())):
                 clock0 = 0 if self.sim else start
                 def countdown_frame(): self.fx.vfx_frame(int((self.now() - clock0) * 1000) & 0x3fffffff)
                 self.fade(0, countdown_frame)                      # the countdown fades out,
@@ -429,7 +450,17 @@ class App:
                 self.fade(256, countdown_frame)                    # and the countdown comes back
                 next_map = self.now() - (0 if self.sim else start) + self.countdown_secs
                 frames = busy = 0; last_log = self.now()           # (the frame-rate log is about the countdown only)
+                self.still_until = self.now() + 1.5
                 continue
+            if self.still() and not self.sim:                     # (Remote mirror: drawn only when something changes)
+                key = (cards, round(night, 2))
+                if key != self.still_key: self.still_key, self.still_until = key, now + 1.5     # (a card's flip, the light)
+                if hold_start is None and not self.show and now >= self.still_until:
+                    # (counted as a frame all the same: touches are read every other frame, by this count;
+                    # left odd, a still countdown never read them again)
+                    total_frames += 1
+                    time.sleep(0.05); frames = busy = 0; last_log = now
+                    continue
             busy += self.fx.vfx_frame(t_ms); frames += 1; total_frames += 1
             if stop_after and total_frames >= stop_after: break
             if self.sim:

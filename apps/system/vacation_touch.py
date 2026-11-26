@@ -44,10 +44,12 @@ class Touch:
             return PipeTouch(os.environ["VACATION_TOUCH_PIPE"])
         bus = os.environ.get("VACATION_TOUCH_BUS", "/dev/i2c-0")
         try:
-            return cls(bus, conf)
+            real = cls(bus, conf)
         except OSError as e:
             print("vacation: no touch chip on %s: %s" % (bus, e), flush=True)
-            return None
+            real = None
+        # (the Mac's Remote, over USB: presses written into REMOTE_TOUCH, beside the real ones)
+        return WithRemote(real, RemoteTouch(REMOTE_TOUCH)) if os.path.isdir("/apps/system") else real
 
     def _measure(self, cmd):
         os.write(self.fd, bytes([cmd]))
@@ -115,6 +117,51 @@ class ScriptTouch:
                 self.presses.remove(p); self.active = p; self.raw = (int(p[1] * 4096 / 800), int(p[2] * 4096 / 480))
                 return [("down", int(p[1]), int(p[2]))]
         return []
+
+
+REMOTE_TOUCH = "/tmp/remote-touch"
+
+
+class RemoteTouch:
+    """Presses from the Mac's Remote (tools/preview/remote.py, over the USB console): "down X Y", "move X Y"
+    and "up X Y" lines appended to a file in RAM (a file, not a pipe: writing to it never waits, whether
+    or not an app is reading). Lines already there when it starts are left: they were for an app before."""
+
+    def __init__(self, path):
+        self.path = path
+        try: self.at = os.path.getsize(path)
+        except OSError: self.at = 0
+        self.buf = b""
+
+    def poll(self, now=None):
+        try: size = os.path.getsize(self.path)
+        except OSError: return []
+        if size < self.at: self.at, self.buf = 0, b""          # (emptied by the Mac: from the start again)
+        if size == self.at: return []
+        with open(self.path, "rb") as f:
+            f.seek(self.at); data = f.read(size - self.at)
+        self.at = size; self.buf += data
+        out = []
+        while b"\n" in self.buf:
+            line, self.buf = self.buf.split(b"\n", 1)
+            p = line.split()
+            if len(p) == 3 and p[0] in (b"down", b"move", b"up") and p[1].isdigit() and p[2].isdigit():
+                out.append((p[0].decode(), min(int(p[1]), 799), min(int(p[2]), 479)))
+        return out
+
+
+class WithRemote:
+    """The touch screen, and the Mac's Remote beside it: either one's presses."""
+
+    def __init__(self, real, remote):
+        self.real, self.remote = real, remote
+
+    def poll(self, now=None):
+        return (self.real.poll(now) if self.real else []) + self.remote.poll(now)
+
+    def __getattr__(self, name):                                   # (raw, cfg, ...: the real screen's, for calibrating)
+        if self.real is None: raise AttributeError(name)
+        return getattr(self.real, name)
 
 
 class PipeTouch:

@@ -1,9 +1,10 @@
 #!/usr/bin/env -S uv run -q python
 """Publish apps to the catalog the boards install from (Settings > Apps > Get apps): GitHub Releases.
 
-    tools/apps/publish.py [--key KEY] [--repo OWNER/NAME] [--passphrase-stdin] [--base [--images DIR]] [NAME ...]
+    tools/apps/publish.py [--key KEY] [--repo OWNER/NAME] [--passphrase-stdin] [--base [--images DIR]] [--install [--reboot]] [NAME ...]
     e.g. tools/apps/publish.py system countdown castle cruise
          tools/apps/publish.py --base castle          (a base system update, and an app, together)
+         tools/apps/publish.py --install system       (published, then installed on the frame over USB too)
 
 For each app: pack and sign it (tools/apps/pack.py: OpenSSL asks for the key's passphrase once; KEY
 default ~/.config/licheepi-nano/module-signing.pem), and make a release ID-VERSION with its tarball and
@@ -16,6 +17,10 @@ it with modinstall too). REPO default: this repository's GitHub remote (origin).
 base-VERSION with its .img.gz and .sig (VERSION: board/licheepi_nano/VERSION when it was built; already
 published is refused), and the catalog's "base" entry (version, board, size, url, sig): Settings > Apps >
 Get apps on a board shows it as Base system, Update.
+
+--install: then the same on the frame plugged into this Mac's USB, signed (tools/board/deploy.py --signed;
+with --base, deploy.py --base, and --reboot restarts it into the new base), the passphrase asked once for
+both: no Get apps on the frame.
 
 Needs the GitHub CLI, once: brew install gh; gh auth login.
 """
@@ -55,6 +60,9 @@ def main():
     if with_base: a.remove("--base")
     pass_stdin = "--passphrase-stdin" in a                  # (the Scene Builder's Publish: one line on stdin, not a prompt)
     if pass_stdin: a.remove("--passphrase-stdin")
+    install, reboot = "--install" in a, "--reboot" in a     # (then onto the USB frame too)
+    for f in ("--install", "--reboot"):
+        if f in a: a.remove(f)
     names = [x for x in a if not x.startswith("-")]
     if not (names or with_base) or len(names) != len(a): sys.exit(__doc__)
     base_version = None
@@ -127,6 +135,14 @@ def main():
     print("catalog: %d apps%s -> https://github.com/%s/releases/tag/%s" % (
         len(catalog["apps"]), ", base %s" % catalog["base"]["version"] if catalog.get("base") else "", repo, CATALOG_TAG))
     shutil.rmtree(tmp, ignore_errors=True)
+    if install:                                             # (the passphrase is pack's already: not asked again)
+        sys.path.insert(0, os.path.join(REPO, "tools", "board")); import deploy
+        if names:
+            print("installing on the frame over USB: %s" % ", ".join(names))
+            deploy.main(["--signed", "--key", key] + names)
+        if with_base:
+            print("installing base %s on the frame over USB" % base_version)
+            deploy.main(["--base", "--key", key, images] + (["--reboot"] if reboot else []))
 
 
 if __name__ == "__main__":

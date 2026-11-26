@@ -83,10 +83,13 @@ def installed_version(root, app_id):
 
 
 def status(entry, root):
-    """"Install", "Update" or "Installed"."""
+    """"Install", "Update" or "Installed". An unsigned copy (deploy.py without --signed: no .signature) of
+    the same version is an Update too: the catalog's is the signed one."""
     have = installed_version(root, entry["id"])
     if have is None: return "Install"
-    return "Update" if vtuple(entry["version"]) > vtuple(have) else "Installed"
+    if vtuple(entry["version"]) > vtuple(have): return "Update"
+    unsigned = not os.path.exists(os.path.join(root, entry["id"], ".signature"))
+    return "Update" if unsigned and vtuple(entry["version"]) == vtuple(have) else "Installed"
 
 
 def runtime_api(root, runtime):

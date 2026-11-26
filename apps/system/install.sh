@@ -10,6 +10,9 @@ rm -rf "$DEST"
 mkdir -p "$DEST/fx" "$DEST/ui"
 ${CC:-arm-linux-gcc} -O2 -Wall -shared -fPIC -o "$DEST/fx/libvacfx.so" "$SRC/fx/vacfx.c" -lz
 ${CC:-arm-linux-gcc} -O2 -Wall -o "$DEST/splashanim" "$SRC/fx/splashanim.c" -lm     # (the loading dots)
+${CC:-arm-linux-gcc} -O2 -Wall -o "$DEST/fbgrab" "$SRC/fx/fbgrab.c" -lz              # (the screen, for the Mac's Remote mirror)
+# (and as a JPEG, much smaller, when the base system has libjpeg; the Mac tries it first)
+${CC:-arm-linux-gcc} -O2 -Wall -DWITH_JPEG -o "$DEST/fbgrab-jpeg" "$SRC/fx/fbgrab.c" -lz -ljpeg 2>/dev/null || true
 cp "$SRC"/*.py "$SRC/app.json" "$SRC/API" "$DEST/"
 for f in pick device; do [ -f "$SRC/$f" ] && cp "$SRC/$f" "$DEST/" && chmod 755 "$DEST/$f"; done
 cp "$SRC/ui/ui.bin.gz" "$SRC/fonts/OFL.txt" "$DEST/ui/"

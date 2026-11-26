@@ -116,9 +116,10 @@ def deploy_base(a):
         print("restart the board to use it (`reboot` on its console)")
 
 
-def main():
+def main(argv=None):
+    """argv: deploy.py's arguments (default the command line's): tools/apps/publish.py --install calls it too."""
     sys.stdout.reconfigure(line_buffering=True)                               # (in order with the tools it runs)
-    a = sys.argv[1:]
+    a = list(sys.argv[1:] if argv is None else argv)
     if "--base" in a: return deploy_base(a)
     def option(flag):
         if flag not in a: return None

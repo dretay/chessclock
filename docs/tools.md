@@ -71,6 +71,14 @@ switching app (the App menu, the Scene Builder's picker, New…, the in-app pick
 (now and at every boot), if that app is installed there. While it starts (a few seconds), the device shows that app's splash: its picture, "Starting" and the pulsing dots, as at boot (the board's `app NAME` does too, from the next base image). Editing lights
 is Local only. The console is let go after a few idle seconds, so deploys still work.
 
+In Remote, the **window shows the device's screen** and your clicks and presses are touches on it: hold
+two seconds for its Settings, and from there the app picker, Get apps, Device settings, all from the Mac.
+The app here stops while it does (it starts again back in Local). The picture comes over the same USB
+console, from the system package's `fbgrab` (half size, compressed: about a frame a second while the scene
+moves, a line when nothing has), and the presses go into the device's `/tmp/remote-touch`, which its apps
+read beside the touch screen. Still no network: the console stays busy while the window shows the device,
+so a deploy waits for Local.
+
 **Controls** also has **Birds** (a few cross the sky now, whether or not the scene has them on; the
 builder's Birds card has the same as "Some now"). A screen's **Show now** in the builder saves the list
 first if it has changed (the app has only the screens its app.json has), then shows that one.
@@ -158,8 +166,9 @@ twinkle lights, into what the device loads): [countdown apps](countdown.md#scene
 
 `layout.py NAME [DEST]` (an app's files as they go on the board: the one rule the image, deploy and
 packing share), `pack.py NAME [--key KEY]` (its tarball and signed statement, for `modinstall`),
-`publish.py [--base] NAME ...` (pack, sign, and publish to the catalog on GitHub Releases; --base: the
-base system too), `published.py [NAME ...]` (each app's version here, the published one, and whether it
+`publish.py [--base] [--install [--reboot]] NAME ...` (pack, sign, and publish to the catalog on GitHub
+Releases; --base: the base system too; --install: then onto the USB frame as well, the passphrase asked
+once), `published.py [NAME ...]` (each app's version here, the published one, and whether it
 changed since), `keygen.sh` (the
 signing key, once), and `new.py ID --name NAME [--park PARK]` (a new countdown app, running at once on
 a placeholder scene: [countdown apps](countdown.md)): [apps](apps.md).

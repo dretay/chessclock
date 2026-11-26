@@ -132,6 +132,7 @@ class Preview:
         # (a reader of our own, so the pipe can be written to between apps; what's queued is dropped)
         self.drain = os.open(PIPE, os.O_RDONLY | os.O_NONBLOCK)
         self.pipe = os.open(PIPE, os.O_WRONLY | os.O_NONBLOCK)
+        self.mirroring = False                            # (Remote: the window shows the device's screen, its presses go there)
 
     def say(self, *a): self.log.append("preview: " + " ".join(str(x) for x in a)); print("preview:", *a, flush=True)
 
@@ -193,6 +194,7 @@ class Preview:
             self.stop()
             if app: self.app = app
             if self.target == "remote" and self.remote: self.remote.switch_app(self.app)     # (Remote: the device follows)
+            if self.mirroring: return                                # (the window shows the device: nothing runs here)
             try:
                 while os.read(self.drain, 65536): pass               # (taps meant for the last app)
             except (BlockingIOError, OSError): pass
@@ -206,6 +208,40 @@ class Preview:
                 self.svc = self.spawn(["sh", svc], dict(env, APP_NETWORK="1"), os.path.join(APPS, self.app), "service: ")
                 self.say("started its service (with the Mac's network)")
             self.stamp = newest(os.path.join(APPS, self.app), RUNTIME, SYSTEM, os.path.join(TRIALS, self.app))
+
+    # ---------------------------------------------------------------- Remote: the device's screen in the window
+    def set_mirror(self, on):
+        """On: the app here stops, the window shows the device's screen (remote.py's frames, written into the
+        screen file it shows) and its presses go to the device. Off: the app here starts again."""
+        if on == self.mirroring: return
+        if on:
+            with self.lock:
+                self.mirroring = True
+                self.stop()
+            self.remote.on_frame = self.mirror_frame
+            self.remote.set_mirror(True)
+            threading.Thread(target=self.forward_touches, daemon=True).start()
+            self.say("Remote: showing the device's screen; presses go to it")
+        else:
+            self.mirroring = False
+            if self.remote: self.remote.set_mirror(False)
+            threading.Thread(target=self.start, daemon=True).start()
+
+    def mirror_frame(self, bgrx):
+        if not self.mirroring or len(bgrx) != W * H * 4: return
+        fd = os.open(FB, os.O_WRONLY)
+        try: os.pwrite(fd, bgrx, 0)
+        finally: os.close(fd)
+
+    def forward_touches(self):
+        """The window's presses (into the touch pipe), to the device, while mirroring."""
+        buf = b""
+        while self.mirroring:
+            try: buf += os.read(self.drain, 4096)
+            except (BlockingIOError, OSError): time.sleep(0.03); continue
+            while b"\n" in buf:
+                line, buf = buf.split(b"\n", 1)
+                if self.remote: self.remote.touch(line.decode("ascii", "replace"))
 
     def pick(self):
         """Settings > Apps: the real picker, then the app picked (or the same one again)."""
@@ -462,7 +498,8 @@ class Preview:
         ready), signed (the passphrase to publish.py on its stdin, nowhere else), to the public catalog."""
         names = [n for n in c.get("names", []) if n in self.release_names()]
         if not names: return {"error": "nothing to publish"}
-        cmd = [sys.executable, os.path.join(REPO, "tools", "apps", "publish.py"), "--passphrase-stdin"] + names
+        cmd = [sys.executable, os.path.join(REPO, "tools", "apps", "publish.py"), "--passphrase-stdin"] + \
+              (["--install"] if c.get("install") else []) + names
         def run():
             self.publish_line = "starting"
             p = subprocess.Popen(cmd, cwd=REPO, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
@@ -471,7 +508,7 @@ class Preview:
                 line = line.rstrip()
                 if line: self.say("publish: " + line); self.publish_line = line
             if p.wait(): raise RuntimeError(self.publish_line or "it failed")
-            self.publish_line = "published: " + ", ".join(names)
+            self.publish_line = ("published and installed: " if c.get("install") else "published: ") + ", ".join(names)
             self.release_state(refresh=True)
         self.publish_line = ""
         return self.busy("publishing " + ", ".join(names), run, limit=900)
@@ -796,14 +833,14 @@ def serve(pv, port):
                     want = "remote" if c["target"] == "remote" else "local"
                     if want == "remote" and not pv.remote:
                         sys.path.insert(0, HERE); import remote; pv.remote = remote.Remote()
-                    if want == "local" and pv.target == "remote": pv.remote.reset()
+                    if want == "local" and pv.target == "remote": pv.remote.reset(); pv.set_mirror(False)
                     pv.target = want
-                    if want == "remote": pv.remote.set(stay=False); pv.remote.switch_app(pv.app)
+                    if want == "remote": pv.remote.set(stay=False); pv.remote.switch_app(pv.app); pv.set_mirror(True)
                     return self.send(200, b"{}")
                 if c.get("panel") and pv.target == "remote":            # (the panel's controls, for the device's countdown)
                     r = pv.remote
                     if "hour" in c: r.set(hour=float(c["hour"]) if str(c["hour"]) != "" else None)
-                    for k in ("fireworks", "show", "birds", "fireflies"):
+                    for k in ("fireworks", "show", "birds", "fireflies", "settings"):
                         if c.get(k): r.fire(k)
                     if "pattern" in c: r.set(pattern=int(c["pattern"]))
                     if "stay" in c: r.set(stay=bool(c["stay"]))
@@ -813,6 +850,7 @@ def serve(pv, port):
                 if c.get("fireworks"): pv.live(fireworks=pv.live_state.get("fireworks", 0) + 1)
                 if c.get("birds"): pv.live(birds=pv.live_state.get("birds", 0) + 1)
                 if c.get("fireflies"): pv.live(fireflies=pv.live_state.get("fireflies", 0) + 1)
+                if c.get("settings"): pv.live(settings=pv.live_state.get("settings", 0) + 1)     # (Settings, open now: no long press)
                 if "windows_hold" in c: pv.live(windows_hold=bool(c["windows_hold"]))
                 if c.get("show"): pv.live(show=pv.live_state.get("show", 0) + 1)
                 if "pattern" in c: pv.live(pattern=int(c["pattern"]))                # (the lights' show: one pattern held, or -1)
@@ -873,7 +911,9 @@ def main():
             print("preview: http://localhost:%d  (Ctrl-C to stop)" % port, flush=True)
             while True: time.sleep(3600)
     except KeyboardInterrupt: pass
-    finally: pv.stop()
+    finally:
+        pv.stop()
+        if pv.remote and pv.target == "remote": pv.remote.release()     # (the device's scene moving again, at once)
 
 
 if __name__ == "__main__":

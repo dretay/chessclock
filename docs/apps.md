@@ -144,6 +144,7 @@ only an app whose `.signature` checks out against the trusted keys, and its runt
 ```sh
 brew install gh && gh auth login                 # once: the GitHub CLI
 tools/apps/publish.py system countdown castle cruise
+tools/apps/publish.py --install castle           # ... and onto the frame on USB too (one passphrase)
 ```
 
 `publish.py` packs and signs each app, makes a GitHub release `ID-VERSION` with its tarball and

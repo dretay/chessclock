@@ -683,6 +683,8 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         birds.frame = NSRect(x: 206, y: 140, width: 70, height: 30)
         let flies = NSButton(title: "Fireflies", target: self, action: #selector(firefliesNow))
         flies.frame = NSRect(x: 276, y: 140, width: 96, height: 30)
+        let settings = NSButton(title: "Settings", target: self, action: #selector(settingsNow))   // (open them: no long press)
+        settings.frame = NSRect(x: 292, y: 104, width: 80, height: 30)
         let showLabel = NSTextField(labelWithString: "Lights' show")
         showLabel.frame = NSRect(x: 14, y: 112, width: 100, height: 18)
         patternMenu = NSPopUpButton(frame: NSRect(x: 110, y: 106, width: 180, height: 28), pullsDown: false)
@@ -704,7 +706,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         eraseNote.maximumNumberOfLines = 2; eraseNote.lineBreakMode = .byWordWrapping
         let stay = NSButton(checkboxWithTitle: "Stay on the scene (screens wait)", target: self, action: #selector(stayOnScene(_:)))
         stay.frame = NSRect(x: 12, y: 178, width: 270, height: 20); stay.state = .on; stayBox = stay
-        for c in [hourLabel!, hourSlider!, liveBox!, stay, fw, show, birds, flies, showLabel, patternMenu!, editLabel, eraseBox!, undo, eraseNote!] as [NSView] { v.addSubview(c) }
+        for c in [hourLabel!, hourSlider!, liveBox!, stay, fw, show, birds, flies, settings, showLabel, patternMenu!, editLabel, eraseBox!, undo, eraseNote!] as [NSView] { v.addSubview(c) }
         controlPanel.contentView = v
         if !controlPanel.setFrameUsingName("AppPreviewControls") {
             let f = window.frame
@@ -732,6 +734,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
     @objc func fireworks() { panelControl(["fireworks": true]) }
     @objc func birdsNow() { panelControl(["birds": true]) }
     @objc func firefliesNow() { panelControl(["fireflies": true]) }
+    @objc func settingsNow() { panelControl(["settings": true]) }
     @objc func stayOnScene(_ sender: NSButton) { panelControl(["stay": sender.state == .on]) }
     func toNight() { liveBox.state = .off; hourSlider.doubleValue = 22; showHour(); panelControl(["hour": "22"]) }
     func panelControl(_ body: [String: Any]) { var b = body; b["panel"] = true; control(b) }

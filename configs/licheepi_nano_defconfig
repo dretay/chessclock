@@ -111,6 +111,9 @@ BR2_PACKAGE_ALSA_UTILS_APLAY=y
 BR2_PACKAGE_ALSA_UTILS_SPEAKER_TEST=y
 # BR2_PACKAGE_ALSA_UTILS_ALSAMIXER is not set
 BR2_PACKAGE_MPG123=y
+# libjpeg: the Mac's Remote mirror (the system package's fbgrab-jpeg: a fifth the size of its zlib frames)
+BR2_PACKAGE_JPEG=y
+BR2_PACKAGE_LIBJPEG=y
 # the kernel has no networking, so no network startup script
 # BR2_PACKAGE_IFUPDOWN_SCRIPTS is not set
 # only DejaVu Sans is used
