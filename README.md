@@ -116,7 +116,7 @@ rendering every scene and comparing it pixel for pixel with the last time.
 | `hardware/` | the enclosure and the protoboard |
 | `docs/` | the documentation above |
 | `pyproject.toml`, `uv.lock`, `.python-version` | the Mac tools' Python (`tools/setup.sh`) |
-| `Dockerfile.base`, `Dockerfile` | the base image, and a one-shot build |
+| `Dockerfile.base` | the base image: the cross-compiler and a first build (then `tools/build/build.sh`) |
 | `assets/` | (not in the repository) source photos and fonts |
 
 ## Credits

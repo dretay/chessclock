@@ -1,7 +1,7 @@
 # Building and flashing
 
 Builds run in containers: Apple's [`container`](https://github.com/apple/container) tool on macOS,
-or Docker 23+. Two steps: a slow one-off **base image** (the cross-compiler and a complete first
+or Docker. Two steps: a slow one-off **base image** (the cross-compiler and a complete first
 build, 1-2 hours), then **incremental builds** that take in your current files and rebuild what
 changed (seconds to minutes).
 
@@ -37,8 +37,7 @@ To look around inside: `container run -it -v licheepi-out:/root/buildroot lichee
 
 ### Disk space
 
-The volumes stay their size (~8 GB each). The **builder's cache** doesn't: the Dockerfile builds
-below, and the base image build, leave gigabytes of layers in it that the builder never gives back
+The volumes stay their size (~8 GB each). The **builder's cache** doesn't: the base image build leaves gigabytes of layers in it that the builder never gives back
 to macOS (it reached 100+ GB here). After building with `container build`:
 
 ```sh
@@ -48,17 +47,15 @@ container builder stop && container builder delete     # frees the cache; the im
 Not `container image prune --all`: that also deletes the base image (`licheepi-nano-mybase`), and
 rebuilding it takes an hour or two.
 
-## With Docker (or the Dockerfile's one-shot build)
+## With Docker
+
+The same two steps, with Docker in place of Apple's tool: `tools/build/build.sh` uses Docker when
+`container` isn't installed (or `CONTAINER=docker` to choose it).
 
 ```sh
 docker build -f Dockerfile.base --target main -t licheepi-nano-mybase:latest .
-docker build --build-arg BASE_IMAGE=licheepi-nano-mybase [--build-arg APP=castle] [--build-arg WIFI=1] \
-    --output type=tar,dest=- . | (mkdir -p dist && tar x -C dist)
+tools/build/build.sh [--wifi] [--app castle] [--fresh]
 ```
-
-The Dockerfile copies `board/`, `configs/`, `package/`, `apps/chess/` and `apps/countdown/` into the base image
-and rebuilds, every time, the kernel, BusyBox, U-Boot and the boot script. (With `container build`,
-`-o type=tar,dest=dist.tar` and untar it: `container` can't send the output to the terminal.)
 
 ## Flashing the SD card
 

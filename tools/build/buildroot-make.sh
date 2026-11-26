@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs inside the build container for tools/build/build.sh (see there): the Dockerfile's fast build, done
+# Runs inside the build container for tools/build/build.sh (see there): the base system's build, done
 # incrementally in a Buildroot tree that persists (/root/buildroot, a volume). WIFI=0|1,
 # DEFAULT_APP; the repository at /root/licheepi-nano; the images go to /images.
 set -e
