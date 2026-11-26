@@ -7,12 +7,20 @@ trusted key; the file is the one signed), then each app's status against what's 
 downloads the app's files and hands them to modinstall (which checks them again, and refuses what it
 should), its runtime first if that's missing or too old. Downloads go to /apps/data/packages, removed
 after. CATALOG_URL in the device's settings (/apps/data/device.conf) points elsewhere.
+
+The catalog can also have a base system update ("base": its version, board, size, url, sig;
+tools/apps/publish.py --base): base_status() against the running one (/etc/base-version) and the
+card's slots (bootslot status), install_base() downloads it and hands it to `bootslot install`, which
+writes it to the slot not running; it's used from the next start (docs/system.md, "Updates").
 """
 import json, os, ssl, subprocess, urllib.request
 
 DEFAULT_URL = "https://github.com/dretay/chessclock/releases/download/catalog/catalog.json"
 CA_FILE = "/etc/ssl/certs/ca-certificates.crt"           # (Buildroot's ca-certificates)
 MODINSTALL = os.environ.get("MODINSTALL", "modinstall")
+BOOTSLOT = os.environ.get("BOOTSLOT", "bootslot")
+BASE_VERSION = os.environ.get("BASE_VERSION_FILE", "/etc/base-version")
+BOARD = "licheepi-nano"
 
 
 class CatalogError(Exception):
@@ -107,3 +115,65 @@ def install(entry, catalog, root, work, progress=None, say=None):
             except OSError: pass
     if code: raise CatalogError(out[-1].replace("modinstall: ", ""))
     return out[0]
+
+
+# ---------------------------------------------------------------- the base system (A/B slots)
+def base_entry(cat):
+    """The catalog's base system update for this board, or None."""
+    b = cat.get("base")
+    return b if isinstance(b, dict) and b.get("board") == BOARD and b.get("version") and b.get("url") and b.get("sig") else None
+
+
+def slots():
+    """`bootslot status` as {"running": "a", "works": "a", "trying": "b", "failed": "b"}: {} on a card
+    without slots (or no bootslot: a desktop)."""
+    try: r = subprocess.run([BOOTSLOT, "status"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired): return {}
+    if r.returncode: return {}
+    state = {}
+    for line in r.stdout.splitlines():
+        k, _, v = line.partition(": ")
+        if v: state[k.strip()] = v.split()[0]
+    return state
+
+
+def running_base():
+    try: return open(BASE_VERSION).read().strip()
+    except OSError: return ""
+
+
+def base_status(entry, state=None):
+    """"Update", "Installed", "Restart" (installed, used from the next start), or None (no slots)."""
+    state = slots() if state is None else state
+    if not state.get("running"): return None
+    if state.get("trying") and state["trying"] != state["running"]: return "Restart"
+    return "Update" if vtuple(entry["version"]) > vtuple(running_base()) else "Installed"
+
+
+def install_base(entry, work, progress=None, say=None):
+    """Download the base system update and install it into the slot not running (bootslot install):
+    bootslot's last line; raises CatalogError."""
+    os.makedirs(work, exist_ok=True)
+    st = os.statvfs(work)
+    need = int(entry.get("size") or 0) + (4 << 20)
+    if st.f_bavail * st.f_frsize < need:
+        raise CatalogError("not enough room for it: %d MB free, %d MB needed" % ((st.f_bavail * st.f_frsize) >> 20, need >> 20))
+    if say: say("Downloading the base system")
+    pkg = os.path.join(work, os.path.basename(entry["url"]))
+    try:
+        fetch(entry["url"], pkg, progress)
+        fetch(entry["sig"], pkg + ".sig")
+        if say: say("Installing the base system")
+        r = subprocess.run([BOOTSLOT, "install", pkg], capture_output=True, text=True)
+        out = (r.stdout + r.stderr).strip().splitlines() or [""]
+    finally:
+        for f in (pkg, pkg + ".sig"):
+            try: os.remove(f)
+            except OSError: pass
+    if r.returncode: raise CatalogError(out[-1].replace("bootslot: ", "").replace("modinstall: ", ""))
+    return out[-1]
+
+
+def clear_failed():
+    try: subprocess.run([BOOTSLOT, "clear-failed"], capture_output=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired): pass

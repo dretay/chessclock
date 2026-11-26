@@ -72,6 +72,48 @@ def main():
         r = subprocess.run([wrapper, "--verify-installed", os.path.join(root, "castle")], capture_output=True, text=True)
         expect("  and it's signed (--verify-installed)", r.returncode == 0, r.stdout.strip())
 
+        # ---- a base system update in the same catalog (publish.py --base beside apps): the board's slots are
+        # a stand-in bootslot whose install runs the real modinstall --base onto a file for slot B
+        images = os.path.join(tmp, "images"); os.makedirs(images)
+        image = bytes((i * 31 + i // 512) & 0xff for i in range(2 << 20))
+        open(os.path.join(images, "rootfs.ext4"), "wb").write(image)
+        open(os.path.join(images, "base-version"), "w").write("2025.02.20.3\n")
+        vfile = os.path.join(tmp, "base-version"); open(vfile, "w").write("2025.02.20.2\n")
+        slot_b, state = os.path.join(tmp, "slot-b.img"), os.path.join(tmp, "slots")
+        open(slot_b, "wb").write(b"\0" * (4 << 20)); open(state, "w").write("running: a\nworks: a\n")
+        fake = os.path.join(tmp, "bootslot")
+        open(fake, "w").write('#!/bin/sh\ncase "$1" in\n'
+                              ' status) cat "%s" ;;\n'
+                              ' install) "%s" --version-file "%s" --base --target "%s" "$2" || exit 1; echo "trying: b" >> "%s"; echo "slot b is tried at the next start" ;;\n'
+                              ' clear-failed) grep -v failed "%s" > "%s.t"; mv "%s.t" "%s" ;;\nesac\n'
+                              % (state, wrapper, vfile, slot_b, state, state, state, state, state))
+        os.chmod(fake, 0o755)
+        catalog.BOOTSLOT, catalog.BASE_VERSION = fake, vfile
+        pkg, sig = pack.pack_base(images, key, out_dir=www)
+        data = json.load(open(cpath))
+        data["base"] = {"version": "2025.02.20.3", "board": pack.BOARD, "size": os.path.getsize(pkg),
+                        "url": base + os.path.basename(pkg), "sig": base + os.path.basename(sig)}
+        json.dump(data, open(cpath, "w"), indent=1)
+        pack.sign(cpath, {"id": "catalog", "name": "App catalog", "version": "2026.11.25", "api": 0}, key)
+        cat = catalog.load(base + "catalog.json", work)
+        b = catalog.base_entry(cat)
+        expect("base: the catalog has apps and a base update", b is not None and len(cat["apps"]) == 3, b and b["version"])
+        expect("base: Update (newer than the running one)", catalog.base_status(b) == "Update", catalog.base_status(b))
+        expect("base: none on a card without slots", catalog.base_status(b, {}) is None)
+        expect("base: another board's is ignored", catalog.base_entry(dict(cat, base=dict(b, board="orangepi"))) is None)
+        seen = []
+        out = catalog.install_base(b, work, progress=lambda f: seen.append(f), say=lambda s: seen.append(s))
+        expect("base: installs it into the other slot", open(slot_b, "rb").read(len(image)) == image, out)
+        expect("  with progress", any(isinstance(s, float) for s in seen) and "Installing the base system" in seen)
+        expect("  and cleans up the download", not [f for f in os.listdir(work) if f.endswith(".img.gz")])
+        expect("base: then Restart", catalog.base_status(b) == "Restart", catalog.base_status(b))
+        open(state, "w").write("running: b\nworks: b\n"); open(vfile, "w").write("2025.02.20.3\n")
+        expect("base: Installed, once running it", catalog.base_status(b) == "Installed", catalog.base_status(b))
+        expect("  and the apps still Installed beside it", catalog.status(castle, root) == "Installed")
+        open(state, "w").write("running: a\nworks: a\n"); open(vfile, "w").write("2025.02.20.3\n")
+        try: catalog.install_base(b, work); expect("base: refuses the same version again", False)
+        except catalog.CatalogError as err: expect("base: refuses the same version again", "isn't newer" in str(err), str(err)[:60])
+
         data = json.load(open(cpath)); data["apps"][0]["url"] = "http://elsewhere.example/evil.tar.gz"
         json.dump(data, open(cpath, "w"), indent=1)
         try: catalog.load(base + "catalog.json", work); expect("refuses a changed catalog", False)

@@ -9,7 +9,7 @@ is its icon.rgb.gz (ICON_W x ICON_H raw RGB, tools/themegen/app_icon.py), else j
 On a desktop: PICKER_APPS (default /apps), PICKER_CURRENT, PICKER_TIMEOUT (seconds), and the
 VACATION_LIB, VACATION_FB and VACATION_TOUCH_SCRIPT of vacation.py.
 """
-import ctypes, json, os, sys, time
+import ctypes, json, os, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
@@ -24,6 +24,11 @@ ICON_W, ICON_H = 240, 144
 COLS, GAP, TOP, ROW_H = 3, 20, 92, 196
 BACK = (646, 18, 776, 64)
 GET = (466, 18, 630, 64)                  # Get apps › (the catalog), when there's WiFi
+MORE = (300, 18, 450, 64)                 # More ›: the next page of apps, when there are more than a page
+PER_PAGE = 2 * COLS
+LIST_ROWS = 5                             # Get apps: rows a page
+MORE_LIST = (600, 404, 760, 452)
+ALL = (330, 18, 630, 64)                  # Update all (N): every app (and runtime) with an update
 TIMEOUT = float(os.environ.get("PICKER_TIMEOUT", "60"))
 
 
@@ -49,6 +54,7 @@ def scene_of(app_dir):
 
 def read_conf(path):
     conf = {}
+    if not os.path.isfile(path): return conf                         # (a new card: no device.conf yet)
     for line in open(path):
         line = line.strip()
         if line and not line.startswith("#") and "=" in line:
@@ -96,8 +102,13 @@ def button(fx, t, box, label, gold=False):
            box[1] + (34 if label.startswith("‹") else 29), L.DARK if gold else L.IVORY, "m")
 
 
+def pages(n, per):
+    return max(1, (n + per - 1) // per)
+
+
 def draw_grid(fx, t, scene, ui_dir, found, cur):
-    """The apps: each one's picture and name (the running one in gold). Returns their cards' places."""
+    """The apps (a page of them: found is that page's): each one's picture and name (the running one in
+    gold). Returns their cards' places."""
     fx.vfx_ui_close()
     if fx.vfx_ui_open(ui_dir.encode(), scene.encode()) != 0: sys.exit("picker: no Settings images")
     cards = boxes(len(found))
@@ -119,11 +130,14 @@ def draw_grid(fx, t, scene, ui_dir, found, cur):
 
 
 def taps(tp, start, timeout):
-    """Each tap's (x, y) until timeout seconds without one (then None)."""
+    """Each tap's (x, y) until timeout seconds without one (then None). The time spent on a tap (a
+    download, an install: minutes) doesn't count: the clock starts again when the page is back."""
     last = time.monotonic()
     while time.monotonic() - last < timeout:
         for ev, x, y in (tp.poll(time.monotonic() - start) if tp else []):
-            if ev == "up": last = time.monotonic(); yield x, y
+            if ev == "up":
+                yield x, y
+                last = time.monotonic()
         if tp is None: break
         time.sleep(0.02)
     yield None
@@ -138,8 +152,37 @@ def note(fx, t, text, sub=None):
     fx.vfx_ui_flush()
 
 
+RESTART_NOW = (L.W // 2 - 250, L.H // 2 + 20, L.W // 2 - 10, L.H // 2 + 70)
+LATER = (L.W // 2 + 10, L.H // 2 + 20, L.W // 2 + 250, L.H // 2 + 70)
+
+
+def ask_restart(fx, t, tp, start, version):
+    """A base system just installed: restart into it now (True), or later (False: Get apps shows Restart)."""
+    box = (L.W // 2 - 280, L.H // 2 - 90, L.W // 2 + 280, L.H // 2 + 90)
+    fx.vfx_ui_round(*box, 18, rgb((8, 14, 30)), 245, rgb(L.GOLD), 160)
+    t.draw("label", "Base %s is installed" % version, L.W // 2, box[1] + 50, L.IVORY, "m")
+    t.draw("small", "it's used from the next start", L.W // 2, box[1] + 80, L.DIM, "m")
+    button(fx, t, RESTART_NOW, "Restart now", gold=True)
+    button(fx, t, LATER, "Later")
+    fx.vfx_ui_flush()
+    for tap in taps(tp, start, TIMEOUT):
+        if tap is None: return False
+        x, y = tap
+        if RESTART_NOW[1] - 12 <= y < RESTART_NOW[3] + 12:
+            if RESTART_NOW[0] - 12 <= x < RESTART_NOW[2] + 12: return True
+            if LATER[0] - 12 <= x < LATER[2] + 12: return False
+    return False
+
+
+def restart():
+    """Into the slot just installed: the board goes down at once (the app is stopped with it)."""
+    os.sync(); subprocess.run(["reboot"]); time.sleep(60)
+
+
 def get_apps(fx, t, tp, start, scene, ui_dir):
-    """Get apps: the catalog's apps, each with Install / Update / Installed; a tap installs it."""
+    """Get apps: the catalog's apps, each with Install / Update / Installed; a tap installs it. First, when
+    the catalog has one and the card has two root slots: the base system (Update / Installed, then
+    Restart once an update is installed: it's used from the next start)."""
     import catalog
     work = os.path.join(DATA, "packages")
     url = (read_conf(os.path.join(DATA, "device.conf")).get("CATALOG_URL") or catalog.DEFAULT_URL)
@@ -159,36 +202,88 @@ def get_apps(fx, t, tp, start, scene, ui_dir):
         page("Couldn't get the catalog", str(e))
         for tap in taps(tp, start, 30): break
         return
-    entries = [a for a in cat.get("apps", []) if a.get("kind") != "runtime"]
+    # (the apps; a runtime only when it's installed and the catalog has a newer one: the system package
+    # itself, say, with this page in it)
+    entries = [a for a in cat.get("apps", []) if a.get("kind") != "runtime" or catalog.status(a, ROOT) == "Update"]
+    entries.sort(key=lambda a: a.get("kind") != "runtime")             # (runtime updates first: on page 1)
+    base = catalog.base_entry(cat)
+    state = catalog.slots() if base else {}
+    if base and catalog.base_status(base, state): entries.insert(0, dict(base, id="base", name="Base system", is_base=True))
+    if state.get("failed"):                              # (an update that didn't start: said once, then forgotten)
+        page("The last system update didn't start", "the frame went back to base %s" % (catalog.running_base() or "the one before"))
+        for tap in taps(tp, start, 6): break
+        catalog.clear_failed()
     rows = []
+    at = {"page": 0}
 
     def draw_list():
         page()
         fx.vfx_ui_round(20, 78, L.W - 20, 392, 16, rgb(L.PANEL_FILL), L.PANEL_ALPHA, rgb((255, 255, 255)), L.PANEL_LINE_ALPHA)
         rows.clear()
-        for i, e in enumerate(entries[:5]):
+        n = pages(len(entries), LIST_ROWS)
+        at["page"] %= n
+        first = at["page"] * LIST_ROWS
+        for i, e in enumerate(entries[first:first + LIST_ROWS]):
             y = 92 + i * 60
-            st = catalog.status(e, ROOT)
+            st = catalog.base_status(e) if e.get("is_base") else catalog.status(e, ROOT)
             t.draw("label", t.fit("label", e.get("name", e["id"]), 440), 44, y + 34, L.IVORY)
-            t.draw("small", "version %s" % e.get("version", "?"), 520, y + 33, L.DIM, "r")
+            shown_version = catalog.running_base() if e.get("is_base") and st == "Installed" else e.get("version", "?")
+            t.draw("small", "version %s" % shown_version, 520, y + 33, L.DIM, "r")
             box = (600, y + 6, 760, y + 50)
             if st == "Installed": t.draw("small", "Installed", (box[0] + box[2]) // 2, box[1] + 29, L.DIM, "m")
             else: button(fx, t, box, st, gold=True)
             rows.append((y, e, st))
         if not entries: note(fx, t, "No apps in the catalog yet")
+        if n > 1: button(fx, t, MORE_LIST, "More  %d/%d" % (at["page"] + 1, n))
+        if len(updatable()) > 1: button(fx, t, ALL, "Update all (%d)" % len(updatable()), gold=True)
         fx.vfx_ui_flush()
+
+    def restart_now(version):
+        """After a base install: the question, and the restart if it's now (True)."""
+        draw_list()                                      # (a clean page behind the question)
+        if ask_restart(fx, t, tp, start, version):
+            note(fx, t, "Restarting", "back in about a minute"); restart(); return True
+        return False
+
+    def updatable():
+        """The apps and runtimes with an update (runtimes first), not the base system: it needs a restart."""
+        return [e for e in entries if not e.get("is_base") and catalog.status(e, ROOT) == "Update"]
+
+    def update_all():
+        todo, failed = updatable(), []
+        for i, e in enumerate(todo, 1):
+            if catalog.status(e, ROOT) != "Update": continue                 # (a runtime an app before it brought)
+            shown = {"say": "Updating %d of %d: %s" % (i, len(todo), e["name"])}
+            def say(text, i=i, e=e): shown["say"] = "Updating %d of %d: %s" % (i, len(todo), e["name"]); note(fx, t, shown["say"], "one moment")
+            def progress(f): note(fx, t, shown["say"], "%d%%" % round(f * 100))
+            try: catalog.install(e, cat, ROOT, work, progress, say)
+            except catalog.CatalogError as err: failed.append(e["name"]); print("picker: %s: %s" % (e["name"], err), flush=True)
+        if failed: note(fx, t, "Updated %d of %d" % (len(todo) - len(failed), len(todo)), "couldn't update " + ", ".join(failed))
+        else: note(fx, t, "Updated %d apps" % len(todo), "all up to date")
+        time.sleep(2.5)
 
     draw_list()
     for tap in taps(tp, start, TIMEOUT):
         if tap is None: return
         x, y = tap
         if BACK[0] - 10 <= x < BACK[2] + 10 and y < BACK[3] + 16: return
+        if len(entries) > LIST_ROWS and MORE_LIST[0] - 10 <= x < MORE_LIST[2] + 10 and y >= MORE_LIST[1] - 10:
+            at["page"] += 1; draw_list(); continue
+        if len(updatable()) > 1 and ALL[0] - 10 <= x < ALL[2] + 10 and y < ALL[3] + 16:
+            update_all(); draw_list(); continue
         for ry, e, st in rows:
             if ry <= y < ry + 60 and st != "Installed":
+                if st == "Restart":                          # (the base system: into the slot just installed)
+                    note(fx, t, "Restarting", "back in about a minute"); restart(); return
                 shown = {"say": "Downloading %s" % e["name"]}
-                def say(text): shown["say"] = text; note(fx, t, text, "one moment")
+                def say(text): shown["say"] = text; note(fx, t, text, "a few minutes" if e.get("is_base") else "one moment")
                 def progress(f): note(fx, t, shown["say"], "%d%%" % round(f * 100))
-                try: done = catalog.install(e, cat, ROOT, work, progress, say); note(fx, t, "Installed %s" % e["name"], done)
+                try:
+                    if e.get("is_base"):
+                        catalog.install_base(e, work, progress, say)
+                        if restart_now(e["version"]): return
+                    else:
+                        done = catalog.install(e, cat, ROOT, work, progress, say); note(fx, t, "Installed %s" % e["name"], done)
                 except catalog.CatalogError as err: note(fx, t, "Couldn't install %s" % e["name"], str(err))
                 time.sleep(2.5); draw_list()
                 break
@@ -197,16 +292,24 @@ def get_apps(fx, t, tp, start, scene, ui_dir):
 def choose(fx, t, tp, scene, ui_dir, cur):
     """The grid until an app is picked: its id, or "" (‹ Back, or a minute untouched)."""
     start = time.monotonic()
+    page = 0
     while True:
-        found = installed_apps()
+        everything = installed_apps()
+        n = pages(len(everything), PER_PAGE)
+        page %= n
+        found = everything[page * PER_PAGE:(page + 1) * PER_PAGE]
         cards = draw_grid(fx, t, scene, ui_dir, found, cur)
+        if n > 1: button(fx, t, MORE, "More  %d/%d" % (page + 1, n)); fx.vfx_ui_flush()
         again = False
         for tap in taps(tp, start, TIMEOUT):
             if tap is None: return ""
             x, y = tap
             if BACK[0] - 10 <= x < BACK[2] + 10 and y < BACK[3] + 16: return ""
             if network() and GET[0] - 10 <= x < GET[2] + 10 and y < GET[3] + 16:
+                note(fx, t, "Checking the catalog", "one moment")          # (at once: loading the network code takes seconds)
                 get_apps(fx, t, tp, start, scene, ui_dir); again = True; break   # (then the grid again: there may be more)
+            if n > 1 and MORE[0] - 10 <= x < MORE[2] + 10 and y < MORE[3] + 16:
+                page += 1; again = True; break
             hit = next((aid for (aid, _, _), (bx, by) in zip(found, cards)
                         if bx - GAP // 2 <= x < bx + ICON_W + GAP // 2 and by - 12 <= y < by + ROW_H - 12), None)
             if hit: return hit

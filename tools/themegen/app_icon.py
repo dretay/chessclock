@@ -28,15 +28,19 @@ def source(name):
     return None
 
 
+def icon(name):
+    """Write the app's icon.rgb.gz from its picture (None when it has none)."""
+    img = source(name)
+    if img is None: return None
+    out = os.path.join(APPS, name, "icon.rgb.gz")
+    with gzip.GzipFile(out, "wb", 9, mtime=0) as f: f.write(img.resize((W, H), Image.LANCZOS).tobytes())
+    print("icon:", os.path.relpath(out, REPO))
+    return out
+
+
 def main():
     names = sys.argv[1:] or sorted(n for n in os.listdir(APPS) if os.path.isfile(os.path.join(APPS, n, "app.json")))
-    for name in names:
-        img = source(name)
-        if img is None: continue
-        icon = img.resize((W, H), Image.LANCZOS)
-        out = os.path.join(APPS, name, "icon.rgb.gz")
-        with gzip.GzipFile(out, "wb", 9, mtime=0) as f: f.write(icon.tobytes())
-        print("icon:", os.path.relpath(out, REPO))
+    for name in names: icon(name)
 
 
 if __name__ == "__main__":

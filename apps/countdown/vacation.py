@@ -408,6 +408,9 @@ class App:
                 if settings.run():                                         # saved: pick up the new settings
                     self.conf = apps.read_settings(self.conf_path, self.device_path); self.load_conf(); days = cards = None; last_check = -1e9
                 if settings.demo: self.start_show(self.now() - (0 if self.sim else start) + 0.5)   # the demo show
+                # (the countdown's time on screen starts again: time in Settings doesn't count, or a screen
+                # would come straight away)
+                next_map = max(next_map, self.now() - (0 if self.sim else start) + self.countdown_secs)
                 continue
             # the module's next screen, every so often (not in the middle of a fireworks show, or a press)
             # (a tap shows it even during a fireworks show; on its own timer, it waits for the show to end)

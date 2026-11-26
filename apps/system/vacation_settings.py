@@ -531,9 +531,11 @@ class Settings:
         if self.wpa: self.wpa.close()
         app.bright_preview = None                                         # (back to the day or night level)
         if result == "device":                                            # device settings, in this process (at once)
+            self.opening("Opening device settings...")
             fx.vfx_ui_close()
             return Settings(app, "device").run()                          # (saved: the app rereads its settings)
         if result == "apps":                                              # the app picker, in this process too
+            self.opening("Opening apps...")                               # (it takes seconds: say so at once)
             fx.vfx_ui_close()
             import picker
             picker.choose_here(app)
@@ -543,6 +545,14 @@ class Settings:
         fx.vfx_ui_close()
         return result == "save"
 
+
+    def opening(self, what):
+        """Say what's opening, at once: the next page takes a few seconds to load on this CPU."""
+        box = (L.W // 2 - 200, L.H // 2 - 50, L.W // 2 + 200, L.H // 2 + 50)
+        self.round(box, 18, (8, 14, 30), 240, L.GOLD, 160)
+        self.text("label", what, L.W // 2, box[1] + 50, L.IVORY, "m")
+        self.text("small", "one moment", L.W // 2, box[1] + 78, L.DIM, "m")
+        self.fx.vfx_ui_flush()
 
     def closing(self, saved):
         """Say so at once, then back to the countdown."""

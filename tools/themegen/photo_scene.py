@@ -552,6 +552,14 @@ def keep_trial(app, name):
     if own: conf["photo"] = os.path.join(work, own[0]); json.dump(conf, open(os.path.join(work, "scene.json"), "w"), indent=1)
     scene_pack.pack(work, scene)
     set_current(app, "")
+    pictures(app)
+
+
+def pictures(app):
+    """The app's picker icon and boot splash, made again from its scene (app_dirs: its default one): a
+    kept photo changes them."""
+    import app_icon, app_splash
+    app_icon.icon(app); app_splash.splash(app)
 
 
 def delete_trial(app, name):
