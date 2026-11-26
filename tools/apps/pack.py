@@ -4,6 +4,11 @@ its files' SHA-256s, and (with a key) a signed statement for the board's modinst
 
     tools/apps/pack.py NAME [--key KEY.pem] [--local]
     -> build/packages/NAME-VERSION.tar.gz (+ .sig with --key)
+    tools/apps/pack.py --base IMAGES_DIR [--key KEY.pem]
+    -> build/packages/base-VERSION.img.gz (+ .sig with --key): a base system update (docs/system.md,
+       "Updates"): the build's rootfs.ext4 (kernel and device tree in its /boot), gzipped; VERSION
+       is the build's (IMAGES_DIR/base-version, from board/licheepi_nano/VERSION). Its statement adds
+       `kind base`, the board, and the unpacked image's size and SHA-512: `bootslot install` on the board.
 
 What goes in is what tools/apps/layout.py lays out (the same as the SD card image and deploy.py put on
 the board; --local: compiled for the Mac instead, for tests). The tarball is reproducible: files in
@@ -52,15 +57,26 @@ def public_key(key):
     return r.stdout[-32:]
 
 
+def file_hash(path):
+    """(size, SHA-512 hex) of a file, read in pieces."""
+    h, n = hashlib.sha512(), 0
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""): h.update(chunk); n += len(chunk)
+    return n, h.hexdigest()
+
+
 def statement(tar, meta, pub):
     """The lines the signature covers (modinstall's format)."""
-    data = open(tar, "rb").read()
+    size, sha = file_hash(tar)
     extra = ""
     if meta.get("runtime"): extra += "runtime %s\n" % meta["runtime"]
     if meta.get("provides_api") is not None: extra += "provides-api %d\n" % meta["provides_api"]
+    if meta.get("kind") == "base":                                       # (only a base system's: an app's "kind" stays out)
+        for k in ("kind", "board", "image-size", "image-sha512"):
+            if meta.get(k) is not None: extra += "%s %s\n" % (k, meta[k])
     return ("licheepi-module 1\nid %s\nname %s\nversion %s\napi %d\n%ssize %d\nsha512 %s\nkey %s\n" % (
         meta["id"], meta.get("name", meta["id"]).replace("\n", " "), meta["version"], meta.get("api", 1), extra,
-        len(data), hashlib.sha512(data).hexdigest(), pub[:8].hex())).encode()
+        size, sha, pub[:8].hex())).encode()
 
 
 def sign(tar, meta, key):
@@ -106,8 +122,35 @@ def pack(name, key=None, board=True):
     return out
 
 
+BOARD = "licheepi-nano"
+
+
+def pack_base(images, key=None, out_dir=None):
+    """A base system update from a build's output folder: (the .img.gz, the .sig or None)."""
+    img, vfile = os.path.join(images, "rootfs.ext4"), os.path.join(images, "base-version")
+    if not os.path.isfile(img): sys.exit("no rootfs.ext4 in %s (a build's output folder?)" % images)
+    if not os.path.isfile(vfile): sys.exit("no base-version in %s: a build from before base updates (rebuild it)" % images)
+    version = open(vfile).read().strip()
+    assert version and all(c.isdigit() or c == "." for c in version), "base-version: numbers and dots (%r)" % version
+    out_dir = out_dir or os.path.join(REPO, "build", "packages"); os.makedirs(out_dir, exist_ok=True)
+    out = os.path.join(out_dir, "base-%s.img.gz" % version)
+    image_size, image_sha = file_hash(img)
+    with open(img, "rb") as src, open(out + ".part", "wb") as f:
+        with gzip.GzipFile(fileobj=f, mode="wb", compresslevel=6, mtime=0, filename="") as gz:
+            for chunk in iter(lambda: src.read(1 << 20), b""): gz.write(chunk)
+    os.replace(out + ".part", out)
+    print("%s: base %s, %d bytes (%d unpacked)" % (os.path.relpath(out, REPO), version, os.path.getsize(out), image_size))
+    if not key: return out, None
+    meta = {"id": "base", "name": "Base system", "version": version, "api": 1, "kind": "base", "board": BOARD,
+            "image-size": image_size, "image-sha512": image_sha}
+    sig = sign(out, meta, key)
+    print("signed:", os.path.relpath(sig, REPO))
+    return out, sig
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
-    if not a or a[0].startswith("-"): sys.exit(__doc__)
     key = a[a.index("--key") + 1] if "--key" in a else None
+    if a[:1] == ["--base"] and len(a) > 1: pack_base(a[1], key); sys.exit(0)
+    if not a or a[0].startswith("-"): sys.exit(__doc__)
     pack(a[0], key, "--local" not in a)

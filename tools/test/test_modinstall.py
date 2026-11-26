@@ -133,6 +133,47 @@ def main():
             expect("refuses " + what, False, run(tmp, bad))
             expect("  and leaves the apps as they were", sorted(os.listdir(mods)) == before
                    and not os.path.exists(os.path.join(tmp, "app", "escaped")), (0, ""))
+
+        # ---- base system updates (--base): a file stands in for the other slot's partition
+        images = os.path.join(tmp, "images"); os.makedirs(images)
+        image = bytes((i * 7919 + i // 4096) & 0xff for i in range(4 << 20))      # (4 MB, not all zeros)
+        open(os.path.join(images, "rootfs.ext4"), "wb").write(image)
+        open(os.path.join(images, "base-version"), "w").write("2025.02.20.2\n")
+        vfile = os.path.join(tmp, "base-version"); open(vfile, "w").write("2025.02.20.1\n")
+        slot = os.path.join(tmp, "slot.img")
+        def blank(size=8 << 20): open(slot, "wb").write(b"\0" * size)
+        def base(pkg, *extra): return run(tmp, "--version-file", vfile, *extra, "--base", "--target", slot, pkg)
+        def untouched(): return open(slot, "rb").read(16) == b"\0" * 16
+        bpkg, _ = pack.pack_base(images, key, out_dir=tmp)
+        bmeta = {"id": "base", "name": "Base system", "version": "2025.02.20.2", "api": 1, "kind": "base",
+                 "board": pack.BOARD, "image-size": len(image), "image-sha512": pack.hashlib.sha512(image).hexdigest()}
+        blank()
+        expect("base: a newer base system", True, base(bpkg), "ok: base 2025.02.20.2")
+        expect("  the slot holds the image", open(slot, "rb").read(len(image)) == image, (0, ""))
+        open(vfile, "w").write("2025.02.20.2\n"); blank()
+        expect("base: the same version", False, base(bpkg), "isn't newer")
+        expect("base: the same version, --force", True, base(bpkg, "--force"), "ok: base")
+        open(vfile, "w").write("2025.02.20.1\n")
+        bbad = os.path.join(tmp, "bad.img.gz")
+        for what, make, why in [
+                ("a changed .gz", lambda: (open(bbad, "wb").write(bytes(b ^ (i == 500) for i, b in enumerate(open(bpkg, "rb").read()))),
+                                           shutil.copy(bpkg + ".sig", bbad + ".sig")), "doesn't match its statement"),
+                ("an untrusted key", lambda: (shutil.copy(bpkg, bbad), pack.sign(bbad, bmeta, other)), "isn't trusted"),
+                ("another board", lambda: (shutil.copy(bpkg, bbad), pack.sign(bbad, dict(bmeta, board="orangepi"), key)), "not this board"),
+                ("an older version", lambda: (shutil.copy(bpkg, bbad), pack.sign(bbad, dict(bmeta, version="2024.02.1"), key)), "isn't newer"),
+                ("the wrong image hash", lambda: (shutil.copy(bpkg, bbad), pack.sign(bbad, dict(bmeta, **{"image-sha512": "0" * 128}), key)), "doesn't match its statement"),
+                ("an image unpacking bigger", lambda: (shutil.copy(bpkg, bbad), pack.sign(bbad, dict(bmeta, **{"image-size": 1000}), key)), "bigger than its statement"),
+                ("an app's statement", lambda: (shutil.copy(bpkg, bbad), pack.sign(bbad, dict(bmeta, kind="app"), key)), "not a base system package")]:
+            make(); blank()
+            expect("base: refuses " + what, False, base(bbad), why)
+            if what in ("the wrong image hash", "an image unpacking bigger"):
+                continue        # (found only by unpacking it: the slot is part written, and never switched to)
+            expect("  and leaves the slot as it was", untouched(), (0, ""))
+        blank(2 << 20)
+        expect("base: a slot too small for it", False, base(bpkg), "only")
+        expect("base: as an app (no --base)", False, run(tmp, bpkg), "not an app")
+        expect("base: without --target", False, run(tmp, "--version-file", vfile, "--base", bpkg), "needs --target")
+        expect("an app given to --base", False, base(good), "not a base system package")
         return 1 if failures else 0
     finally:
         shutil.rmtree(tmp, ignore_errors=True)

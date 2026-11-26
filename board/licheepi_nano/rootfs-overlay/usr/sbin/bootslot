@@ -1,0 +1,105 @@
+#!/bin/sh
+# The card's two root slots (A: /dev/mmcblk0p2, B: /dev/mmcblk0p4), each a whole base system, and the
+# switch between them (docs/system.md, "Updates"; boot.cmd does the booting):
+#
+#   bootslot [status]        which slot is running, which one is known to work, a slot being tried or
+#                            one that failed, and the base version
+#   bootslot install PKG [--force]
+#                            a signed base system (tools/apps/pack.py --base: PKG.img.gz and PKG.img.gz.sig)
+#                            written to the slot not running by modinstall --base, checked on the card,
+#                            then tried at the next start: `reboot`
+#   bootslot confirm         this slot works: keep it (S99app runs it once the app has run a minute)
+#   bootslot clear-failed    forget that a tried slot didn't start
+#
+# The choice is U-Boot's environment, uboot.env on the boot partition (/dev/mmcblk0p1), read and set
+# with fw_printenv/fw_setenv (/etc/fw_env.config); the partition is mounted at /mnt/boot only while
+# it's used, read-write only while writing.
+FAT=/dev/mmcblk0p1
+MNT=/mnt/boot
+LOCK=/tmp/bootslot.lock
+
+die() { echo "bootslot: $*" >&2; exit 1; }
+running() { sed -n 's/.*bootslot=\([ab]\).*/\1/p' /proc/cmdline; }
+other() { [ "$1" = a ] && echo b || echo a; }
+device() { [ "$1" = b ] && echo /dev/mmcblk0p4 || echo /dev/mmcblk0p2; }
+mounted() { grep -q " $MNT " /proc/mounts; }
+
+lock() {
+	n=0
+	until mkdir "$LOCK" 2>/dev/null; do
+		n=$((n + 1)); [ $n -lt 300 ] || die "busy (another bootslot is running: $LOCK)"
+		sleep 1
+	done
+	trap 'mounted && umount "$MNT"; rmdir "$LOCK" 2>/dev/null' EXIT INT TERM
+}
+
+# fat ro|rw: the boot partition mounted at MNT, that way
+fat() {
+	if mounted; then mount -o remount,"$1" "$MNT" || die "couldn't remount $FAT $1"
+	else mount -t vfat -o "$1" "$FAT" "$MNT" || die "couldn't mount $FAT"; fi
+}
+getenv() { fw_printenv -n "$1" 2>/dev/null; }
+
+# setenv NAME=VALUE ...: in one write (an empty VALUE removes NAME)
+setenv() {
+	fat rw
+	for kv in "$@"; do echo "${kv%%=*} ${kv#*=}"; done | fw_setenv -s - || die "couldn't write U-Boot's environment"
+	sync
+	fat ro
+}
+
+need_slots() {
+	[ -n "$(running)" ] || die "this card has one root partition (laid out before the slots): tools/board/flash_sd.sh --relayout, once"
+	[ -b /dev/mmcblk0p4 ] || die "no /dev/mmcblk0p4: the card has no slot B (tools/board/flash_sd.sh --relayout)"
+}
+
+status() {
+	need_slots
+	fat ro
+	[ -f "$MNT/uboot.env" ] || die "no uboot.env on the boot partition (U-Boot writes it the first time it starts)"
+	r=$(running)
+	echo "running: $r ($(device "$r")), base $(cat /etc/base-version 2>/dev/null)"
+	echo "works: $(getenv bootslot)"
+	t=$(getenv bootslot_try); tries=$(getenv bootslot_tries); [ -n "$t" ] && echo "trying: $t (started ${tries:-0} of 3 times)"
+	f=$(getenv bootslot_failed); [ -n "$f" ] && echo "failed: $f (an update that didn't start: back on $(getenv bootslot))"
+	return 0
+}
+
+install() {
+	pkg=$1; shift
+	[ -f "$pkg" ] || die "no $pkg"
+	need_slots
+	fat ro
+	r=$(running); o=$(other "$r")
+	if [ "$(getenv bootslot_try)" = "$r" ]; then
+		die "this system (slot $r) is still being tried: wait until it has run a minute (bootslot confirm), then install"
+	fi
+	[ "$(getenv bootslot)" = "$r" ] || die "slot $r is running but isn't the one known to work ($(getenv bootslot)): bootslot confirm first"
+	# (a slot about to be written must not be tried meanwhile: a power cut mid-write would leave it half there)
+	[ -n "$(getenv bootslot_try)$(getenv bootslot_failed)" ] && setenv bootslot_try= bootslot_tries= bootslot_failed=
+	modinstall "$@" --base --target "$(device "$o")" "$pkg" || exit 1
+	setenv bootslot_try="$o" bootslot_tries=
+	echo "slot $o is tried at the next start: reboot (it's kept once it has run a minute; else back to $r)"
+}
+
+confirm() {
+	r=$(running)
+	[ -n "$r" ] || return 0                       # (a card without slots: nothing to do)
+	fat ro
+	t=$(getenv bootslot_try); f=$(getenv bootslot_failed)
+	if [ "$t" = "$r" ]; then
+		setenv bootslot="$r" bootslot_try= bootslot_tries=
+		echo "slot $r works: kept (base $(cat /etc/base-version 2>/dev/null))"
+	elif [ -n "$f" ]; then
+		echo "the update in slot $f didn't start: running slot $r (base $(cat /etc/base-version 2>/dev/null))"
+	fi
+	return 0
+}
+
+case "${1:-status}" in
+	status) lock; status ;;
+	install) shift; [ -n "$1" ] || die "usage: bootslot install PKG.img.gz [--force]"; lock; install "$@" ;;
+	confirm) lock; confirm ;;
+	clear-failed) lock; need_slots; fat ro; setenv bootslot_failed=; echo "cleared" ;;
+	*) sed -n '2,15p' "$0"; exit 1 ;;
+esac

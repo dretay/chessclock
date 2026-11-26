@@ -23,6 +23,9 @@ echo "${DEFAULT_APP:-castle}" > "${APPS_ROOT}/current"
 rm -f "${BINARIES_DIR}/apps.ext4"
 "${HOST_DIR}/sbin/mkfs.ext4" -q -L apps -d "${APPS_ROOT}" -E root_owner=0:0 "${BINARIES_DIR}/apps.ext4" "${APPS_SIZE}"
 
+# the base system's version, beside the images: tools/apps/pack.py --base names and signs its update with it
+cp "${EXT}/board/licheepi_nano/VERSION" "${BINARIES_DIR}/base-version"
+
 # combined bootable image
 GENIMAGE_CFG="${BOARD_DIR}/genimage.cfg"
 GENIMAGE_TMP="${BUILD_DIR}/genimage.tmp"

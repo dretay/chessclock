@@ -26,6 +26,20 @@
  * (data, current, ...), and replacing a folder that isn't an app.
  *
  * --check: only check the signature and the tarball.
+ *
+ * --base --target DEV PKG.img.gz [PKG.img.gz.sig]: a base system for one of the card's two root slots
+ * (tools/apps/pack.py --base; docs/system.md, "Updates"), written to DEV, the slot not running
+ * (bootslot install picks it, and switches to it after). Its statement says `kind base`, the board,
+ * and the unpacked image's size and SHA-512 besides the .gz's:
+ *
+ *   licheepi-module 1 / id base / name Base system / version 2025.02.20.1 / api 1 / kind base /
+ *   board licheepi-nano / image-size 134217728 / image-sha512 <128 hex> / size / sha512 / key / sig
+ *
+ * The signature and the .gz are checked as for an app, before anything is written. Refused: another
+ * board; a version not newer than --version-file's (default /etc/base-version; --force allows it); an
+ * image bigger than DEV; DEV mounted, or the root the system is running from. The image is unpacked
+ * straight onto DEV (a few KB of memory), synced, then read back from the card and checked against
+ * image-size and image-sha512: "ok" only if what's on the card is what was signed.
  * --verify-installed DIR: an installed app's .signature (the statement it was installed with) is signed
  * by a trusted key, names this app, and so is its runtime's (and that runtime's, down the chain) (S99app and the app picker, when the board is
  * locked to signed apps: /apps/data/locked). It doesn't re-hash the files: that's at install. Memory: a few KB whatever the module's size
@@ -39,6 +53,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <ftw.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -97,10 +112,11 @@ static void hex(const uint8_t *b, size_t n, char *out)
 struct statement {
     char text[MAX_STATEMENT];
     size_t signed_len;                   /* the bytes the signature covers */
-    char id[33], version[33], name[80], runtime[33];
+    char id[33], version[33], name[80], runtime[33], kind[17], board[33];
     long api, provides_api;
-    long long size;
-    uint8_t sha512[64], key[8], sig[64];
+    long long size, image_size;
+    uint8_t sha512[64], key[8], sig[64], image_sha512[64];
+    int has_image_sha512;
 };
 
 static int read_file(const char *path, char *buf, size_t cap)
@@ -143,6 +159,7 @@ static int parse(struct statement *st, const char *path, const char **why)
 
     int have = 0;
     st->runtime[0] = 0; st->provides_api = -1;
+    st->kind[0] = st->board[0] = 0; st->image_size = -1; st->has_image_sha512 = 0;
     for (char *line = st->text; line < st->text + st->signed_len; ) {
         char *end = strchr(line, '\n');
         *end = 0;
@@ -155,6 +172,10 @@ static int parse(struct statement *st, const char *path, const char **why)
         else if (!strncmp(line, "name ", 5)) snprintf(st->name, sizeof st->name, "%s", line + 5);
         else if (!strncmp(line, "runtime ", 8) && strlen(line + 8) < sizeof st->runtime) strcpy(st->runtime, line + 8);
         else if (!strncmp(line, "provides-api ", 13)) st->provides_api = strtol(line + 13, NULL, 10);
+        else if (!strncmp(line, "kind ", 5) && strlen(line + 5) < sizeof st->kind) strcpy(st->kind, line + 5);
+        else if (!strncmp(line, "board ", 6) && strlen(line + 6) < sizeof st->board) strcpy(st->board, line + 6);
+        else if (!strncmp(line, "image-size ", 11)) st->image_size = strtoll(line + 11, NULL, 10);
+        else if (!strncmp(line, "image-sha512 ", 13) && !unhex(line + 13, st->image_sha512, 64)) st->has_image_sha512 = 1;
         *end = '\n';                     /* (put back: the signature covers the text as it was) */
         line = end + 1;
     }
@@ -225,7 +246,7 @@ static long runtime_api(const char *dir, const char *runtime)
 /* the names in DIR that aren't apps */
 static int reserved(const char *id)
 {
-    static const char *names[] = {"data", "current", "swapfile", NULL};      /* (lost+found: not a possible id) */
+    static const char *names[] = {"data", "current", "swapfile", "base", NULL};      /* (lost+found: not a possible id) */
     for (int i = 0; names[i]; i++) if (!strcmp(id, names[i])) return 1;
     return 0;
 }
@@ -383,9 +404,108 @@ static void verify_installed(const char *appdir, const char *keys, int depth)
     if (depth == 0) printf("signed: %s %s\n", st.id, st.version);
 }
 
+#ifndef BOARD
+#define BOARD "licheepi-nano"
+#endif
+
+/* is DEV the running root (root= on the kernel's command line) or mounted? */
+static void check_not_in_use(const char *dev)
+{
+    char buf[4096], real[PATH_MAX], other[PATH_MAX];      /* (realpath needs PATH_MAX: less aborts, with glibc's checks) */
+    if (!realpath(dev, real)) snprintf(real, sizeof real, "%s", dev);
+    if (read_file("/proc/cmdline", buf, sizeof buf) >= 0) {
+        char *r = strstr(buf, "root=");
+        if (r) {
+            r += 5; r[strcspn(r, " \n")] = 0;
+            if (!strcmp(r, dev) || !strcmp(r, real) || (realpath(r, other) && !strcmp(other, real)))
+                die("%s is the root this system is running from", dev);
+        }
+    }
+    FILE *m = fopen("/proc/mounts", "r");
+    if (!m) return;
+    while (fgets(buf, sizeof buf, m)) {
+        buf[strcspn(buf, " ")] = 0;
+        if (!strcmp(buf, dev) || !strcmp(buf, real)) { fclose(m); die("%s is mounted", dev); }
+    }
+    fclose(m);
+}
+
+static void drop_cache(int fd)
+{
+#ifdef POSIX_FADV_DONTNEED
+    posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED);      /* (so the check reads the card, not memory) */
+#else
+    (void)fd;
+#endif
+}
+
+static int install_base(int fd, const struct statement *st, const char *target, const char *version_file, int force)
+{
+    if (strcmp(st->kind, "base")) die("not a base system package (an app: modinstall without --base)");
+    if (strcmp(st->board, BOARD)) die("a base system for %s, not this board (%s)", st->board[0] ? st->board : "no board", BOARD);
+    if (st->image_size <= 0 || !st->has_image_sha512) die("the statement has no image-size or image-sha512");
+    char cur[64] = "";
+    if (read_file(version_file, cur, sizeof cur) >= 0) {
+        cur[strcspn(cur, " \n")] = 0;
+        if (*cur && vcmp(st->version, cur) <= 0 && !force)
+            die("base %s isn't newer than the running %s (--force installs it anyway)", st->version, cur);
+    }
+    check_not_in_use(target);
+    int out = open(target, O_RDWR);
+    if (out < 0) die("%s: %s", target, strerror(errno));
+    off_t room = lseek(out, 0, SEEK_END);
+    if (room < st->image_size) die("the image is %lld bytes, %s only %lld", st->image_size, target, (long long)room);
+    if (lseek(out, 0, SEEK_SET) || lseek(fd, 0, SEEK_SET)) die("couldn't seek");
+
+    printf("writing base %s (%lld bytes) to %s\n", st->version, st->image_size, target); fflush(stdout);
+    gzFile gz = gzdopen(dup(fd), "rb");
+    if (!gz) die("not a gzip file");
+    static uint8_t buf[65536];
+    crypto_sha512_ctx ctx;
+    crypto_sha512_init(&ctx);
+    long long done = 0;
+    for (;;) {
+        int n = gzread(gz, buf, sizeof buf);
+        if (n < 0) die("the image doesn't unpack (a bad gzip)");
+        if (n == 0) break;
+        if ((done += n) > st->image_size) die("the image unpacks bigger than its statement says");
+        crypto_sha512_update(&ctx, buf, (size_t)n);
+        for (int w = 0; w < n; ) {
+            ssize_t k = write(out, buf + w, (size_t)(n - w));
+            if (k <= 0) die("writing %s: %s", target, strerror(errno));
+            w += (int)k;
+        }
+    }
+    gzclose(gz);
+    uint8_t h[64];
+    crypto_sha512_final(&ctx, h);
+    if (done != st->image_size || crypto_verify64(h, st->image_sha512)) die("the unpacked image doesn't match its statement");
+    if (fsync(out)) die("syncing %s: %s", target, strerror(errno));
+    drop_cache(out);
+    close(out);
+
+    printf("checking what's on %s\n", target); fflush(stdout);
+    int in = open(target, O_RDONLY);
+    if (in < 0) die("%s: %s", target, strerror(errno));
+    drop_cache(in);
+    crypto_sha512_init(&ctx);
+    for (long long left = st->image_size; left > 0; ) {
+        ssize_t n = read(in, buf, left > (long long)sizeof buf ? sizeof buf : (size_t)left);
+        if (n <= 0) die("reading %s back: %s", target, n ? strerror(errno) : "it ends early");
+        crypto_sha512_update(&ctx, buf, (size_t)n);
+        left -= n;
+    }
+    close(in);
+    crypto_sha512_final(&ctx, h);
+    if (crypto_verify64(h, st->image_sha512)) die("what's on %s isn't what was written (a card problem?): not using it", target);
+    printf("ok: base %s is on %s\n", st->version, target);
+    return 0;
+}
+
 static const char *usage =
     "usage: modinstall [--check] [--force] [--keys FILE] [--dir DIR] APP.tar.gz [APP.tar.gz.sig]\n"
     "       modinstall [--keys FILE] --verify-installed DIR\n"
+    "       modinstall [--keys FILE] [--force] [--version-file FILE] --base --target DEV PKG.img.gz [PKG.img.gz.sig]\n"
     "  check an app's signature (--check: only that), then install it into DIR\n"
     "  (default /apps; keys: /etc/modules/trusted.keys)\n";
 
@@ -393,11 +513,15 @@ int main(int argc, char **argv)
 {
     const char *keys = "/etc/modules/trusted.keys", *dir = "/apps", *tar = NULL, *sig = NULL;
     int check_only = 0, force = 0;
-    const char *installed = NULL;
+    const char *installed = NULL, *target = NULL, *version_file = "/etc/base-version";
+    int base = 0;
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--check")) check_only = 1;
         else if (!strcmp(argv[i], "--verify-installed") && i + 1 < argc) installed = argv[++i];
         else if (!strcmp(argv[i], "--force")) force = 1;
+        else if (!strcmp(argv[i], "--base")) base = 1;
+        else if (!strcmp(argv[i], "--target") && i + 1 < argc) target = argv[++i];
+        else if (!strcmp(argv[i], "--version-file") && i + 1 < argc) version_file = argv[++i];
         else if (!strcmp(argv[i], "--keys") && i + 1 < argc) keys = argv[++i];
         else if (!strcmp(argv[i], "--dir") && i + 1 < argc) dir = argv[++i];
         else if (argv[i][0] == '-') { fputs(usage, stderr); return 2; }
@@ -429,6 +553,11 @@ int main(int argc, char **argv)
         printf("ok: %s %s (api %ld), signed by key %s\n", st.id, st.version, st.api, k);
         return 0;
     }
+    if (base) {
+        if (!target) die("--base needs --target DEV (the slot to write: bootslot install picks it)");
+        return install_base(fd, &st, target, version_file, force);
+    }
+    if (st.kind[0]) die("a %s package, not an app (modinstall --base)", st.kind);
 
     if (reserved(st.id)) die("%s isn't a name an app can have here", st.id);
     if (st.runtime[0]) {

@@ -60,12 +60,18 @@ tools/build/build.sh [--wifi] [--app castle] [--fresh]
 ## Flashing the SD card
 
 ```sh
-tools/board/flash_sd.sh build/images            # macOS: the kernel and base system; the apps stay
+tools/board/flash_sd.sh build/images            # macOS: the base system, to both root slots; the apps stay
 tools/board/flash_sd.sh --all build/images      # the whole card: apps and their settings reset too
+tools/board/flash_sd.sh --relayout build/images # the whole card, the apps and their settings kept (once, for a card from before the two slots)
 tools/board/flash_sd.sh --uboot build/images    # ... and U-Boot (when it or uboot.fragment changed)
 ```
 
 It finds the one external disk, refuses internal or very large ones, shows the card and asks first.
-`--all` is needed the first time (or if the partition sizes change). Elsewhere: write
+`--all` is needed the first time (or if the partition sizes change).
+
+Without the card, over USB: `tools/board/deploy.py --base --reboot build/images-wifi`: a signed update
+to the base system, written to the root slot not running and kept once it has started and run a minute
+(else the board goes back by itself; [system](system.md#updates)). Bump `board/licheepi_nano/VERSION`
+first: the board takes only a newer one (`--force` for the same). Elsewhere: write
 `build/images/sdcard.img` whole with `dd` (Linux, `/dev/sdX`) or Balena Etcher (Windows). If macOS
 says the card isn't readable afterwards, click **Ignore**: it's Linux's.

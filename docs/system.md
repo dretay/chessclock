@@ -1,6 +1,7 @@
 # How the system works
 
-**The SD card**: a base system and, on a partition of their own, the apps ([apps](apps.md)). The
+**The SD card**: a base system, twice (two root slots, for updates: below), and, on a partition of their
+own, the apps ([apps](apps.md)). The
 base is a minimal Linux built with [Buildroot](https://buildroot.org) 2025.02 (the long-term series,
 supported to March 2028) as a `BR2_EXTERNAL` tree (Buildroot itself unmodified):
 `configs/licheepi_nano_defconfig`, `board/licheepi_nano/`, `package/`. Its own toolchain (GCC 13,
@@ -55,6 +56,22 @@ no usable password. The consoles (UART0, and the micro-USB port as a USB serial 
 straight away: whoever can plug a cable into the board can use it, as with any appliance. Apps install
 only through `modinstall` with a trusted signature, or over USB by the developer; developer mode off
 (Settings > Device ›, or `app lock`) goes further and runs only signed apps ([apps](apps.md)).
+
+**Updates.** The card has two root slots, A (partition 2) and B (partition 4), each a whole base
+system with its own kernel and device tree in `/boot`, so the base system updates like an app, without
+taking the card out: `tools/board/deploy.py --base` packs the build's `rootfs.ext4` (`tools/apps/pack.py
+--base`: gzipped, about 21 MB) and signs it with the apps' key; on the board, `bootslot install` hands it
+to `modinstall --base`, which checks the signature (against the trusted keys of the system that's
+running: an update can't bring its own) and the package, refuses another board or a version that isn't
+newer (`board/licheepi_nano/VERSION`, in `/etc/base-version`), unpacks it straight onto the slot not
+running, and reads it back off the card to check it. Then that slot is tried at the next start
+([`boot.cmd`](../board/licheepi_nano/boot.cmd), with U-Boot's environment in `uboot.env` on the boot
+partition): once its app has run a minute, S99app runs `bootslot confirm` and it's the one that works;
+three starts without that (a kernel that won't load, a panic, a hang the watchdog ends) and U-Boot goes
+back to the other, the one that worked, and says so (`bootslot status`: "failed"). `bootslot` on the
+board shows and changes all this. A card from before the slots is laid out again once, its apps kept:
+`tools/board/flash_sd.sh --relayout`. U-Boot and `boot.scr` aren't part of a slot: they change only by
+flashing the card.
 
 **Surviving power cuts and hangs.** The base system is mounted read-only (`ro` in the boot script's
 kernel arguments, and nothing remounts it), so pulling the plug can't damage it; `rw` makes it writable

@@ -5,6 +5,11 @@
     e.g. tools/board/deploy.py castle                       (quick: the files that changed, unsigned)
          tools/board/deploy.py --signed countdown castle    (packed, signed, installed by modinstall)
          tools/board/deploy.py --use cruise cruise          (... and switch to it)
+    tools/board/deploy.py --base [--reboot] [--force] [--key KEY] [IMAGES_DIR]
+         a base system update (default build/images-wifi), always signed: packed (tools/apps/pack.py
+         --base), copied to the board, written to the root slot not running and checked there by
+         `bootslot install`, tried at the next start (--reboot: now), kept once it has run a minute,
+         else back to the slot that works (docs/system.md, "Updates"). --force: not a newer version.
 
 NAME: an app in apps/ (system, countdown: the countdown runtime, castle, cruise, ...). Each is laid out by
 tools/apps/layout.py (compiled for the board in the build container where it needs it).
@@ -63,9 +68,58 @@ def push(pairs, force=False):
     if subprocess.run(cmd).returncode: sys.exit("copying to the board failed")
 
 
+def deploy_base(a):
+    """--base: a signed base system update, over USB, into the slot not running."""
+    def option(flag):
+        if flag not in a: return None
+        i = a.index(flag); v = a[i + 1] if i + 1 < len(a) else None; del a[i:i + 2]; return v
+    key = option("--key") or DEFAULT_KEY
+    reboot, force, pass_stdin = "--reboot" in a, "--force" in a, "--passphrase-stdin" in a
+    rest = [x for x in a if not x.startswith("-")]
+    if len(rest) > 1 or len(rest) != len(a) - reboot - force - pass_stdin - 1: sys.exit(__doc__)
+    images = rest[0] if rest else os.path.join(REPO, "build", "images-wifi")
+    if not os.path.exists(key): sys.exit("no signing key at %s (tools/apps/keygen.sh makes one; --key KEY)" % key)
+    import importlib.util
+    if not importlib.util.find_spec("serial"): sys.exit("%s has no pyserial: run it with uv run (tools/setup.sh; see docs/tools.md)" % sys.executable)
+    status, out = board("bootslot status", 30)
+    if status is None or status: sys.exit("the board can't take base updates yet:\n%s" % (out or "no answer"))
+    print(out)
+    import pack
+    if pass_stdin: pack._passphrases[key] = sys.stdin.readline().rstrip("\n")
+    pkg, sig = pack.pack_base(images, key)
+    size = os.path.getsize(pkg) + os.path.getsize(sig)
+    status, out = board("df -k /apps | tail -1", 30)
+    try: free = int(out.split()[3]) * 1024
+    except (IndexError, ValueError, AttributeError): sys.exit("couldn't see the board's free space: %r" % out)
+    if free < size + (4 << 20): sys.exit("the board's apps partition has %d MB free; the update needs %d MB" % (free >> 20, (size >> 20) + 4))
+    board("/etc/init.d/S99app stop >/dev/null 2>&1")
+    print("stopped the app (copying %d MB at about 0.25 MB/s)" % (size >> 20))
+    copied = ["%s/%s" % (PACKAGES, os.path.basename(f)) for f in (pkg, sig)]
+    try:
+        push([pkg, copied[0], sig, copied[1]])
+        print("installing: unpacked onto the other slot, then read back and checked (a few minutes)")
+        status, out = board("bootslot install %s%s" % (copied[0], " --force" if force else ""), 900)
+        print(out)
+        if status is None: sys.exit("bootslot install didn't finish in 15 minutes (still running?)")
+        if status:
+            if "isn't trusted" in out or "no trusted keys" in out:
+                print("(the board doesn't trust this key: a different key from the one in its base system)")
+            sys.exit(1)
+    finally:
+        board("rm -f %s; cd / && /etc/init.d/S99app start >/dev/null 2>&1" % " ".join(copied))
+        print("started the app")
+    if reboot:
+        # (detached, and not ending in "&": board() adds "; echo ..." after it, and "&;" doesn't parse)
+        board("setsid sh -c 'sleep 2; reboot' </dev/null >/dev/null 2>&1 & true", 10)
+        print("restarting into the new slot: `bootslot status` on the board once it's up (kept after a minute of the app running)")
+    else:
+        print("restart the board to use it (`reboot` on its console)")
+
+
 def main():
     sys.stdout.reconfigure(line_buffering=True)                               # (in order with the tools it runs)
     a = sys.argv[1:]
+    if "--base" in a: return deploy_base(a)
     def option(flag):
         if flag not in a: return None
         i = a.index(flag); v = a[i + 1] if i + 1 < len(a) else None; del a[i:i + 2]; return v

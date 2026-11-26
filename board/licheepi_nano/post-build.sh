@@ -13,5 +13,10 @@ grep -q 'ttyGS0.*console shell' "${INITTAB}" || printf 'ttyS0::respawn:-/bin/sh 
 # no cron daemon (busybox.fragment): its start script, left by an earlier build with BusyBox's crond on
 rm -f "${TARGET_DIR}/etc/init.d/S50crond"
 
+# - the base system's version (board/licheepi_nano/VERSION: bumped for each base update; modinstall --base
+#   installs only a newer one), and where bootslot mounts the boot partition (its uboot.env) for a moment
+cp "${BR2_EXTERNAL_LICHEEPI_NANO_PATH}/board/licheepi_nano/VERSION" "${TARGET_DIR}/etc/base-version"
+mkdir -p "${TARGET_DIR}/mnt/boot"
+
 mkdir -p "${TARGET_DIR}/etc/default"
 echo 'SEEDRNG_ARGS="--seed-dir=/apps/data/system/seedrng"' > "${TARGET_DIR}/etc/default/seedrng"

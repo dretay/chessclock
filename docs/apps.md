@@ -4,9 +4,10 @@ The SD card holds a **base system** and, separately, the **apps** that run on it
 
 | Partition | Mounted at | What's on it | Made by |
 |---|---|---|---|
-| 1 (FAT, 8 MB) | — | U-Boot's boot script, kernel and device tree | Buildroot |
-| 2 (ext4, 64 MB) | `/` | the base system: Linux, BusyBox, Python with Pillow, the app launcher, `modinstall` and the keys it trusts | Buildroot (`configs/`, `board/`, `package/`) |
+| 1 (FAT, 8 MB) | — | U-Boot's boot script and its environment (`uboot.env`: which root slot) | Buildroot |
+| 2 (ext4, 128 MB) | `/` (slot A) | the base system: Linux (its kernel and device tree in `/boot`), BusyBox, Python, the app launcher, `modinstall` and the keys it trusts | Buildroot (`configs/`, `board/`, `package/`) |
 | 3 (ext4, 128 MB) | `/apps` | the apps, their settings and logs, the swap file | `board/licheepi_nano/post-image.sh`, from `apps/` |
+| 4 (ext4, 128 MB) | `/` (slot B) | the base system again: the slot a base update goes to ([system](system.md), "Updates") | Buildroot |
 
 The base system knows nothing about any one app, so changing an app never means rebuilding the
 image: `tools/board/deploy.py` puts it on the board, signed or not. The image comes with every app in
@@ -168,9 +169,10 @@ are what to move to Git LFS.
 
 ## Changing the base system
 
-Rebuild the image ([building](building.md)), then write it to the card with
-`tools/board/flash_sd.sh build/images` (macOS). By default that writes just the first two partitions,
-the kernel and the base system, so the apps and their settings stay; `--uboot` adds U-Boot, and
+Rebuild the image ([building](building.md)), then send it over USB as a signed update
+(`tools/board/deploy.py --base --reboot`: [system](system.md), "Updates"), or write it to the card with
+`tools/board/flash_sd.sh build/images` (macOS). By default that writes just the boot partition and
+both root slots, so the apps and their settings stay; `--uboot` adds U-Boot, and
 `--all` writes the whole `sdcard.img`, which resets the apps and their settings to the image's
 (needed the first time, or if the partition sizes ever change). It finds the card, shows it, and
 asks first.

@@ -1,29 +1,34 @@
 #!/bin/bash
 # Write a build to the SD card (macOS). See docs/apps.md.
 #
-# usage: tools/board/flash_sd.sh [--all] [--uboot] DIST_DIR [/dev/diskN]
+# usage: tools/board/flash_sd.sh [--all | --relayout] [--uboot] DIST_DIR [/dev/diskN]
 #   DIST_DIR   the build's output (with sdcard.img, boot.vfat, rootfs.ext4, ...)
-#   (default)  the base system only: the kernel (partition 1) and the root filesystem (2), so the
-#              apps and their settings (partition 3) stay as they are
+#   (default)  the base system only: the boot partition (1) and both root slots (2 and 4), so the
+#              apps and their settings (partition 3) stay as they are; slot A starts
 #   --uboot    U-Boot too (needed when uboot.fragment or U-Boot itself changed)
+#   --relayout the whole sdcard.img, the apps and their settings kept: once, for a card from before
+#              the two root slots (they're copied off the card first, and back after)
 #   --all      the whole sdcard.img: everything, the apps and their settings reset to the image's
 #   /dev/diskN the card; by default the one external disk there is (it asks before writing)
+# (Without the card: base updates over USB, tools/board/deploy.py --base; docs/system.md, "Updates".)
 set -e
 
-all= uboot=
+all= uboot= relayout=
 args=()
 for a in "$@"; do
 	case "$a" in
 		--all) all=1 ;;
 		--uboot) uboot=1 ;;
-		-h|--help) sed -n '2,11p' "$0"; exit 0 ;;
+		--relayout) relayout=1 ;;
+		-h|--help) sed -n '2,15p' "$0"; exit 0 ;;
 		*) args+=("$a") ;;
 	esac
 done
 DIST=${args[0]}
 DISK=${args[1]}
-[ -n "$DIST" ] || { sed -n '2,11p' "$0"; exit 1; }
-for f in sdcard.img boot.vfat rootfs.ext4 u-boot-sunxi-with-spl.bin; do
+[ -n "$DIST" ] || { sed -n '2,15p' "$0"; exit 1; }
+[ -n "$all" ] && [ -n "$relayout" ] && { echo "--all or --relayout, not both"; exit 1; }
+for f in sdcard.img boot.vfat rootfs.ext4 apps.ext4 u-boot-sunxi-with-spl.bin; do
 	[ -f "$DIST/$f" ] || { echo "no $f in $DIST (is it a build's output folder?)"; exit 1; }
 done
 
@@ -43,14 +48,20 @@ size=$(info "$DISK" TotalSize)
 [ "$size" -lt $((300 * 1024 * 1024 * 1024)) ] || { echo "$DISK is $((size / 1024 / 1024 / 1024)) GB: too big to be the SD card?"; exit 1; }
 R=/dev/r${DISK#/dev/}
 
-if [ -z "$all" ]; then
-	# writing partitions on their own: the card must already have this layout (flashed with --all once)
-	for p in 1:boot.vfat 2:rootfs.ext4; do
+# the apps partition: there, for --relayout, and the same size as the image's
+apps_size=$(stat -L -f %z "$DIST/apps.ext4")
+if [ -n "$relayout" ]; then
+	have=$(info "${DISK}s3" IOKitSize)
+	[ -n "$have" ] || { echo "the card has no apps partition to keep: flash the whole image (--all)"; exit 1; }
+	[ "$have" = "$apps_size" ] || { echo "the card's apps partition is $have bytes, the image's $apps_size: can't move it as it is"; exit 1; }
+elif [ -z "$all" ]; then
+	# writing partitions on their own: the card must already have this layout (--relayout or --all once)
+	for p in 1:boot.vfat 2:rootfs.ext4 4:rootfs.ext4; do
 		part=${DISK}s${p%%:*}
 		have=$(info "$part" IOKitSize || echo 0)
 		need=$(stat -L -f %z "$DIST/${p#*:}")
 		if [ -z "$have" ] || [ "$have" -lt "$need" ]; then
-			echo "$part is ${have:-missing} bytes, ${p#*:} needs $need: flash the whole image (--all) once"
+			echo "$part is ${have:-missing} bytes, ${p#*:} needs $need: the card is laid out for an older build (--relayout once: the apps are kept)"
 			exit 1
 		fi
 	done
@@ -61,14 +72,33 @@ echo "The card: $DISK, $(info "$DISK" MediaName), $((size / 1000 / 1000 / 1000))
 diskutil list "$DISK" | tail -n +2
 if [ -n "$all" ]; then
 	echo "Write the WHOLE image (everything on the card, including the apps' settings, is replaced)."
+elif [ -n "$relayout" ]; then
+	echo "Lay the card out again (the whole image), keeping the apps and their settings (${DISK}s3: copied off and back)."
 else
-	echo "Write the kernel (${DISK}s1) and the base system (${DISK}s2)${uboot:+, and U-Boot}; the apps (${DISK}s3) stay."
+	echo "Write the boot partition (${DISK}s1) and the base system to both slots (${DISK}s2, ${DISK}s4)${uboot:+, and U-Boot}; the apps (${DISK}s3) stay."
 fi
 read -r -p "Go ahead? [y/N] " ok
 [ "$ok" = y ] || [ "$ok" = Y ] || { echo "nothing written"; exit 1; }
 
 diskutil unmountDisk "$DISK" >/dev/null
-if [ -n "$all" ]; then
+if [ -n "$relayout" ]; then
+	keep=$(mktemp -t licheepi-apps) || exit 1
+	trap 'rm -f "$keep"' EXIT
+	echo "copying the apps off the card"
+	sudo dd if="${R}s3" of="$keep" bs=1m status=progress
+	sudo chown "$(id -u)" "$keep"
+	[ "$(stat -f %z "$keep")" = "$apps_size" ] || { echo "the copy of the apps is the wrong size: nothing written"; exit 1; }
+	want=$(shasum -a 256 < "$keep")
+	diskutil unmountDisk "$DISK" >/dev/null
+	sudo dd if="$DIST/sdcard.img" of="$R" bs=4m status=progress
+	diskutil unmountDisk "$DISK" >/dev/null
+	echo "putting the apps back"
+	sudo dd if="$keep" of="${R}s3" bs=1m status=progress
+	diskutil unmountDisk "$DISK" >/dev/null
+	got=$(sudo dd if="${R}s3" bs=1m 2>/dev/null | shasum -a 256)
+	[ "$got" = "$want" ] || { echo "the apps read back differently: the copy is kept at $keep (write it to ${R}s3)"; trap - EXIT; exit 1; }
+	echo "the apps are back, checked"
+elif [ -n "$all" ]; then
 	sudo dd if="$DIST/sdcard.img" of="$R" bs=4m status=progress
 else
 	# (sync: the last block padded with zeros to a whole 1k: the raw disk takes only whole blocks, and U-Boot's
@@ -80,6 +110,8 @@ else
 	sudo dd if="$DIST/boot.vfat" of="${R}s1" bs=1m status=progress
 	diskutil unmountDisk "$DISK" >/dev/null
 	sudo dd if="$DIST/rootfs.ext4" of="${R}s2" bs=1m status=progress
+	diskutil unmountDisk "$DISK" >/dev/null
+	sudo dd if="$DIST/rootfs.ext4" of="${R}s4" bs=1m status=progress
 fi
 sync
 diskutil eject "$DISK" >/dev/null && echo "done: the card can come out"
