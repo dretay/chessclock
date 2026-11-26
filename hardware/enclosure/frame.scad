@@ -1,4 +1,4 @@
-// Slim picture-frame enclosure for the LicheePi Nano chess clock
+// Slim picture-frame enclosure for the LicheePi Nano trip countdown frame
 // (5" 800x480 resistive-touch panel + Lichee Pi Nano board).
 //
 // The rim is only as deep as the screen; the board lives in a small pod on

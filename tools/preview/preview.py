@@ -4,7 +4,7 @@ screen, and a window (App Preview, tools/preview/viewer.swift) shows that screen
 into the touchscreen.
 
     tools/preview/preview.py [APP] [--browser] [--port 8800]
-    (APP: castle, cruise or chess; default castle)
+    (APP: an app in apps/, e.g. castle or cruise; default castle)
 
 The window: menus App (the apps, ⌘1..; Restart ⌘R), Time (time of day; Pretend It's… ⌘D), Data (the
 app's live data ⌘L), View (actual or double size, Keep on Top ⌘T, the log ⌘J, a screenshot to the
@@ -13,16 +13,14 @@ first time and whenever viewer.swift changes. --browser, or no swiftc: a page in
 http://localhost:8800 (the same controls).
 
 - The real app runs: the countdown runtime (apps/countdown, on the system package's drawing library, compiled for the Mac)
-  with a countdown app, or the chess clock; its own settings and data in build/preview/data/APP.
+  with a countdown app; its own settings and data in build/preview/data/APP.
 - Mouse: press, drag and release, as on the touchscreen (press and hold for Settings).
 - Save a file in the app (or the runtime) and it restarts; change fx/vacfx.c and it's recompiled first.
 - The page: pick the app; freeze the time of day or pretend it's another date; run the app's
   background job (its live data: ride waits, the ships' schedules) with the Mac's network; the app's log.
 - Settings > Apps opens the real app picker, and starts the app picked, here.
 
-The chess clock draws with the DejaVu fonts, as on the board: they're copied once from the board's
-build tree (tools/build/build.sh's licheepi-out volume), or FBCLOCK_FONTS names a folder with them.
-Needs Pillow (the chess clock) and a C compiler (cc) and zlib (the countdown).
+Needs a C compiler (cc) and zlib (the drawing library), and Pillow (the Scene Builder).
 """
 import collections, fcntl, hashlib, http.server, json, os, shutil, signal, socketserver, subprocess, sys, threading, time, urllib.parse, urllib.request
 
@@ -36,7 +34,6 @@ TRIALS = os.path.join(REPO, "build", "trial")              # scenes being tried 
 FB = os.path.join(STATE, "fb.raw")
 PIPE = os.path.join(STATE, "touch.pipe")
 LIB = os.path.join(STATE, "libvacfx.dylib")
-FONTS = os.environ.get("FBCLOCK_FONTS") or os.path.join(STATE, "fonts")
 PICK_REQUEST = os.path.join(STATE, "pick-request")
 DEVICE_REQUEST = os.path.join(STATE, "device-request")
 SWITCH_REQUEST = os.path.join(STATE, "switch-request")
@@ -144,18 +141,6 @@ class Preview:
         if r.returncode: self.say("compiling the drawing library failed:\n" + r.stderr[-1500:]); return False
         self.say("compiled the drawing library"); return True
 
-    def fonts(self):
-        if os.path.exists(os.path.join(FONTS, "DejaVuSans.ttf")): return True
-        runner = shutil.which("container") or shutil.which("docker")
-        if runner:
-            os.makedirs(FONTS, exist_ok=True)
-            for f in ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf"):
-                r = subprocess.run([runner, "run", "--rm", "-v", "licheepi-out:/root/buildroot", "licheepi-nano-mybase",
-                                    "cat", "/root/buildroot/output/target/usr/share/fonts/dejavu/" + f], capture_output=True)
-                if r.returncode == 0 and r.stdout: open(os.path.join(FONTS, f), "wb").write(r.stdout)
-        if os.path.exists(os.path.join(FONTS, "DejaVuSans.ttf")): self.say("copied the DejaVu fonts from the build tree"); return True
-        self.say("the chess clock needs the DejaVu fonts: run tools/build/build.sh once, or set FBCLOCK_FONTS"); return False
-
     # ---------------------------------------------------------------- running
     def env(self, app):
         e = dict(os.environ, APP_DATA=os.path.join(STATE, "data", app), APP_PICKER=os.path.join(HERE, "pick"),
@@ -176,10 +161,6 @@ class Preview:
             # (the time of day: live.json, which the app follows as it runs)
             if self.now: e["VACATION_NOW"] = self.now
             return [sys.executable, os.path.join(RUNTIME, "vacation.py")], e
-        if app == "chess":
-            if not self.fonts(): return None
-            e.update(FBCLOCK_DEVICE=FB, FBCLOCK_FONTS=FONTS, FBCLOCK_TOUCH_PIPE=PIPE)
-            return [sys.executable, os.path.join(APPS, "chess", "fbclock.py")], e
         self.say("%s: don't know how to preview it here" % app); return None
 
     def reader(self, proc, tag):

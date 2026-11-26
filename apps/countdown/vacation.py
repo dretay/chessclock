@@ -69,7 +69,7 @@ DATA = os.environ.get("APP_DATA")
 
 class Backlight:
     """The panel's backlight (Linux's backlight interface: PWM on the board), as a percentage on the same
-    curve as the chess clock's (level = max x p^2 / 10000: even steps look even). Nothing on a desktop."""
+    curve as Device settings' (level = max x p^2 / 10000: even steps look even). Nothing on a desktop."""
 
     def __init__(self):
         self.path, self.max, self.level = None, 0, None

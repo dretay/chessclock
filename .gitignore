@@ -14,7 +14,7 @@ ais.key
 # module signing keys (tools/apps/pack.py --key): never in the repository
 *.pem
 
-# Python caches (e.g. from running apps/chess/fbclock.py on a desktop)
+# Python caches (from running the tools and apps on a desktop)
 __pycache__/
 *.pyc
 /tools/sim-out/

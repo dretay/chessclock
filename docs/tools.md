@@ -30,7 +30,7 @@ are in the apps, in git.
 tools/preview/preview.py castle          # opens the App Preview window (--browser: a page instead)
 ```
 
-The real app runs on the Mac (the countdown runtime with a countdown app, or the chess clock), with
+The real app runs on the Mac (the countdown runtime with a countdown app), with
 a plain file for its screen; the **App Preview** window (`viewer.swift`, a small native Mac app built
 the first time with the Xcode command-line tools' `swiftc`) shows that screen at its own frame rate
 and makes the mouse the touchscreen (click to tap, hold two seconds for Settings, drag the sliders).
@@ -104,8 +104,7 @@ picture: it ripples, gentle to choppy, slow to fast; the cruise's sea stays its 
 `uv run tools/themegen/photo_scene.py PHOTO epcot --try --orb auto`; `--list epcot`, `--keep NAME
 epcot`, `--back epcot` ([countdown apps](countdown.md#scenes)). `--browser` (or no `swiftc`) shows the same in a page at
 http://localhost:8800. Settings > Apps opens the real app
-picker. Each app keeps its own settings and data in `build/preview/data/`. The chess clock's DejaVu
-fonts are copied once from the board's build tree (`tools/build/build.sh` first, or `FBCLOCK_FONTS`).
+picker. Each app keeps its own settings and data in `build/preview/data/`.
 
 ## Talking to the board — `tools/board/`
 
@@ -116,7 +115,7 @@ port by name.
 
 | Tool | |
 |---|---|
-| `deploy.py [--signed] [--use NAME] NAME ...` | put apps (`chess`, `countdown`, `castle`, `cruise`) on the board without reflashing: laid out by `tools/apps/layout.py` (compiled for the board where needed), then copied (only what changed) or, `--signed`, packed, signed and installed by the board's `modinstall` ([apps](apps.md)) |
+| `deploy.py [--signed] [--use NAME] NAME ...` | put apps (`system`, `countdown`, `castle`, `cruise`, ...) on the board without reflashing: laid out by `tools/apps/layout.py` (compiled for the board where needed), then copied (only what changed) or, `--signed`, packed, signed and installed by the board's `modinstall` ([apps](apps.md)) |
 | `push_to_board.py LOCAL REMOTE` | copy files or folders to the board, checksum-verified, skipping unchanged ones, the app stopped meanwhile |
 | `run_on_board.py "COMMAND" ...` | run shell commands on the board and print the output (logs in first if needed) |
 | `flash_sd.sh [--all] [--uboot] DIR` | write a build to the SD card (macOS): see [building](building.md) |
@@ -162,7 +161,3 @@ a placeholder scene: [countdown apps](countdown.md)): [apps](apps.md).
 
 The ESP32's firmware: [wifi](wifi.md).
 
-## The apps' own
-
-`apps/chess/tools/simulate.py` (the clock's animations and touch handling against an in-memory screen)
-and `apps/chess/tools/check_games.py` (every game in `apps/chess/games.pgn` replays: run it after adding one).

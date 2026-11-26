@@ -4,9 +4,9 @@
 # between builds instead of in image layers: ~7 GB of disk per kind of build rather than the
 # builder's 100+.
 #
-#   tools/build/build.sh [--wifi] [--app chess|castle|cruise] [--fresh]
+#   tools/build/build.sh [--wifi] [--app castle|cruise|...] [--fresh]
 #     --wifi    the WiFi build (ESP32 over SPI, TLS for Python); its own build tree
-#     --app     the app that starts at first boot (default chess; `app NAME` switches later)
+#     --app     the app that starts at first boot (default castle; `app NAME` switches later)
 #     --fresh   start this kind of build over from the base image (e.g. after Buildroot misbehaves)
 #
 # -> build/images[-wifi]/ (sdcard.img, boot.vfat, rootfs.ext4, ...): flash with tools/board/flash_sd.sh.
@@ -25,7 +25,7 @@
 set -e
 cd "$(dirname "$0")/../.."
 REPO=$(pwd)
-WIFI=0 APP=chess FRESH=
+WIFI=0 APP=castle FRESH=
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--wifi) WIFI=1 ;;
@@ -36,7 +36,7 @@ while [ $# -gt 0 ]; do
 	esac
 	shift
 done
-[ -x "apps/$APP/run" ] || { echo "--app must be an app in apps/ (chess, castle, cruise)"; exit 1; }
+[ -x "apps/$APP/run" ] || { echo "--app must be an app in apps/ (castle, cruise, epcot, ...)"; exit 1; }
 BASE=${BASE_IMAGE:-licheepi-nano-mybase:2025.02}       # (its Buildroot's version, not latest: that tag can be ambiguous)
 # (the build trees are named for the Buildroot they hold: a new Buildroot starts a new tree, the old one
 # kept until it's removed: `container volume rm licheepi-out licheepi-out-wifi`, the 2023.02 ones)

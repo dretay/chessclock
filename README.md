@@ -26,12 +26,12 @@ frame over USB.
   a 10-day forecast with rain and snow ([Open-Meteo](https://open-meteo.com)), a map of the Disney ships
   placed by their itineraries.
 * **Touch settings:** the trip's date, fireworks, which rides, display brightness by day and night,
-  WiFi, and switching between trips (or to the [chess clock](apps/chess/README.md) that started it all).
+  WiFi, and switching between trips.
 * **Signed apps:** each trip is an app, signed with your key; the frame can be locked to signed apps
   (developer mode off), and can install them from your own catalog over WiFi.
 
 The apps here: **a Disney cruise**, **Magic Kingdom**, **EPCOT**, **Universal**, **a backpacking trip**,
-**New York City**, and **the chess clock**.
+and **New York City**.
 
 ## On the Mac: preview and Scene Builder
 
@@ -96,7 +96,7 @@ rendering every scene and comparing it pixel for pixel with the last time.
 | [docs/system.md](docs/system.md) | how the system works: kernel, device tree, boot, memory, sound, security |
 | [docs/wifi.md](docs/wifi.md) | WiFi through an ESP32: wiring, firmware, the wiring check and wiring test |
 | [docs/building.md](docs/building.md) | building the base system and flashing the card |
-| [apps/countdown/README.md](apps/countdown/README.md), [apps/chess/README.md](apps/chess/README.md) | the countdown runtime, and the chess clock |
+| [apps/countdown/README.md](apps/countdown/README.md) | the countdown runtime |
 | [tools/themegen/README.md](tools/themegen/README.md) | how scenes are made and packed |
 | [hardware/](hardware) | the enclosure, and the protoboard (KiCad) |
 
@@ -104,7 +104,7 @@ rendering every scene and comparing it pixel for pixel with the last time.
 
 | Path | |
 |---|---|
-| `apps/` | one folder per app (`app.json`, `run`, its scene): `cruise`, `castle`, `epcot`, `universal`, `backpacking`, `new-york-city`, `chess`; `countdown` (the runtime the trips share: the countdown, its screens and their fetchers) and `system` (what every app shares: the C drawing library, Settings, Device settings, WiFi, the picker) |
+| `apps/` | one folder per app (`app.json`, `run`, its scene): `cruise`, `castle`, `epcot`, `universal`, `backpacking`, `new-york-city`; `countdown` (the runtime the trips share: the countdown, its screens and their fetchers) and `system` (what every app shares: the C drawing library, Settings, Device settings, WiFi, the picker) |
 | `tools/preview/` | the preview window (Swift), the Scene Builder (a web page in it), and the server between them |
 | `tools/themegen/` | making scenes from photos (`photo_scene.py`), packing them (`scene_pack.py`), icons, splashes, the ship map |
 | `tools/apps/` | new apps, packing and signing them, publishing the catalog |
@@ -121,6 +121,6 @@ rendering every scene and comparing it pixel for pixel with the last time.
 
 ## Credits
 
-The Buildroot setup started from [unframework/licheepi-nano-buildroot](https://github.com/unframework/licheepi-nano-buildroot), which in turn adapted the FunKey Zero project's [buildroot-licheepi-zero](https://github.com/Squonk42/buildroot-licheepi-zero/). The F1C100s kernel and U-Boot work comes from @Icenowy, @Lichee-Pi and @unframework. Ride waits from [ThemeParks.wiki](https://themeparks.wiki), weather from [Open-Meteo](https://open-meteo.com), ship schedules from [CruiseMapper](https://www.cruisemapper.com). The scenes made from photos of Disney and Universal parks and ships are for personal use; Disney and Universal names and places are their owners' trademarks. The famous chess games are public-domain chess history.
+The Buildroot setup started from [unframework/licheepi-nano-buildroot](https://github.com/unframework/licheepi-nano-buildroot), which in turn adapted the FunKey Zero project's [buildroot-licheepi-zero](https://github.com/Squonk42/buildroot-licheepi-zero/). The F1C100s kernel and U-Boot work comes from @Icenowy, @Lichee-Pi and @unframework. Ride waits from [ThemeParks.wiki](https://themeparks.wiki), weather from [Open-Meteo](https://open-meteo.com), ship schedules from [CruiseMapper](https://www.cruisemapper.com). The scenes made from photos of Disney and Universal parks and ships are for personal use; Disney and Universal names and places are their owners' trademarks.
 
 Licensed under the GPL-3.0 (see [LICENSE](LICENSE)).

@@ -1,12 +1,12 @@
 """What every app and the system screens share: the apps installed, their manifests, the settings files
 (KEY=VALUE lines), and the device's own settings (/apps/data/device.conf: touch calibration, brightness,
-CPU clock, the catalog's address), which the countdown, the chess clock, the picker and Device settings
+CPU clock, the catalog's address), which the countdown, the picker and Device settings
 all read, and write.
 """
 import json, os
 
 
-# the device's own settings, shared by every app: /apps/data/device.conf (the countdown, the chess clock
+# the device's own settings, shared by every app: /apps/data/device.conf (the countdown
 # and the app picker read them from there, and write them there)
 DEVICE_CONF = "device.conf"
 

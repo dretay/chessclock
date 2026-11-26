@@ -4,7 +4,7 @@
 BOARD_DIR="$(dirname $0)"
 EXT="${BR2_EXTERNAL_LICHEEPI_NANO_PATH}"
 
-# the apps partition (/apps on the board; see docs/apps.md): every app in apps/ (the chess clock, the
+# the apps partition (/apps on the board; see docs/apps.md): every app in apps/ (the system package, the
 # countdown runtime and the countdown apps on it), laid out by tools/apps/layout.py as deploy and
 # packing do, with the drawing library compiled for the board and the Python pre-compiled (the
 # build's Python is the board's version) so the first start isn't slow. They go unsigned: the image
@@ -18,7 +18,7 @@ for a in "${EXT}"/apps/*/app.json; do
   a=$(basename "$(dirname "$a")")
   CC="${HOST_DIR}/bin/arm-linux-gcc" "${HOST_DIR}/bin/python3" "${EXT}/tools/apps/layout.py" --local "$a" "${APPS_ROOT}/$a" >/dev/null
 done
-echo "${DEFAULT_APP:-chess}" > "${APPS_ROOT}/current"
+echo "${DEFAULT_APP:-castle}" > "${APPS_ROOT}/current"
 "${HOST_DIR}/bin/python3" -m compileall -q -o 0 -o 2 "${APPS_ROOT}"     # (-o 2: for the python3 -OO the countdown and system run)
 rm -f "${BINARIES_DIR}/apps.ext4"
 "${HOST_DIR}/sbin/mkfs.ext4" -q -L apps -d "${APPS_ROOT}" -E root_owner=0:0 "${BINARIES_DIR}/apps.ext4" "${APPS_SIZE}"

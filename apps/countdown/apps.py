@@ -39,15 +39,13 @@ APP_KEYS = ("MODULE",)                   # settings that meant something only be
 
 
 def ensure_device(app, conf_path):
-    """Make device.conf the first time: the touch calibration and CPU clock from this app's settings,
-    the brightness from the chess clock's (it had the only brightness settings)."""
+    """Make device.conf the first time: the touch calibration and CPU clock from this app's settings."""
     path = device_path(app.data_dir)
     if os.path.exists(path): return path
-    mine, chess = read_conf(conf_path), read_conf(os.path.join(os.path.dirname(path), "chess", "fbclock.conf"))
-    lines = ["# The device's own settings, shared by every app (Settings > Display in a countdown app;",
-             "# the chess clock's brightness sliders). KEY=VALUE lines."]
+    mine = read_conf(conf_path)
+    lines = ["# The device's own settings, shared by every app (Settings > Device). KEY=VALUE lines."]
     for k in DEVICE_KEYS:
-        v = mine.get(k) if k.startswith("TOUCH_") or k == "CPU_MHZ" else chess.get(k)
+        v = mine.get(k) if k.startswith("TOUCH_") or k == "CPU_MHZ" else None
         if v not in (None, ""): lines.append("%s=%s" % (k, v))
     with open(path + ".tmp", "w") as f: f.write("\n".join(lines) + "\n")
     os.replace(path + ".tmp", path)

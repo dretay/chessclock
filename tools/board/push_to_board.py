@@ -2,7 +2,7 @@
 """Copy files (or folders) to the board over the serial console, near line speed.
 
 usage: push_to_board.py [--keep-running] [--force] LOCAL REMOTE [LOCAL REMOTE ...]
-e.g.   tools/board/push_to_board.py apps/chess/fbclock.py /apps/chess/fbclock.py
+e.g.   tools/board/push_to_board.py apps/countdown/vacation.py /apps/countdown/vacation.py
        tools/board/push_to_board.py apps/cruise/map/tiles /apps/cruise/map/tiles      (a folder)
 (To update a whole app, tools/board/deploy.py does this for you.)
 Fastest: the board's micro-USB port plugged into the Mac (used by itself when it's there, see
@@ -14,7 +14,7 @@ Nothing on the board is deleted.
 
 Neither the console nor the board's USB serial port holds the sender back, so the board drops
 bytes when it's busy or sent to too fast: the running app (the
-chess clock or a countdown app) is stopped while copying and started again after, unless
+a countdown app) is stopped while copying and started again after, unless
 --keep-running. Data goes as raw bytes (the board's terminal in raw mode) in 1 MB pieces,
 each checked (md5) and sent again if it arrived damaged, then joined into place. The board only
 starts reading once it has printed a marker, so the data never reaches the shell as commands.

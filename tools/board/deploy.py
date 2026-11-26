@@ -6,7 +6,7 @@
          tools/board/deploy.py --signed countdown castle    (packed, signed, installed by modinstall)
          tools/board/deploy.py --use cruise cruise          (... and switch to it)
 
-NAME: an app in apps/ (chess, countdown: the countdown runtime, castle, cruise). Each is laid out by
+NAME: an app in apps/ (system, countdown: the countdown runtime, castle, cruise, ...). Each is laid out by
 tools/apps/layout.py (compiled for the board in the build container where it needs it).
 
 - Without --signed (the developer's way): copied to /apps/NAME with push_to_board.py, only the files

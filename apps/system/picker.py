@@ -1,5 +1,5 @@
 """The app picker: every installed app (a picture and its name), and a tap starts it. Settings > Apps
-opens it in every app (the countdown's page 1, the chess clock's Settings), through `pick`, which
+opens it in every app (the countdown's page 1), through `pick`, which
 stops the app first and starts the one picked after: this prints the picked app's id, or nothing
 (‹ Back, or a minute untouched) to start the one that was running again.
 
@@ -58,7 +58,7 @@ def read_conf(path):
 
 def conf_of(app_id):
     """The touch calibration: the device's (device.conf), else the running app's, else any app's that has it."""
-    tried = [os.path.join(DATA, "device.conf")] + [os.path.join(DATA, app_id, f) for f in ("countdown.conf", "fbclock.conf")]
+    tried = [os.path.join(DATA, "device.conf")] + [os.path.join(DATA, app_id, "countdown.conf")]
     tried += sorted(os.path.join(DATA, d, "countdown.conf") for d in (os.listdir(DATA) if os.path.isdir(DATA) else []))
     for p in tried + [os.path.join(HERE, "countdown.conf")]:
         if os.path.isfile(p):

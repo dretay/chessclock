@@ -14,12 +14,11 @@ image: `tools/board/deploy.py` puts it on the board, signed or not. The image co
 
 | App | | |
 |---|---|---|
-| `chess` | [apps/chess](../apps/chess/README.md) | the chess clock |
 | `castle` | [apps/castle](../apps/castle) | the Magic Kingdom countdown, with live ride waits ([countdown apps](countdown.md)) |
 | `epcot` | [apps/epcot](../apps/epcot) | the EPCOT countdown, with live ride waits (placeholder scene for now) |
 | `cruise` | [apps/cruise](../apps/cruise) | the Disney cruise countdown, with the fleet map (the ships from their itineraries; [countdown apps](countdown.md)) |
 | `countdown` | [apps/countdown](../apps/countdown/README.md) | the runtime the countdown apps run on (never started by itself) |
-| `system` | `apps/system` | what every app shares: the drawing library, Settings' pages, **Device settings** (date and time, display, touch, WiFi), the app picker and Get apps; the countdown runtime runs on it, and the chess clock uses its screens |
+| `system` | `apps/system` | what every app shares: the drawing library, Settings' pages, **Device settings** (date and time, display, touch, WiFi), the app picker and Get apps; the countdown runtime runs on it |
 
 ## On the board
 
@@ -44,12 +43,10 @@ image: `tools/board/deploy.py` puts it on the board, signed or not. The image co
 
 **Device settings** (Settings > Device › in every app; `/apps/system/device`) are the device's, shared
 by every app: today's date and time, Display (day and night brightness; Calibrate touch) and WiFi. An
-app's own Settings keep only its own (a countdown's trip date, fireworks and theme; the chess clock's
-rotation).
+app's own Settings keep only its own (a countdown's trip date, fireworks and theme).
 
 **The app picker** (Settings > Apps in every app; `/apps/system/pick`) shows every installed app
-that has a `run`, with its `icon.rgb.gz` and name; a tap does `app NAME`. It's the countdown runtime's,
-so the chess clock shows its Apps and Device buttons only when the system package is installed.
+that has a `run`, with its `icon.rgb.gz` and name; a tap does `app NAME`.
 
 ## What an app is
 
@@ -79,7 +76,7 @@ app.json's `exclude` lists. The image, `deploy.py` and `pack.py` all use that on
 * An app on a **runtime** (the countdown apps) names it in app.json (`"runtime": "countdown", "api":
   2`); a runtime has `"kind": "runtime"`, an `API` file with the app api it provides, and no `run`.
 
-The base system provides Python 3.11 (with ctypes), Pillow, FreeType, the DejaVu fonts, zlib, and
+The base system provides Python 3.12 (with ctypes), Pillow, FreeType, the DejaVu fonts, zlib, and
 `setcpu MHZ` (sets the CPU clock until the next reboot). An app that needs more from the base needs
 an image rebuild once, for that.
 
@@ -87,7 +84,7 @@ an image rebuild once, for that.
 
 ```sh
 tools/board/deploy.py castle                       # quick: the files that changed, unsigned
-tools/board/deploy.py --use chess chess            # ... and make it the app that runs
+tools/board/deploy.py --use epcot epcot            # ... and make it the app that runs
 tools/board/deploy.py --signed countdown castle    # packed, signed, installed by modinstall
 ```
 
@@ -145,7 +142,7 @@ only an app whose `.signature` checks out against the trusted keys, and its runt
 
 ```sh
 brew install gh && gh auth login                 # once: the GitHub CLI
-tools/apps/publish.py countdown castle cruise chess
+tools/apps/publish.py system countdown castle cruise
 ```
 
 `publish.py` packs and signs each app, makes a GitHub release `ID-VERSION` with its tarball and

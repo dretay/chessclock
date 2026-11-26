@@ -4,8 +4,8 @@ raw RGB, gzipped without a timestamp (the same picture makes the same file).
 
     python3 tools/themegen/app_icon.py [NAME ...]          (default: every app that has a picture)
 
-From a countdown app's default scene (its day plate, 800x480: the same shape, scaled down), or the
-chess clock's boot splash (800x480, the screen's own 32-bit pixels: BGRX). Needs Pillow.
+From a countdown app's default scene (its day plate, 800x480: the same shape, scaled down), or else its
+boot splash (800x480, the screen's own 32-bit pixels: BGRX). Needs Pillow.
 """
 import gzip, json, os, sys
 from PIL import Image

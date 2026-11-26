@@ -87,7 +87,7 @@ BR2_TARGET_ROOTFS_EXT2_SIZE="64M"
 #
 # What the apps need (they aren't packages: post-image.sh puts them on the SD card's
 # apps partition, see docs/apps.md): Python, with Pillow, FreeType and the DejaVu
-# fonts for the chess clock, and zlib and ctypes (libffi) for the vacation
+# fonts (unused since the chess clock went: dropping them needs a --fresh build), and zlib and ctypes (libffi) for the vacation
 # countdown's drawing library
 #
 BR2_PACKAGE_PYTHON3=y

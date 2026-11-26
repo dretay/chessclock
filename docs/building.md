@@ -28,7 +28,7 @@ case-insensitive and the kernel's source has files whose names differ only in ca
 mounted where the base image built it (`/root/buildroot`), as Buildroot records its own path
 everywhere.
 
-`--app` picks the app that starts at first boot (`chess` by default, `castle` or `cruise`); on the board,
+`--app` picks the app that starts at first boot (`castle` by default, or any app in `apps/`); on the board,
 `app NAME` (or Settings > Apps) switches later. Apps change without a new image at all: `tools/board/deploy.py`
 ([apps](apps.md)).
 

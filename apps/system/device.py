@@ -1,5 +1,5 @@
 """Device settings, every app's: today's date and time, the display (day and night brightness, touch
-calibration) and WiFi. Settings > Device › opens it in every app (a countdown app's Settings, the chess
+calibration) and WiFi. Settings > Device › opens it in every app (a countdown app's Settings, the
 clock's), through `device`, which stops the app first and starts it again after.
 
 It's the Settings pages (vacation_settings.py) in their "device" kind, run by a small host of their own
@@ -25,7 +25,7 @@ def minutes(text, default):
 
 
 class Backlight:
-    """The panel's backlight, on the chess clock's curve (level = max x p^2 / 10000)."""
+    """The panel's backlight, on a perceptual curve (level = max x p^2 / 10000)."""
 
     def __init__(self):
         self.path, self.max = None, 0

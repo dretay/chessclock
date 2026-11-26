@@ -68,7 +68,7 @@ restarts an app that exits.
 **The device's settings**, shared by every app: `/apps/data/device.conf` (touch calibration,
 `DAY_BRIGHTNESS`, `NIGHT_BRIGHTNESS` (percent), `NIGHT_START`, `NIGHT_END` (HH:MM, default 21:00 to
 07:00), `CPU_MHZ`, `CATALOG_URL`). Settings > Display in a countdown app sets the brightness and
-calibrates touch; the chess clock's sliders set the brightness too.
+calibrates touch.
 
 **The apps** run as `/etc/init.d/S99app` starts them (`run`, restarted if it exits; and an
 optional background `service`): [apps](apps.md).

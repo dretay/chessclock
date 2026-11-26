@@ -1,7 +1,7 @@
 """Touch input for the countdown, its Settings screen and the app picker.
 
 Touch: the board's NS2009 resistive touch chip, polled over I2C (the same chip and the same
-tested reading sequence as the chess clock's, apps/chess/fbclock.py). Calibration comes from the
+tested reading sequence as the project's earlier apps). Calibration comes from the
 TOUCH_* keys in vacation.conf.
 
 ScriptTouch: for previews on a desktop. Reads presses from a file, one per line:

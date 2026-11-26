@@ -5,8 +5,7 @@ tools/board/deploy.py and tools/apps/pack.py all use.
     tools/apps/layout.py [--local] NAME [DEST]    (DEST default: build/apps/NAME; NAME: a folder in apps/)
 
 An app with an install.sh lays itself out (`install.sh DEST`): the system package (it compiles its
-drawing library: for the board, in the build container, with CC set to the board's compiler) and the
-chess clock. Any other app is its folder as it is, less its tools/ (desktop helpers), Python caches,
+drawing library: for the board, in the build container, with CC set to the board's compiler). Any other app is its folder as it is, less its tools/ (desktop helpers), Python caches,
 and what its app.json "exclude" lists (paths in it, * allowed); and its "native" programs compiled
 into it: [{"src": "fetch.c", "out": "fetch", "libs": "-lssl -lcrypto"}] (for the board in the WiFi build
 tree, which has OpenSSL; on a Mac, against Homebrew's).

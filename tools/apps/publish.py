@@ -2,7 +2,7 @@
 """Publish apps to the catalog the boards install from (Settings > Apps > Get apps): GitHub Releases.
 
     tools/apps/publish.py [--key KEY] [--repo OWNER/NAME] NAME [NAME ...]
-    e.g. tools/apps/publish.py countdown castle cruise chess
+    e.g. tools/apps/publish.py system countdown castle cruise
 
 For each app: pack and sign it (tools/apps/pack.py: OpenSSL asks for the key's passphrase once; KEY
 default ~/.config/licheepi-nano/module-signing.pem), and make a release ID-VERSION with its tarball and

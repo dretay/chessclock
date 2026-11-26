@@ -8,7 +8,7 @@
  * It draws only its own little patch (blended over what was there when it started), about 20 times a
  * second, so it costs almost nothing while the board boots. It writes its pid to
  * /var/run/splashanim.pid: an app stops it (SIGTERM) just before its first frame (the countdown's
- * vacation.py, the chess clock), and it stops by itself after SECS anyway. 32-bit screens only (the
+ * vacation.py), and it stops by itself after SECS anyway. 32-bit screens only (the
  * board's); on a desktop SPLASH_FB names a plain 800x480x32 file instead of /dev/fb0, SPLASH_PID the pid file.
  */
 #define _DEFAULT_SOURCE

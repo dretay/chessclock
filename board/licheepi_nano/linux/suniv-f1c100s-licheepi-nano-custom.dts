@@ -3,7 +3,7 @@
 // Lichee Pi Nano with the 5" 800x480 resistive-touch panel, for mainline
 // Linux (6.18). Built on the mainline board file, which already has the SD
 // card, SPI flash, USB, serial console and audio codec; this adds what the
-// chess clock needs on top (and SPI WiFi through an ESP32).
+// countdown frame needs on top (and SPI WiFi through an ESP32).
 //
 // The display pipeline (frontend -> backend -> TCON -> panel) is not in
 // mainline: the nodes below are carried over from the 5.11 kernel fork this
@@ -168,7 +168,7 @@
 
 	// The resistive touch film (40-pin LCD connector, pins 37-40) goes to
 	// the on-board NS2009 touch chip (U4, address 0x48) on TWI0 at PE11/PE12,
-	// which fbclock.py reads through /dev/i2c-0. (Mainline only describes
+	// which the apps read through /dev/i2c-0 (vacation_touch.py). (Mainline only describes
 	// TWI0 on PD0/PD12, which collide with the LCD.) The board has no
 	// external pull-ups on this bus; without these every transfer times out.
 	i2c0_pe_pins: i2c0-pe-pins {
