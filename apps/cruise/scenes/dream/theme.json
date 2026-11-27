@@ -1,74 +1,61 @@
 {
  "effects": [
-  "water",
-  "wake",
-  "smoke",
-  "gulls",
+  "birds",
   "dolphins",
-  "raft"
+  "water",
+  "smoke"
  ],
- "horizon": 283,
+ "horizon": 166,
  "fireworks_scale": 0.85,
  "cards": {
-  "center_x": 400,
-  "top": 16,
+  "center_x": 134,
+  "top": 27,
   "gap": 12,
   "label_gap": -1,
   "scale3": 1.0,
   "scale": 0.6667
  },
+ "smoke": {
+  "scale": 0.5,
+  "wind": 1,
+  "rate": 2,
+  "points": [
+   [
+    461,
+    129
+   ],
+   [
+    538,
+    130
+   ]
+  ],
+  "behind": [
+   [
+    451,
+    126,
+    469,
+    132
+   ],
+   [
+    528,
+    126,
+    547,
+    134
+   ]
+  ]
+ },
+ "dolphins": {
+  "dir": "right",
+  "points": [
+   [
+    665,
+    250
+   ]
+  ]
+ },
+ "lights_on": 0.15,
  "water": {
   "strength": 1.0,
   "speed": 1.0
- },
- "stacks": [
-  [
-   180,
-   208
-  ],
-  [
-   300,
-   194
-  ]
- ],
- "smoke_scale": 0.8,
- "bow": [
-  638,
-  422
- ],
- "stern": [
-  45,
-  352
- ],
- "mast": [
-  387,
-  186
- ],
- "text": [
-  34,
-  490
- ],
- "ambient_scale": 1.0,
- "tube": [
-  [
-   205,
-   238
-  ],
-  [
-   222,
-   235
-  ],
-  [
-   240,
-   233
-  ],
-  [
-   256,
-   232
-  ],
-  [
-   270,
-   231
-  ]
- ]
+ }
 }

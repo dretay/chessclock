@@ -591,7 +591,7 @@ def set_effect(app, name, key, value):
         conf = json.load(open(sp)); conf[key] = value; json.dump(conf, open(sp, "w"), indent=1)
     tp = os.path.join(scene, "theme.json"); theme = json.load(open(tp))
     fx = [e for e in theme.get("effects", []) if e != key]
-    if key in ("smoke", "foam", "fireflies"):
+    if key in ("smoke", "foam", "fireflies", "dolphins"):
         if value and value.get("points"): fx.append(key); theme[key] = value
         else: theme.pop(key, None)
     elif key == "mist":
@@ -601,6 +601,9 @@ def set_effect(app, name, key, value):
         if value is False: theme["fireworks"] = False
         else: theme.pop("fireworks", None)
     elif key == "birds" and value: fx.append("birds")
+    elif key == "lights_on":                                             # (windows lit at once: 0..1, or None: by how many)
+        if value is None: theme.pop("lights_on", None)
+        else: theme["lights_on"] = max(0.0, min(1.0, float(value)))
     theme["effects"] = fx
     with open(tp + ".tmp", "w") as f: json.dump(theme, f, indent=1)
     os.replace(tp + ".tmp", tp)
@@ -633,7 +636,8 @@ def set_layout(app, name, cards=None, horizon=None, card_style=None):
 # ---------------------------------------------------------------- what each pixel is (segment.py's model)
 AIENV = os.path.join(HERE, "work", "aienv", "bin", "python")
 WATER_KINDS = ("water", "sea", "river", "lake", "fountain", "swimming pool", "waterfall")
-WALL_KINDS = ("building", "wall", "house", "skyscraper", "tower", "column", "door", "windowpane", "arcade", "fence")
+# (where windows can be: buildings, and ships: a cruise ship's cabins and portholes are on the model's "ship" or "boat")
+WALL_KINDS = ("building", "wall", "house", "skyscraper", "tower", "column", "door", "windowpane", "arcade", "fence", "ship", "boat")
 
 
 def segmentation(work):
@@ -716,6 +720,110 @@ def find_windows(day, notsky, walls=None):
     return found
 
 
+def components(mask):
+    """The 4-connected groups of True in a 2-D numpy mask: [flat indices] each. Only the True pixels are
+    visited (a bytearray marks them), so a picture of a few million pixels with a few percent set is quick."""
+    import numpy as np
+    h, w = mask.shape; n = h * w
+    flat = bytearray(mask.astype(np.uint8).tobytes())
+    out = []
+    for start in np.flatnonzero(mask).tolist():
+        if not flat[start]: continue
+        flat[start] = 0; stack = [start]; pts = []
+        while stack:
+            i = stack.pop(); pts.append(i); x = i % w
+            j = i + 1
+            if x + 1 < w and flat[j]: flat[j] = 0; stack.append(j)
+            j = i - 1
+            if x and flat[j]: flat[j] = 0; stack.append(j)
+            j = i + w
+            if j < n and flat[j]: flat[j] = 0; stack.append(j)
+            j = i - w
+            if j >= 0 and flat[j]: flat[j] = 0; stack.append(j)
+        out.append(pts)
+    return out
+
+
+def find_windows_hr(img, notsky, walls=None, fine=None):
+    """find_windows on a sharper picture: the scene's original photo (original(): its 5:3 cut, up to 3200 wide),
+    every size scaled by how much bigger it is than 800x480 (s), the same tests otherwise, with numpy; the
+    windows in 800x480 terms, as find_windows gives them. At full size a far building's windows are shapes,
+    not specks, a thin frame between two keeps them apart, and brick or leaves look like what they are."""
+    import numpy as np
+    Wf, Hf = img.size; s = Wf / W
+    def k(n): return max(1, round(n * s))
+    gi = img.convert("L")
+    g = np.asarray(gi, dtype=np.int16)
+    local = np.asarray(gi.filter(ImageFilter.BoxBlur(k(7))), dtype=np.int16)
+    busy = np.abs(g - np.asarray(gi.filter(ImageFilter.GaussianBlur(1.5 * s)), dtype=np.int16))
+    hsv = np.asarray(img.convert("HSV"), dtype=np.int16); hh, ss, vv = hsv[..., 0], hsv[..., 1], hsv[..., 2]
+    ns = np.asarray(notsky.convert("L").resize((Wf, Hf), Image.BILINEAR)) >= 128
+    wp = np.asarray(walls.filter(ImageFilter.MaxFilter(5)).convert("L")) > 0 if walls else None   # (800x480)
+    # (fine: where a window can be as small as 2 px: a ship (the model's "ship", "boat"), its hull rows of cabins and
+    # portholes far smaller than a building's windows; elsewhere that small is the photo's grain)
+    fp = np.asarray(fine.filter(ImageFilter.MaxFilter(3)).convert("L")) > 0 if fine else None
+    stone = (ss < 55) | (hh <= 30) | (hh >= 225)
+    calm = busy < 7
+    leaves = (hh >= 30) & (hh <= 110) & (ss > 60)
+    masks = {"dark": ns & ~leaves & (g < local - 18),
+             "lit": ns & (g > local + 22) & ((hh <= 45) | (hh >= 240)) & (ss > 70) & (vv > 150)}
+    if fp is not None:
+        # (on a ship: a balcony's glass is only a little darker than the white rails round it, and the hull's portholes
+        # are pale dots on dark paint: both kinds, with the gentler differences, where the model says ship)
+        on_ship = ns & (np.asarray(fine.convert("L").resize((Wf, Hf), Image.NEAREST)) > 0)
+        masks["dark"] = masks["dark"] | (on_ship & ~leaves & (g < local - 9))
+        masks["porthole"] = on_ship & (g > local + 14) & (local < 110)
+    # (sizes: the biggest window scales with the picture, the smallest doesn't: at 800x480 a "window" was often a
+    # few real ones run together, and at full size each one is its own, smaller than 5 px scaled up: a 3x3 patch
+    # here is a window if the rest says so. The ring that checks for a plain wall round it is as wide as the
+    # window, not the picture: a facade's windows are close together, and a wider ring takes in the next ones.)
+    lo, hi = (9 if s > 1.2 else 5), 500 * s * s
+    r5, r12 = k(5), k(12)
+
+    def in_a_wall(x0, y0, x1, y1):
+        ya, yb, xa, xb = max(0, y0 - r12), min(Hf, y1 + r12 + 1), max(0, x0 - r12), min(Wf, x1 + r12 + 1)
+        keep = np.ones((yb - ya, xb - xa), bool)
+        keep[max(0, y0 - r5) - ya:min(Hf, y1 + r5 + 1) - ya, max(0, x0 - r5) - xa:min(Wf, x1 + r5 + 1) - xa] = False
+        n = keep.sum()
+        if not n: return False
+        return stone[ya:yb, xa:xb][keep].sum() >= 0.92 * n and calm[ya:yb, xa:xb][keep].sum() >= 0.25 * n
+
+    found = []
+    for kind, m in masks.items():
+        for pts in components(m):
+            if len(pts) > hi or len(pts) < 2: continue
+            idx = np.asarray(pts); ys, xs = idx // Wf, idx % Wf
+            if len(pts) < lo and not (fp is not None and fp[min(H - 1, int(ys[0] / s)), min(W - 1, int(xs[0] / s))]): continue
+            x0, x1, y0, y1 = int(xs.min()), int(xs.max()), int(ys.min()), int(ys.max())
+            bw, bh = x1 - x0 + 1, y1 - y0 + 1
+            tiny = len(pts) < lo                                        # (a ship's: 2 px will do, any shape that small)
+            if not tiny and (bh < 2 or bw < 2 or not (0.2 <= bw / bh <= 3.5) or len(pts) / (bw * bh) < 0.5):
+                # (on a ship, a long or curving band of glass (a bow's wrap-round windows, a lounge's) is a row of panes:
+                # cut along its length into window-sized pieces, each its own light; elsewhere, not a window)
+                on_ship = fp is not None and fp[min(H - 1, int(ys.mean() / s)), min(W - 1, int(xs.mean() / s))]
+                if on_ship and kind != "lit" and bh >= 2 and float(g[ys, xs].mean()) < float(local[ys, xs].mean()) - 28:
+                    step = max(2, k(4)); along_x = bw >= bh
+                    key = xs if along_x else ys; start = int(key.min())
+                    for a in range(start, int(key.max()) + 1, step + max(1, k(1))):
+                        sel = (key >= a) & (key < a + step)
+                        if sel.sum() < max(2, s * s): continue
+                        px0, px1, py0, py1 = int(xs[sel].min()), int(xs[sel].max()), int(ys[sel].min()), int(ys[sel].max())
+                        found.append((int(px0 / s), int(py0 / s), max(int(px0 / s), int(px1 / s)), max(int(py0 / s), int(py1 / s)), "band"))
+                continue
+            r3 = max(2, min(k(3), (min(bw, bh) + 1) // 2 + 1)) if s > 1.2 else 3
+            ya, yb, xa, xb = max(0, y0 - r3), min(Hf, y1 + r3 + 1), max(0, x0 - r3), min(Wf, x1 + r3 + 1)
+            ring = np.ones((yb - ya, xb - xa), bool); ring[y0 - ya:y1 - ya + 1, x0 - xa:x1 - xa + 1] = False
+            rv = g[ya:yb, xa:xb][ring]
+            if not rv.size: continue
+            inner = float(g[ys, xs].mean()); rm = float(rv.mean()); rsd = float(rv.std())
+            if rsd > 26 or abs(rm - inner) < 20: continue
+            if wp is not None:                                              # (the model's say: on a building)
+                if not wp[min(H - 1, int((y0 + y1) / 2 / s)), min(W - 1, int((x0 + x1) / 2 / s))]: continue
+            elif not in_a_wall(x0, y0, x1, y1): continue
+            found.append((int(x0 / s), int(y0 / s), max(int(x0 / s), int(x1 / s)), max(int(y0 / s), int(y1 / s)), kind))
+    return found
+
+
 def find_windows_into(work, scene):
     """Windows found in the day picture (find_windows) as the base the painting goes over (windows_base.png),
     and the lights redone. How many found, and how many windows lit in all."""
@@ -723,10 +831,16 @@ def find_windows_into(work, scene):
     day = Image.open(os.path.join(work, "day.png")).convert("RGB")
     notsky = Image.open(os.path.join(work, "mask.png")).convert("L")
     seg = segmentation(work)
-    found = find_windows(day, notsky, kinds_mask(seg, WALL_KINDS) if seg else None)
+    walls = kinds_mask(seg, WALL_KINDS) if seg else None
+    ships = kinds_mask(seg, ("ship", "boat")) if seg else None
+    orig = original(work)                                    # (the photo at its own size: sharper, when it's bigger)
+    if orig is not None and orig.width >= W * 1.5: found = find_windows_hr(orig, notsky, walls, ships)
+    else: found = find_windows(day, notsky, walls)
     base = Image.new("L", (W, H), 0); d = ImageDraw.Draw(base)
     for x0, y0, x1, y1, _ in found: d.rectangle([x0, y0, x1, y1], fill=255)
     base.save(os.path.join(work, "windows_base.png"))
+    # (and the boxes themselves: each its own light when packed, though they touch: scene_pack.window_lights)
+    json.dump([[x0, y0, x1, y1] for x0, y0, x1, y1, _ in found], open(os.path.join(work, "windows_found.json"), "w"))
     return len(found), rewindow(work, scene)
 
 
@@ -734,7 +848,7 @@ def clear_found_windows(work, scene):
     """All the windows gone: those found automatically and those painted, and a scene's own fixed lights
     (the cruise's cabins: "lights_fixed", kept as "lights_fixed_was" so they could be had back by hand).
     How many windows lit (none)."""
-    for f in ("windows_base.png", "windows_edits.json"):
+    for f in ("windows_base.png", "windows_edits.json", "windows_found.json"):
         if os.path.exists(os.path.join(work, f)): os.remove(os.path.join(work, f))
     sp = os.path.join(work, "scene.json")
     try: conf = json.load(open(sp))
@@ -758,6 +872,10 @@ def region_picture(work, kind):
         for x, y, r in e.get("paint", []): d.ellipse([x - r, y - r, x + r, y + r], fill=255)
         for x, y, r in e.get("erase", []): d.ellipse([x - r, y - r, x + r, y + r], fill=0)
         if e.get("rect"): x0, y0, x1, y1 = e["rect"]; d.rectangle([min(x0, x1), min(y0, y1), max(x0, x1), max(y0, y1)], fill=255)
+        if e.get("grid"):                                                # (a box of cabins: cw x ch windows, a pixel apart, each its own)
+            x0, y0, x1, y1, cw, ch = e["grid"]; x0, x1 = sorted((x0, x1)); y0, y1 = sorted((y0, y1))
+            for gy in range(y0, y1 - ch + 2, ch + 1):
+                for gx in range(x0, x1 - cw + 2, cw + 1): d.rectangle([gx, gy, gx + cw - 1, gy + ch - 1], fill=255)
     return img
 
 
@@ -839,7 +957,8 @@ def rewindow(work, scene):
     gp = os.path.join(work, "window_groups.json")
     if groups: json.dump(groups, open(gp, "w"))
     elif os.path.exists(gp): os.remove(gp)
-    blob, _, n = scene_pack.window_lights(img, tuple(conf.get("light", (255, 168, 80))), thin=False, frame=frame, groups=groups)
+    blob, _, n = scene_pack.window_lights(img, tuple(conf.get("light", (255, 168, 80))), thin=False, frame=frame, groups=groups,
+                                          found=scene_pack.windows_found(work), soft=conf.get("window_soft", 0.6))
     scene_pack.Out(scene).gz("lights.bin.gz", blob)
     return n
 
@@ -929,6 +1048,13 @@ def set_window_light(work, scene, colour):
     return rewindow(work, scene)
 
 
+def set_window_soft(work, scene, soft):
+    """How soft the window lights are (0 crisp .. 1 glowing): into scene.json, and the lights made again."""
+    sp = os.path.join(work, "scene.json"); conf = json.load(open(sp))
+    conf["window_soft"] = max(0.0, min(1.0, float(soft))); json.dump(conf, open(sp, "w"), indent=1)
+    return rewindow(work, scene)
+
+
 def found_outline(work, kind):
     """What was found automatically, drawn for a moment over the picture (the previewer fades it out): a
     transparent 800x480 PNG (bytes), outlines and a faint fill. kind: "sky" (where the photo's sky ends),
@@ -962,7 +1088,7 @@ def found_outline(work, kind):
 
 PHOTO_FILES = ("day.png", "dusk.png", "night.png", "mask.png", "scene.json", "twinkle_mask.png", "twinkle_points.json",
                "twinkle_found.json", "erase.json", "erase_groups.json", "edits.json", "windows.png",
-               "windows_base.png", "windows_edits.json", "window_frame.png", "window_groups.json", "water.png", "water_base.png", "water_edits.json",
+               "windows_base.png", "windows_found.json", "windows_edits.json", "window_frame.png", "window_groups.json", "water.png", "water_base.png", "water_edits.json",
                "segment.png", "segment.json")
 
 

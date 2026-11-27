@@ -389,7 +389,9 @@ class Preview:
         except (OSError, ValueError): th = {}
         out["foam"] = th.get("foam") or {}
         out["fireflies"], out["mist"], out["fireworks"] = th.get("fireflies") or {}, th.get("mist") or {}, th.get("fireworks", True) is not False
+        out["dolphins"] = th.get("dolphins") or {}
         out["smoke"], out["birds"] = th.get("smoke") or {}, "birds" in th.get("effects", []) or "gulls" in th.get("effects", [])
+        out["lights_on"] = th.get("lights_on")                           # (windows lit at once: a share, or None: automatic)
         out["screens"] = self.screens_for_builder(app, m)               # (the app's screens, and the types there are)
         out["ship_names"] = list(ship_names())
         sys.path.insert(0, RUNTIME); import screens as screen_types
@@ -656,6 +658,26 @@ class Preview:
             r = int(c.get("r") or fo.get("size", 12))
             fo["points"] = (fo.get("points") or [])[:15] + [[int(c["x"]), int(c["y"]), r]]
             ps.set_effect(app, name, "foam", fo); return {"ok": True, "foam": len(fo["points"])}
+        if act == "dolphins_add":                                       # (a click on the water: the dolphins leap there)
+            scene, work = ps.dirs(app, name)
+            try: cur = json.load(open(os.path.join(work, "scene.json"))).get("dolphins") or {}
+            except (OSError, ValueError): cur = json.load(open(os.path.join(scene, "theme.json"))).get("dolphins") or {}
+            cur = dict({"dir": "right"}, **cur); cur["points"] = [[int(c["x"]), int(c["y"])]]       # (one place: the last click)
+            ps.set_effect(app, name, "dolphins", cur); return {"ok": True}
+        if act == "point_undo" and c.get("key") in ("foam", "smoke", "fireflies"):   # (the last point placed taken back)
+            scene, work = ps.dirs(app, name); key = c["key"]
+            try: cur = json.load(open(os.path.join(work, "scene.json"))).get(key) or {}
+            except (OSError, ValueError): cur = json.load(open(os.path.join(scene, "theme.json"))).get(key) or {}
+            if not cur.get("points"): return {"error": "no %s to take back" % key}
+            cur["points"] = cur["points"][:-1]
+            ps.set_effect(app, name, key, cur); return {"ok": True, key: len(cur["points"])}
+        if act == "smoke_behind":                                       # (a box: the smoke behind the scenery there; clear: none)
+            scene, work = ps.dirs(app, name)
+            try: sm = json.load(open(os.path.join(work, "scene.json"))).get("smoke") or {}
+            except (OSError, ValueError): sm = json.load(open(os.path.join(scene, "theme.json"))).get("smoke") or {}
+            if not sm.get("points"): return {"error": "place the smoke first"}
+            sm["behind"] = [] if c.get("clear") else (sm.get("behind") or [])[:15] + [[int(v) for v in c["box"]]]
+            ps.set_effect(app, name, "smoke", sm); return {"ok": True, "behind": len(sm["behind"])}
         if act in ("fireflies_add", "mist_box"):                       # (a click: fireflies there; a box: the mist's)
             scene, work = ps.dirs(app, name)
             key = "fireflies" if act == "fireflies_add" else "mist"
@@ -692,6 +714,8 @@ class Preview:
         redo = ps.rewindow if kind == "windows" else ps.rewater
         what = "lighting the windows" if kind == "windows" else "laying the water"
         report = (lambda n: self.say("windows: %d" % n)) if kind == "windows" else (lambda n: self.say("water: %s%% of the screen" % n))
+        if kind == "windows" and c.get("soft") is not None:
+            return self.busy(what, lambda: report(ps.set_window_soft(work, scene, c["soft"])))
         if kind == "windows" and c.get("colour"):
             return self.busy(what, lambda: report(ps.set_window_light(work, scene, c["colour"])))
         if kind == "water" and ("strength" in c or "speed" in c):
@@ -709,6 +733,9 @@ class Preview:
         elif c.get("paint"): edits.append({"paint": [[int(x), int(y), int(r)] for x, y, r in c["paint"]]})
         elif c.get("erase"): edits.append({"erase": [[int(x), int(y), int(r)] for x, y, r in c["erase"]]})
         elif c.get("rect"): edits.append({"rect": [int(v) for v in c["rect"]]})
+        elif c.get("grid") and kind == "windows":                     # (x0, y0, x1, y1, cell w, cell h: a box of small windows)
+            g = [int(v) for v in c["grid"]]
+            if len(g) == 6 and g[4] >= 1 and g[5] >= 1: edits.append({"grid": g})
         elif c.get("group") and kind == "windows": edits.append({"group": [int(v) for v in c["group"]]})
         elif c.get("behind") and kind == "windows": edits.append({"behind": [int(v) for v in c["behind"]]})
         elif c.get("frame") and kind == "windows": edits.append({"frame": [[int(x), int(y), int(r)] for x, y, r in c["frame"]]})
@@ -840,7 +867,7 @@ def serve(pv, port):
                 if c.get("panel") and pv.target == "remote":            # (the panel's controls, for the device's countdown)
                     r = pv.remote
                     if "hour" in c: r.set(hour=float(c["hour"]) if str(c["hour"]) != "" else None)
-                    for k in ("fireworks", "show", "birds", "fireflies", "settings"):
+                    for k in ("fireworks", "show", "birds", "fireflies", "dolphins", "settings"):
                         if c.get(k): r.fire(k)
                     if "pattern" in c: r.set(pattern=int(c["pattern"]))
                     if "stay" in c: r.set(stay=bool(c["stay"]))
@@ -850,6 +877,7 @@ def serve(pv, port):
                 if c.get("fireworks"): pv.live(fireworks=pv.live_state.get("fireworks", 0) + 1)
                 if c.get("birds"): pv.live(birds=pv.live_state.get("birds", 0) + 1)
                 if c.get("fireflies"): pv.live(fireflies=pv.live_state.get("fireflies", 0) + 1)
+                if c.get("dolphins"): pv.live(dolphins=pv.live_state.get("dolphins", 0) + 1)
                 if c.get("settings"): pv.live(settings=pv.live_state.get("settings", 0) + 1)     # (Settings, open now: no long press)
                 if "windows_hold" in c: pv.live(windows_hold=bool(c["windows_hold"]))
                 if c.get("show"): pv.live(show=pv.live_state.get("show", 0) + 1)

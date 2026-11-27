@@ -1,12 +1,12 @@
 # F1C200s Prototyping Board - Design Spec
 
-A 72.5 x 118 mm board that replaces the Lichee Pi Nano behind the 5" 800x480
-panel: an F1C200s running Linux from a microSD card, an ESP32-C3 SuperMini
+A 72.5 x 118 mm board for a desk stand with the 5" 800x480 panel: the panel
+stands in the upright part, the board lies flat in the base. On it: an F1C200s running Linux from a microSD card, an ESP32-C3 SuperMini
 as a power-switchable WiFi co-processor, a PAM8403 speaker amplifier, the
 40-pin LCD/touch connector, and a through-hole prototyping area with
 breakouts.
 
-Status: **schematic and autorouted board (a few connections left by hand) in [`kicad/`](kicad/README.md)**,
+Status: **schematic and autorouted board (5 connections left by hand) in [`kicad/`](kicad/README.md)**,
 generated from `kicad/gen/design.py`. Items marked *(verify)* still need
 checking before the board is ordered.
 
@@ -28,53 +28,56 @@ The core circuits copy Sipeed's own, proven designs (both on
 
 | | |
 |---|---|
-| Size | 72.5 x 118 mm (grown from 90 x 70 for routing room: ~1.4 mm inside the panel each side, ~0.4 mm at the bottom edge), one M3 mounting hole in each corner |
+| Size | 72.5 x 118 mm (grown from 90 x 70 for routing room; kept at this size for the stand's base), one M3 mounting hole in each corner |
 | Layers | 4 (signal + GND pour / solid GND / signal + 3V3 pour / signal + GND pour) - the 0.4 mm-pitch F1C200s and the 22 LCD lines need the solid ground plane |
 | Assembly | all by hand, hot air + stencil. Passives 0805 (the "0804" in the brief is taken to mean 0805); larger packages wherever there's a choice. Only the F1C200s (QFN-88, 0.4 mm) and the FPC connector (0.5 mm) are unavoidably fine-pitch |
-| Orientation | components and prototyping on the side facing **away** from the LCD |
-| Layout (board's own frame) | top half: the dedicated chips. Bottom half, top to bottom: breakout headers, through-hole prototyping grid (2.54 mm), power and ground rails along the bottom edge |
-| LCD connector | on the component side, ribbon wrapped around the board edge (see below) |
+| Orientation | flat in the stand's base, components up. The **front** edge (top in KiCad) is at the foot of the panel, the **back** edge (bottom in KiCad) is where the stand is powered from |
+| Layout (board's own frame) | front half: the dedicated chips. Back half, front to back: breakout headers, through-hole prototyping grid (2.54 mm), then along the back edge the power rails, 5 V IN terminal, microSD slot and USB-C |
+| LCD connector | bottom-contact FPC flush with the front edge: the ribbon drops from the panel onto it (see below) |
 | Clock | no real-time clock: the time comes over WiFi (NTP) |
 
 ## Board outline and the LCD ribbon
 
 The panel (F50GLQ24E22, 120.7 x 75.8 mm) has its ribbon leaving the bottom
-edge of the panel. Measured on the panel, seen from the back:
+edge of the panel. Measured on the panel, seen from the **front**:
 
 * the ribbon starts 26 mm in from the left edge
 * its wide section is 47 mm wide; the tail with the contacts is 21 mm wide
   (40 x 0.5 mm)
 * 44 mm from the panel edge to the start of the copper contacts
 
-The board (118 wide, 72.5 tall) is centred sideways behind the panel, so
-its left edge is 1.35 mm in from the panel's left edge. Its chip-half edge
-is ~2.9 mm inside the panel's ribbon edge (fixed by the fold); the extra
-height goes to the prototyping edge, ~0.4 mm inside the panel.
+In the stand the panel is upright and the board lies flat behind its foot,
+front edge towards the panel. The ribbon hangs from the panel's bottom edge,
+bends 90 degrees backwards onto the board's front edge, lies over the chip
+half and runs into the connector about 30 mm back from the front edge:
 
-The positions below were worked out for a 110 mm board: on the 118 mm board,
-add 4 mm to every distance from the left edge (the tail lands ~25-46 mm in,
-the wide section covers x = 25-72 mm).
-
-**The chip half of the board goes at the panel's ribbon edge.** The ribbon
-wraps 180 degrees around that board edge and lies on the chip half, so
-nothing in the prototyping half is covered.
-
-Placement estimate (to confirm with a paper mock-up before layout is frozen):
-
-* ribbon run: ~3 mm to reach the board edge + ~9 mm around the U-turn (panel
-  to board stack ~5-6 mm) leaves **~29-32 mm** along the board face, so the
-  connector's contact line sits **~29-32 mm from the chip-half edge**
-* sideways, the tail lands **~21-42 mm from the board's left edge** (viewed
-  from the component side; a fold about a horizontal edge keeps left/right),
-  so the connector is centred **~31 mm from the left edge**
-* the ribbon's wide section covers roughly x = 21-68 mm for the first ~10 mm
-  in from the edge: only low parts there (passives, SOT-23); the ESP32
-  module, microSD socket and buttons go to the right of x = 70 mm, the USB-C
-  on the left edge (x < 21 mm, clear of the ribbon)
-* **top-contact connector:** with the ribbon folded onto the board, its gold
-  contacts face up (away from the board), so the connector must be a
-  **top-contact** 0.5 mm 40-pin flip-lock FPC connector (contacts touching the
-  cable's upper face)
+* **bottom-contact connector:** hanging from the panel the contacts face
+  forward, so after the bend they face down onto the board. The connector
+  is a Hirose **FH12-40S-0.5SH(55)** (0.5 mm, 40 pins, bottom contact, flip
+  lock), cable opening facing the front edge.
+* **sideways:** seen from above from behind the stand (panel at the far
+  side, as in KiCad's top view with the front edge at the top), left and
+  right are the reverse of the front view. So the ribbon, 26 mm from the
+  panel's left edge seen from the front, lands on the board's **right**:
+  the tail covers ~72-93 mm from the board's left edge, the wide section
+  ~46-93 mm (the board is centred under the 120.7 mm panel). The connector
+  is centred 83 mm from the left edge.
+* **pin 1** (checked on the panel): with the panel face up and the ribbon
+  towards you, contacts up, pin 1 is the leftmost contact (pins 1-2 run to
+  the backlight, 36-40 to the touch panel - the Lichee Nano pinout). That
+  puts pin 1 at the right end of the connector seen from above.
+* the front half is laid out to suit: the SoC sits just left of the
+  connector, turned 90 degrees so its LCD pins (bottom and right sides) face
+  it, and the ESP32 module is at the left edge, antenna outwards.
+* **length:** the contacts start 44 mm from the panel edge and the
+  connector's contact line is ~32 mm from the board's front edge, so the
+  panel's bottom edge can sit up to ~10 mm from the board edge (less the
+  bend); the case sets this.
+* **under the ribbon:** its wide section covers roughly x = 46-93 mm over
+  the first ~19 mm from the front edge, then the tail runs to the
+  connector. Only low parts (passives, SOT-23, SMD inductors) go there.
+* the microSD, USB-C and 5 V IN are on the back edge, reachable from behind
+  the stand.
 
 ## Pin plan (from the F1C200s datasheet, section 4.2)
 
@@ -189,9 +192,11 @@ termination needed for traces under 15 cm.)
 
 ### ESP32-C3 SuperMini (power-switchable WiFi)
 
-* Mounted flat at the **right-hand edge** of the chip half, antenna end at
-  the board edge: the panel's metal back weakens WiFi, so the antenna gets
-  as much clearance as the board allows. Footprint for both its pin headers
+* At the **left-hand edge** of the front half, antenna end at the board
+  edge over a no-copper keep-out; the module's own USB-C faces inwards
+  (towards the RESET/FEL buttons). In the stand the board is below the
+  panel rather than behind it, so the panel's metal back shields the
+  antenna less than before. Footprint for both its pin headers
   and soldering it down flat.
 * **Power switch:** a load switch (e.g. SY6280 / TPS22918 class, with
   controlled inrush) on the module's 5 V input, enabled from the I/O
@@ -241,11 +246,8 @@ termination needed for traces under 15 cm.)
 From the middle of the board down:
 
 1. **Breakouts** (a row of 2.54 mm headers, each with its own 3.3 V and GND):
-   * 3 x I2C on **Qwiic / STEMMA QT (JST-SH 4-pin)** connectors (stacked on
-     the right board edge, cable openings facing out, so nothing sits in
-     front of them), plus the
-     same I2C on 2.54 mm pins - plug-in for the ambient-light sensor, the
-     I2C rotary encoder and similar
+   * I2C on 2.54 mm pins - plug-in for the ambient-light sensor, the I2C
+     rotary encoder and similar
    * SPI0 (MOSI/MISO/CLK + CS on PE5)
    * UART (see the pin plan)
    * GPIO: PE3 (interrupt-capable; e.g. the RCWL-0516's output), expander
@@ -257,17 +259,18 @@ From the middle of the board down:
      jumper
    * **RCWL-0516:** 5-pin footprint matching the module (needs 4-28 V in, so
      from 5 V; its 3.3 V output goes to PE3)
-2. **Through-hole grid:** 2.54 mm, plated holes, as large as fits: 38
-   columns x 5 rows.
-3. **Rails:** 5 V, 3.3 V and GND strips along the bottom edge.
+2. **Through-hole grid:** 2.54 mm, plated holes: 31 columns x 5 rows (the
+   microSD slot takes the back-right corner).
+3. **Rails:** 5 V, 3.3 V and GND strips (26 holes each) along the back edge.
 
 ## Open items
 
-* Confirm the connector position (~29-32 mm from the chip-half edge, ~21 mm
-  from the left) with a paper mock-up before the layout is frozen.
+* Confirm with a mock-up of the stand that the ribbon reaches the FPC
+  connector (~32 mm back from the front edge, ~72-93 mm from the left
+  edge seen from above), contacts down.
 * Parts picked in the KiCad design, to confirm against stock: SY8089AAAC
   buck (SOT-23-5), TPS22917 load switch (SOT-23-6), TCA9535PWR expander
-  (TSSOP-24, 0.65 mm), Omron XF2M-4015-1A top-contact FPC, 74LVC244 in
+  (TSSOP-24, 0.65 mm), Hirose FH12-40S-0.5SH(55) bottom-contact FPC, 74LVC244 in
   SOIC-20W, NS2009 assumed MSOP-10 *(verify)*.
 * **ESP32-C3 SuperMini has no EN pin on its headers.** ESP_EN (buffered
   PE2) ends on a bodge pad for a wire to the module's EN/reset; without it,
@@ -282,10 +285,8 @@ From the middle of the board down:
   yours has half-holes at the edge, the rows are ~18 mm apart and the
   footprint is wrong. Flat, its underside rests on tented F.Cu tracks and
   vias: check the module's back for exposed copper (Kapton under it if so).
-* FPC pin 1 ends up on the right of the connector (seen from the component
-  side); check with the mock-up that the folded ribbon's pin 1 lands there.
 * F1C200s footprint: the stock QFN-88 10x10 with pads narrowed to 0.22 mm
   (0.18 mm gaps) and EP 6.74 mm *(verify EP size against the F1C200s package
   drawing)*.
-* Routing: fully autorouted (0 unconnected); one 1.5 um clearance item to
-  nudge by hand - see [`kicad/README.md`](kicad/README.md#routing).
+* Routing: autorouted for the stand layout, 5 connections to finish by hand
+  (a +2V5 SoC pin, RESET, two GND islands) - see [`kicad/README.md`](kicad/README.md#routing).

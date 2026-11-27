@@ -58,6 +58,11 @@ final class ScreenView: NSView {
     let brushLayer = CAShapeLayer()
     private var pointer: CGPoint? = nil
     var brushTarget = "erase"                        // "erase" (the orb's lights), "wpaint" / "werase" (window glass), "qpaint" / "qerase" (water)
+    // the original photo shows zoomed in only while painting or drawing a box on it (windows, water, a frame, a group,
+    // the mist): there its detail helps. Otherwise (looking, the orb's lights) the live scene, night and lights and all.
+    var drawingOnPhoto: Bool {
+        (erasing && brushTarget != "erase") || ["wrect", "wgrid", "qrect", "wbehind", "wgroup", "mistbox", "smokebehind"].contains(layoutMode)
+    }
     var onPaint: (String, [[Int]]) -> Void = { _, _ in }
     private var boxStart: (Int, Int)? = nil
     let strokeLayer = CAShapeLayer()
@@ -70,7 +75,9 @@ final class ScreenView: NSView {
     // zoomed in: the original photo, sharper than the device's 800x480 (the strokes and guides over it)
     let photoLayer = CALayer()
     var originalImage: CGImage? = nil { didSet { redisplayPublic() } }
-    var showOriginal = UserDefaults.standard.object(forKey: "ShowOriginalPhoto") as? Bool ?? true { didSet { redisplayPublic() } }
+    // (off unless asked for: zoomed in, the live scene, lights and night and all; on, the sharp photo while painting.
+    // A new name, so an "on" saved before doesn't carry over.)
+    var showOriginal = UserDefaults.standard.object(forKey: "ShowOriginalPhotoWhilePainting") as? Bool ?? false { didSet { redisplayPublic() } }
     func redisplayPublic() { redisplay() }
     private var flashImage: CGImage?
 
@@ -146,7 +153,7 @@ final class ScreenView: NSView {
         CATransaction.begin(); CATransaction.setDisableActions(true)
         if let img = lastImage { layer?.contents = crop(img) }
         flashLayer.contents = crop(flashImage)
-        let orig = showOriginal && zoom > 1.01 ? originalImage : nil
+        let orig = showOriginal && zoom > 1.01 && drawingOnPhoto ? originalImage : nil
         photoLayer.isHidden = orig == nil; photoLayer.contents = crop(orig)
         CATransaction.commit()
         drawStroke(); showRest(); showBrush()
@@ -231,7 +238,7 @@ final class ScreenView: NSView {
         CATransaction.begin(); CATransaction.setDisableActions(true); defer { CATransaction.commit() }
         guideLabel.isHidden = true
         let path = CGMutablePath()
-        if ["wrect", "qrect", "wbehind", "wgroup", "mistbox"].contains(layoutMode), let (sx, sy) = boxStart {   // (a window's or water's box, from where the drag began)
+        if ["wrect", "wgrid", "qrect", "wbehind", "wgroup", "mistbox", "smokebehind"].contains(layoutMode), let (sx, sy) = boxStart {   // (a window's or water's box, from where the drag began)
             let a = toView(CGFloat(min(sx, x)), CGFloat(min(sy, y))), b = toView(CGFloat(max(sx, x) + 1), CGFloat(max(sy, y) + 1))
             path.addRect(CGRect(x: a.x, y: b.y, width: b.x - a.x, height: a.y - b.y))
         } else if layoutMode == "cards" {                // (two digits' row, centred where the pointer is)
@@ -250,9 +257,9 @@ final class ScreenView: NSView {
     private func layoutDone(_ x: Int, _ y: Int) {
         guideLayer.path = nil; guideLabel.isHidden = true
         if layoutMode == "horizon" || layoutMode == "cards" { rest = (x, y); drawGuide(x, y) }      // (it stays where it was put)
-        if ["wrect", "qrect", "wbehind", "wgroup", "mistbox"].contains(layoutMode), let (sx, sy) = boxStart {
+        if ["wrect", "wgrid", "qrect", "wbehind", "wgroup", "mistbox", "smokebehind"].contains(layoutMode), let (sx, sy) = boxStart {
             boxStart = nil
-            if abs(x - sx) >= 1 && abs(y - sy) >= 1 { onLayout([layoutMode == "wrect" ? "winrect" : layoutMode == "wbehind" ? "behindrect" : layoutMode == "wgroup" ? "grouprect" : layoutMode == "mistbox" ? "mistrect" : "waterrect": [sx, sy, x, y]]) }
+            if abs(x - sx) >= 1 && abs(y - sy) >= 1 { onLayout([layoutMode == "wrect" ? "winrect" : layoutMode == "wgrid" ? "gridrect" : layoutMode == "wbehind" ? "behindrect" : layoutMode == "wgroup" ? "grouprect" : layoutMode == "mistbox" ? "mistrect" : layoutMode == "smokebehind" ? "smokebehindrect" : "waterrect": [sx, sy, x, y]]) }
         } else if layoutMode == "cards" { onLayout(["cards": ["center_x": x, "top": max(0, y - cardH / 2)]]) }
         else if layoutMode == "horizon" { onLayout(["horizon": y]) }
     }
@@ -286,7 +293,7 @@ final class ScreenView: NSView {
             panPending = event.modifierFlags.contains(.option) ? nil : event      // (a tap, if it doesn't move)
             return
         }
-        if !layoutMode.isEmpty { let (x, y) = screenPoint(event); if ["wrect", "qrect", "wbehind", "wgroup", "mistbox"].contains(layoutMode) { boxStart = (x, y) }; drawGuide(x, y); return }
+        if !layoutMode.isEmpty { let (x, y) = screenPoint(event); if ["wrect", "wgrid", "qrect", "wbehind", "wgroup", "mistbox", "smokebehind"].contains(layoutMode) { boxStart = (x, y) }; drawGuide(x, y); return }
         if adding { return }
         if erasing { let (x, y) = screenPoint(event); stroke = [[x, y, brush]]; drawStroke(); return }
         send("down", event)
@@ -383,6 +390,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
             if self.addTarget == "smoke" { self.placeAt("smoke_add", x, y) }
             else if self.addTarget == "foam" { self.placeAt("foam_add", x, y) }
             else if self.addTarget == "fireflies" { self.placeAt("fireflies_add", x, y) }
+            else if self.addTarget == "dolphins" { self.placeAt("dolphins_add", x, y) }
             else { self.erase(["add": [[x, y]]]) }
         }
         view.onDropFile = { [weak self] u in self?.uploadPhoto(u) }
@@ -392,7 +400,9 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
             else if let r = change["waterrect"] { self?.region("water", ["rect": r]) }
             else if let r = change["behindrect"] { self?.region("windows", ["behind": r]) }
             else if let r = change["grouprect"] { self?.region("windows", ["group": r]) }
+            else if let r = change["gridrect"] as? [Int], let s = self { s.region("windows", ["grid": r + s.gridCell]) }
             else if let r = change["mistrect"] { self?.builderDo(["action": "mist_box", "box": r]) }
+            else if let r = change["smokebehindrect"] { self?.builderDo(["action": "smoke_behind", "box": r]) }
             else { self?.layout(change) }
         }
         view.onPaint = { [weak self] target, s in
@@ -486,11 +496,12 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         }.resume()
     }
     @objc func toggleOriginal() {
-        view.showOriginal.toggle(); UserDefaults.standard.set(view.showOriginal, forKey: "ShowOriginalPhoto")
+        view.showOriginal.toggle(); UserDefaults.standard.set(view.showOriginal, forKey: "ShowOriginalPhotoWhilePainting")
         originalItem?.state = view.showOriginal ? .on : .off
         builder?.evaluateJavaScript("window.originalShown && window.originalShown(\(view.showOriginal))")
     }
     var originalItem: NSMenuItem?
+    var gridCell = [3, 2]                               // (the Grid tool's windows: width, height, in screen pixels)
 
     func update(_ s: [String: Any]) {
         if let key = s["photo_key"] as? String, key != originalKey { fetchOriginal(key) }
@@ -814,11 +825,12 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         if let kind = body["flash"] as? String { flash(kind); return }
         if body["askPassphrase"] != nil { askPassphrase(); return }
         guard let mode = body["editMode"] as? String else { return }
-        view.erasing = ["erase", "wpaint", "werase", "wframe", "qpaint", "qerase"].contains(mode); view.adding = ["add", "smokeadd", "foamadd", "fflyadd"].contains(mode)
-        addTarget = mode == "smokeadd" ? "smoke" : mode == "foamadd" ? "foam" : mode == "fflyadd" ? "fireflies" : "lights"
+        view.erasing = ["erase", "wpaint", "werase", "wframe", "qpaint", "qerase"].contains(mode); view.adding = ["add", "smokeadd", "foamadd", "fflyadd", "dolphadd"].contains(mode)
+        addTarget = mode == "smokeadd" ? "smoke" : mode == "foamadd" ? "foam" : mode == "fflyadd" ? "fireflies" : mode == "dolphadd" ? "dolphins" : "lights"
         view.brushTarget = view.erasing ? mode : "erase"; view.strokeColour()
         if let b = body["brush"] as? Int { view.brush = mode == "erase" ? 10 : b }
-        view.layoutMode = ["cards", "horizon", "wrect", "qrect", "wbehind", "wgroup", "mistbox"].contains(mode) ? mode : ""
+        view.layoutMode = ["cards", "horizon", "wrect", "wgrid", "qrect", "wbehind", "wgroup", "mistbox", "smokebehind"].contains(mode) ? mode : ""
+        if let c = body["cell"] as? [Int], c.count == 2 { gridCell = c }
         if mode == "horizon", let hz = body["horizon"] as? Int { view.rest = (0, hz) }
         else if mode == "cards", let cx = body["cardX"] as? Int, let top = body["cardTop"] as? Int { view.rest = (cx, top + (body["cardH"] as? Int ?? 192) / 2) }
         else { view.rest = nil }
@@ -827,6 +839,7 @@ final class Controller: NSObject, NSApplicationDelegate, NSWindowDelegate, WKScr
         if let h = body["cardH"] as? Int { view.cardH = h }
         if let g = body["gap"] as? Int { view.cardGap = g }
         eraseBox.selectItem(at: mode == "erase" ? 1 : mode == "add" ? 2 : 0)
+        view.redisplayPublic()                           // (the original photo, or the live scene: drawingOnPhoto)
     }
     // a smoke source, or foam, where the picture was clicked
     func placeAt(_ action: String, _ x: Int, _ y: Int) {

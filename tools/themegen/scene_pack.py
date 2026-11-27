@@ -74,6 +74,16 @@ def add_stars(img, notsky, horizon, n=120):
 NEAR, WIDE = (1.5, 0.5), (4, 0.4)                                      # painted windows' glow: (blur, strength) close by, and wide
 
 
+def windows_found(work):
+    """windows_found.json (the boxes "Find automatically" found: each its own light, though they touch), or []. Not
+    when it's older than windows_base.png (they're written together: older is another photo's, left behind)."""
+    fp, bp = os.path.join(work, "windows_found.json"), os.path.join(work, "windows_base.png")
+    try:
+        if os.path.exists(bp) and os.path.getmtime(fp) < os.path.getmtime(bp) - 5: return []
+        return json.load(open(fp))
+    except (OSError, ValueError): return []
+
+
 def window_groups(work):
     """window_groups.json (the Group tool's boxes: the windows each touches switch as one), or []."""
     try: return json.load(open(os.path.join(work, "window_groups.json")))
@@ -95,16 +105,17 @@ def frame_picture(work):
     return Image.open(p).convert("L").resize((W, H)) if os.path.exists(p) else None
 
 
-def painted_light(cover, ids, ncell, colour, frame=None):
+def painted_light(cover, ids, ncell, colour, frame=None, soft=0.6):
     """Windows painted by hand, lit like real ones: a soft edge, brighter in the middle (a lamp inside, not
     a flat panel), each window its own lamp (a little brighter or dimmer, warmer or whiter), and its light
     spilling onto the stone round it: a close glow and a wide faint one."""
     # frame (window_frame.png, painted with the Frame brush: a lantern's bars, mullions, leading): in front of
     # the light, so dark, and its glow doesn't light them either
     open_ = ImageChops.invert(frame.filter(ImageFilter.GaussianBlur(0.9))) if frame is not None else None
-    soft = cover.filter(ImageFilter.GaussianBlur(0.7))
-    if open_ is not None: soft = ImageChops.multiply(soft, open_)
-    sp = soft.load()
+    # soft (0 crisp .. 1 glowing: the Scene Builder's Softness): how far each window's edge fades (rounded, no corners)
+    # and how much glow spills round it; each window as bright in its middle however soft (peak, below)
+    softness = max(0.0, min(1.0, float(soft)))
+
     core = cover.filter(ImageFilter.GaussianBlur(1.6)); kp = core.load()
     ip = ids.load()
     peak = [1] * (ncell + 1)
@@ -112,45 +123,99 @@ def painted_light(cover, ids, ncell, colour, frame=None):
         for x in range(W):
             c = ip[x, y]
             if c > 0 and kp[x, y] > peak[c]: peak[c] = kp[x, y]
-    rng = random.Random(7)                                              # (the same lamps each time it's packed)
-    lamp = [(rng.uniform(0.7, 1.05), rng.uniform(0.0, 0.6)) for _ in range(ncell + 1)]
-    warm = (255, 205, 135)
-    lit = Image.new("RGB", (W, H)); lp = lit.load()
+    # how big each window is (its glass at 800x480): a tiny one (a ship's cabin, a far facade's) is a crisp point of
+    # light, as windows look from afar, with no soft edge and no glow round it (a glow bigger than the window is a smudge);
+    # a big one (a castle's, a lantern) keeps both; in between, a share of each (big: 0 for 6 px or less, 1 from 40 up)
+    cp_ = cover.load(); area = [0] * (ncell + 1)
     for y in range(H):
         for x in range(W):
             c = ip[x, y]
-            if c <= 0 or sp[x, y] < 6: continue
-            bright, w = lamp[c]
-            a = sp[x, y] / 255 * (0.45 + 0.55 * min(1.0, kp[x, y] / peak[c])) * 0.95 * bright
-            lp[x, y] = tuple(int((k + (q - k) * w) * a) for k, q in zip(colour, warm))
-    # (the glow from each window's brightness, not its amount of light: a small window glows as much as a big one)
-    near = lit.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.GaussianBlur(NEAR[0])).point(lambda v: int(v * NEAR[1]))
-    wide = lit.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.GaussianBlur(WIDE[0])).point(lambda v: int(v * WIDE[1]))
-    light = ImageChops.add(ImageChops.add(lit, near), wide)
+            if c > 0 and cp_[x, y] > 90: area[c] += 1
+    big = [min(1.0, max(0.0, (a - 6) / 34)) for a in area]
+    rng = random.Random(7)                                              # (the same lamps each time it's packed)
+    lamp = [(rng.uniform(0.7, 1.05), rng.uniform(0.0, 0.6)) for _ in range(ncell + 1)]
+    warm = (255, 205, 135)
+    # each window's own light, and round it its own halo: every pixel near the glass belongs to the nearest window
+    # and holds only that window's light, fading with the distance (a Gaussian: rounder and softer the softer the
+    # scene), so a window switching on or off takes its whole halo with it (a halo made from all the windows blurred
+    # together, owned pixel by pixel, left crescents and straight-cut edges when a neighbour was off). Big windows
+    # (a castle's) reach further and are brighter in the middle (a lamp inside).
+    import collections, math
+    col_of = [(0, 0, 0)] * (ncell + 1)
+    for c in range(1, ncell + 1):
+        bright, w = lamp[c]
+        col_of[c] = tuple((k + (q - k) * w) * bright * 0.95 for k, q in zip(colour, warm))
+    INF = 1 << 30
+    dist2 = [[INF] * W for _ in range(H)]; own = [[0] * W for _ in range(H)]
+    reach = [0] * (ncell + 1)
+    for c in range(1, ncell + 1): reach[c] = 1 + 3 * softness + 3 * big[c]
+    q = collections.deque()
+    for y in range(H):
+        for x in range(W):
+            c = ip[x, y]
+            if c > 0 and cp_[x, y] > 90: dist2[y][x] = 0; own[y][x] = c; q.append((x, y, x, y, c))
+    while q:
+        x, y, sx, sy, c = q.popleft()
+        r2 = reach[c] * reach[c]
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < W and 0 <= ny < H:
+                d2 = (nx - sx) ** 2 + (ny - sy) ** 2
+                if d2 <= r2 and d2 < dist2[ny][nx]: dist2[ny][nx] = d2; own[ny][nx] = c; q.append((nx, ny, sx, sy, c))
+    light = Image.new("RGB", (W, H)); lp = light.load()
+    owners = Image.new("I", (W, H)); op_ = owners.load()
+    for y in range(H):
+        drow, orow = dist2[y], own[y]
+        for x in range(W):
+            c = orow[x]
+            if not c: continue
+            b = big[c]
+            if drow[x] == 0:                                            # (the glass: a big window brighter in its middle)
+                a = 1.0 - 0.45 * b + 0.45 * b * min(1.0, kp[x, y] / peak[c])
+                # (its edge and corners dimmer, by the softness: a small window rounded, a lamp behind glass, not a square)
+                n = sum(1 for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1))
+                        if 0 <= x + dx < W and 0 <= y + dy < H and dist2[y + dy][x + dx] == 0 and own[y + dy][x + dx] == c)
+                a *= 1.0 - softness * 0.6 * (8 - n) / 8
+            else:
+                sig = 0.5 + 1.5 * softness + 1.5 * b
+                a = 0.6 * math.exp(-drow[x] / (2 * sig * sig))
+            if a < 0.02: continue
+            r, g, bl = col_of[c]
+            lp[x, y] = (int(r * a), int(g * a), int(bl * a)); op_[x, y] = c
     if open_ is not None:                                                # (a frame catches only a little of the glow behind it)
         keep = open_.point(lambda v: 40 + v * 215 // 255)
         light = ImageChops.multiply(light, Image.merge("RGB", (keep,) * 3))
-    return light
+    return light, owners
 
 
-def window_lights(glass, colour, thin=True, frame=None, groups=()):
+def window_lights(glass, colour, thin=True, frame=None, groups=(), found=(), soft=0.6):
     """lights.bin.gz's contents (VLT1): each lit pixel, its light, and its window; and the light picture.
     thin: the glass shrunk a pixel first (a render's mask: frames and tracery stay dark); not for windows
-    painted by hand (small ones would vanish)."""
+    painted by hand (small ones would vanish). found: the boxes "Find automatically" found ([x0, y0, x1, y1]):
+    each its own window though they touch (a facade's windows, a pixel apart at 800x480, would otherwise be
+    one light the size of the facade), and kept however small (not specks: they were found)."""
     glass = glass.convert("L").point(lambda v: 255 if v > 128 else 0)
     if thin: glass = glass.filter(ImageFilter.MinFilter(3))
     cover = glass.resize((W, H), Image.BOX); cp = cover.load()           # how much of each screen pixel is glass
+    box = [[0] * W for _ in range(H)]                                    # (each pixel's found box, 1-based; 0: none)
+    for i, b in enumerate(found or (), 1):
+        x0, y0, x1, y1 = (int(v) for v in b[:4])
+        for y in range(max(0, y0), min(H - 1, y1) + 1):
+            row = box[y]
+            for x in range(max(0, x0), min(W - 1, x1) + 1): row[x] = i
     cell = [[0] * W for _ in range(H)]; ncell = 1
     for y in range(H):
         for x in range(W):
             if cp[x, y] > 90 and not cell[y][x]:
-                stack, pts = [(y, x)], []; cell[y][x] = ncell
+                stack, pts = [(y, x)], []; cell[y][x] = ncell; b0 = box[y][x]
                 while stack:
                     cy, cx = stack.pop(); pts.append((cy, cx))
                     for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                         yy, xx = cy + dy, cx + dx
-                        if 0 <= yy < H and 0 <= xx < W and cp[xx, yy] > 90 and not cell[yy][xx]: cell[yy][xx] = ncell; stack.append((yy, xx))
-                if len(pts) < 4:                                     # (specks: not windows)
+                        # (a found window ends at its box: the next one over is its own)
+                        if 0 <= yy < H and 0 <= xx < W and cp[xx, yy] > 90 and not cell[yy][xx] and box[yy][xx] == b0:
+                            cell[yy][xx] = ncell; stack.append((yy, xx))
+                if len(pts) < 4 and not b0:                          # (specks: not windows; a found one is, however small)
                     for cy, cx in pts: cell[cy][cx] = -1
                 else: ncell += 1
     if groups:                                                           # (grouped: every window a box touches, one light)
@@ -188,7 +253,7 @@ def window_lights(glass, colour, thin=True, frame=None, groups=()):
             for x in range(W):
                 if cell[y][x] > 0: a = cp[x, y] / 255 * 0.85; lp[x, y] = tuple(int(c * a) for c in colour)
         light = ImageChops.add(lit, lit.filter(ImageFilter.GaussianBlur(2.5)).point(lambda v: int(v * 0.35)))
-    else: light = painted_light(cover, ids, ncell, colour, frame)
+    else: light, ids = painted_light(cover, ids, ncell, colour, frame, soft)   # (and which window each lit pixel is)
 
     ip, lp = ids.load(), light.load()
     idx, cel, rgb = [], [], bytearray()
@@ -461,7 +526,7 @@ def pack(work, out_dir, greeting=None, horizon=None, stars=True):
     out.gz("settings_bg.rgb.gz", plates["day"].filter(ImageFilter.GaussianBlur(14)).point(lambda v: int(v * 0.55)).tobytes())
     wp = os.path.join(work, "windows.png")
     if os.path.exists(wp): blob, light, n = window_lights(Image.open(wp), tuple(conf.get("light", (255, 168, 80))), not conf.get("windows_painted"),
-                                                          frame_picture(work), window_groups(work))
+                                                          frame_picture(work), window_groups(work), windows_found(work), conf.get("window_soft", 0.6))
     elif conf.get("lights_fixed") and os.path.exists(os.path.join(work, conf["lights_fixed"])):
         # (window light made elsewhere, as it was: the cruise's cabins, until its windows are edited here)
         blob = gzip.open(os.path.join(work, conf["lights_fixed"])).read(); light, n = lights_picture(blob)
@@ -483,6 +548,9 @@ def pack(work, out_dir, greeting=None, horizon=None, stars=True):
         if "smoke" not in effects: effects.append("smoke")
         theme["smoke"] = conf["smoke"]
     if conf.get("birds") and "birds" not in effects: effects.append("birds")
+    if conf.get("dolphins", {}).get("points"):                           # (dolphins: where a pod leaps, by day)
+        if "dolphins" not in effects: effects.append("dolphins")
+        theme["dolphins"] = conf["dolphins"]
     if conf.get("fireflies", {}).get("points"):                          # (fireflies: zones they wander in, from dusk)
         if "fireflies" not in effects: effects.append("fireflies")
         theme["fireflies"] = conf["fireflies"]
@@ -490,6 +558,7 @@ def pack(work, out_dir, greeting=None, horizon=None, stars=True):
         if "mist" not in effects: effects.append("mist")
         theme["mist"] = conf["mist"]
     if conf.get("fireworks") is False: theme["fireworks"] = False       # (a scene without fireworks: a trail, a city)
+    if conf.get("lights_on") is not None: theme["lights_on"] = conf["lights_on"]   # (windows lit at once: the Scene Builder's)
     if conf.get("foam", {}).get("points"):                               # (white water: a waterfall's foot, rapids, surf)
         if "foam" not in effects: effects.append("foam")
         theme["foam"] = conf["foam"]

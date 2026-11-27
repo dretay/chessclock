@@ -23,11 +23,12 @@ LOCAL_FP = os.path.join(HERE, "..", "lib", "protoboard.pretty")
 OX, OY = 100.0, 60.0          # board origin on the page (mm)
 BW = float(os.environ.get("BOARD_W", 118.0))   # board size (panel 120.7 x 75.8, board centred sideways)
 BH = float(os.environ.get("BOARD_H", 72.5))    # extra height goes to the bottom (prototyping) edge only:
-                                               # the top edge is fixed by the LCD ribbon fold
+                                               # the top (front) edge takes the LCD ribbon
 SX = (BW - 110.0) / 2         # wider board: panel-relative parts (SoC, FPC, ribbon) shift right by SX
 EY = BH - 70.0                # taller board: the prototyping half shifts down by EY
 DX = 10.0 + SX                # board grew 10 mm each side vs the 90 mm spec: panel-relative parts shift by DX
-PLACE_GAP = float(os.environ.get("PLACE_GAP", 0.2))             # extra clearance around every auto-placed part (routing room)
+SD_SIDE = os.environ.get("SD_SIDE") == "1"   # microSD on the right edge instead of the back edge
+PLACE_GAP = float(os.environ.get("PLACE_GAP", 0.25))             # extra clearance around every auto-placed part (routing room)
 CHIP_Y = 40.0 + EY            # bottom of the chip half
 MM = pcbnew.FromMM
 
@@ -113,13 +114,26 @@ def main(netpath, outpath):
 
     val = lambda v: (lambda c: c["value"] == v)
     fixed = {}
-    fixed[one(val("F1C200s"), "SoC")] = (44.0 + DX, 15.0, 0)
-    fixed[one(val("LCD 40P top-contact"), "FPC")] = (21.0 + DX, 30.5, 180)
-    fixed[one(val("USB-C (power, OTG, FEL)"), "USB")] = (4.0, 16.0, 270)
-    fixed[one(val("microSD push-push"), "SD")] = (84.0, 9.0, 180)
-    fixed[one(val("ESP32-C3 SuperMini"), "ESP")] = (BW - 11.7, 27.6, 90)
-    fixed[one(val("RESET"), "reset")] = (77.0, 31.0, 0)
-    fixed[one(val("FEL"), "fel")] = (77.0, 22.5, 0)
+    # The front (chip) half is laid out mirrored left-right (MX): seen from the front, the
+    # panel's ribbon leaves 26 mm from its LEFT edge, which is the board's right side seen
+    # from above with the front edge at the top. The SoC turns 90 degrees so its LCD pins
+    # (left and bottom sides at 0 deg) face the connector below-right of it.
+    MX = lambda x: BW - x
+    SOC_ROT = int(os.environ.get("SOC_ROT", 180))
+    fixed[one(val("F1C200s"), "SoC")] = (MX(44.0 + DX), 15.0, SOC_ROT)
+    # the board lies flat in the stand's base, front (top) edge at the panel: the ribbon drops
+    # onto that edge, lies over the chip half and runs into the connector ~30 mm back
+    fpc = one(val("LCD 40P bottom-contact"), "FPC")
+    fixed[fpc] = (MX(21.0 + DX), 30.5, 180)
+    # USB-C (power + OTG/FEL) on the back edge, where the stand is powered from
+    fixed[one(val("USB-C (power, OTG, FEL)"), "USB")] = (BW - 13.0, BH - 4.0, 0)
+    if SD_SIDE:     # right edge, card in from the right, between the LCD connector and the USB-C
+        fixed[one(val("microSD push-push"), "SD")] = (BW - 9.0, float(os.environ.get("SD_Y", 44.5)), 90)
+    else:           # back edge, card in from the back (routes better: 5 vs 19 unconnected)
+        fixed[one(val("microSD push-push"), "SD")] = (BW - 26.7, BH - 9.0, 0)
+    fixed[one(val("ESP32-C3 SuperMini"), "ESP")] = (11.7, 27.6, 270)          # antenna at the left edge
+    fixed[one(val("RESET"), "reset")] = (MX(77.0), 31.0, 0)
+    fixed[one(val("FEL"), "fel")] = (MX(77.0), 22.5, 0)
     holes = sorted(find_ref(val("M3")))
     for r, (x, y) in zip(holes, [(3.5, 3.5), (BW - 3.5, 3.5), (3.5, BH - 3.5), (BW - 3.5, BH - 3.5)]):
         fixed[r] = (x, y, 0)
@@ -132,12 +146,9 @@ def main(netpath, outpath):
         fixed[r] = (x, 42.0 + EY, 90)
         x += (n + 1) * G
     fixed[one(val("GPIO"), "gpio")] = (5.0, 46.0 + EY, 90)
-    qwiics = sorted(find_ref(val("Qwiic")), key=lambda s: int(s[1:]))
-    for i, r in enumerate(qwiics):
-        fixed[r] = (BW - 4.0, 42.3 + EY + i * 8.2, 90)     # cable opening faces the right board edge
     for i, v in enumerate(("RAIL 5V", "RAIL 3V3", "RAIL GND")):
         fixed[one(val(v), v)] = (9.5, BH - 7.8 + i * G, 0)
-    fixed[one(val("5V IN"), "5V in")] = (96.0 + 2 * SX, BH - 5.4, 0)
+    fixed[one(val("5V IN"), "5V in")] = (BW - (25.2 if SD_SIDE else 41.0), BH - 5.4, 0)   # back edge: rails | 5V IN | (microSD) | USB-C
 
     board = pcbnew.BOARD()
     board.SetCopperLayerCount(4)
@@ -213,9 +224,10 @@ def main(netpath, outpath):
         fps[c["ref"]] = fp
 
     # protogrid (board-only)
-    grid = load_fp("protoboard:Protogrid_38x5_P2.54mm")
+    GRID_C = 38 if SD_SIDE else 31          # microSD on the back edge takes the grid's right end
+    grid = load_fp("protoboard:Protogrid_%dx5_P2.54mm" % GRID_C)
     grid.SetReference("PROTO1")
-    grid.SetValue("38 x 5 grid")
+    grid.SetValue("%d x 5 grid" % GRID_C)
     grid.Reference().SetVisible(False)
     board.Add(grid)
     grid.SetPosition(V(4.0, 49.6 + EY))
@@ -228,9 +240,6 @@ def main(netpath, outpath):
         fp = fps[ref]
         fp.SetOrientationDegrees(rot)
         fp.SetPosition(V(x, y))
-        if ref in qwiics:                  # front flush with the board edge
-            bb = bbox_mm(fp, 0)
-            fp.SetPosition(V(x + (BW - 0.35) - bb[2], y))
         placed.append(bbox_mm(fp, 0.1))
 
     # ------------------------------------------------------------ silk labels
@@ -288,7 +297,6 @@ def main(netpath, outpath):
             silk(lab, x, y + 2.0 if below else y - 2.0, SZ)
         x0 = min(p[1] for p in ps)
         silk(title, x0 - 2.54, ps[0][2], SZ, 90)
-    silk("QWIIC", BW - 8.0, 50.5 + EY, SZ, 90)
     for i, s_ in enumerate(("5V", "3V3", "GND")):
         silk(s_, 6.4, BH - 7.8 + i * G, SZ, reserve=False)
 
@@ -306,11 +314,11 @@ def main(netpath, outpath):
     bb5 = bbox_mm(fps[r5], 0)
     silk("5V IN", (bb5[0] + bb5[2]) / 2, bb5[1] - 0.8, SZ)
     # the silk titles name these connectors: designators go to the assembly drawing
-    for v in list(TITLES) + ["Qwiic", "RAIL 5V", "RAIL 3V3", "RAIL GND", "5V IN"]:
+    for v in list(TITLES) + ["RAIL 5V", "RAIL 3V3", "RAIL GND", "5V IN"]:
         for r in find_ref(val(v)):
             fps[r].Reference().SetLayer(pcbnew.F_Fab)
-    label_fixed("LCD 40P top-contact", "LCD  (pin 1 right)", 0, 0)
-    label_fixed("USB-C (power, OTG, FEL)", "USB", 4.0, 7.0)
+    label_fixed("LCD 40P bottom-contact", "LCD  (pin 1 right)", 0, 0)
+    label_fixed("USB-C (power, OTG, FEL)", "USB", 0, -6.5)
 
     # purpose labels for auto-placed parts: value -> (text, side)
     PURPOSE = {"Speaker L": ("SPK L +-", "b"), "Speaker R": ("SPK R +-", "b"), "MIC": ("MIC + G", "b"),
@@ -355,14 +363,14 @@ def main(netpath, outpath):
         else:
             silk(t, bb[2] + 0.2, (bb[1] + bb[3]) / 2, SZ, just="l", reserve=False)
 
-    # antenna keep-out (no copper, all layers) at the right edge
+    # antenna keep-out (no copper, all layers) at the left edge
     # antenna keep-out: beyond the last pin pair and between the pin rows at the
     # antenna end - the pins themselves must stay reachable
     esp = fps[one(val("ESP32-C3 SuperMini"), "ESP")]
     ep = [(pcbnew.ToMM(p.GetPosition().x) - OX, pcbnew.ToMM(p.GetPosition().y) - OY) for p in esp.Pads()]
-    ex = max(p[0] for p in ep)
+    ex = min(p[0] for p in ep)
     ey0, ey1 = min(p[1] for p in ep), max(p[1] for p in ep)
-    ant = (ex - 4.0, ey0 + 1.4, BW, ey1 - 1.4)
+    ant = (0.0, ey0 + 1.4, ex + 4.0, ey1 - 1.4)
     ra = pcbnew.ZONE(board)
     ra.SetIsRuleArea(True)
     ra.SetDoNotAllowTracks(True)
@@ -386,21 +394,26 @@ def main(netpath, outpath):
     ring = float(os.environ.get("QFN_RING", 2.0))
     placed.append((sb[0] - ring, sb[1] - ring, sb[2] + ring, sb[3] + ring))
     # band behind the LCD connector's pad row: all 22 LCD lines arrive from there
-    lcd = fps[one(val("LCD 40P top-contact"), "FPC")]
+    lcd = fps[fpc]
     lp = [(pcbnew.ToMM(p.GetPosition().x) - OX, pcbnew.ToMM(p.GetPosition().y) - OY) for p in lcd.Pads() if p.GetNumber() != "MP"]
     lx0, lx1 = min(p[0] for p in lp), max(p[0] for p in lp)
     ly = max(p[1] for p in lp)
     placed.append((lx0 - 1.0, ly - 0.5, lx1 + 1.0, ly + 3.0))
-    # LCD fan-out: the 22 lines run from the SoC's left and bottom pins down-left to the
-    # connector, and HSYNC/VSYNC/DE/CLK (bottom pins, far end of the connector) cross under
-    # the RGB lines on vias - keep this area free of parts
-    fan = (lx1 - 5.0, sb[1] + 4.0, sb[0] - ring, ly - 0.5)
+    # LCD fan-out: the 22 lines run from the SoC's bottom and right pins down-right to the
+    # connector, and HSYNC/VSYNC/DE/CLK (far end of the connector) cross the RGB lines on
+    # vias - keep this area free of parts
+    if SOC_ROT == 90:
+        fan = (sb[2] + ring, sb[1] + 4.0, lx0 + 5.0, ly - 0.5)
+    elif SOC_ROT == 180:       # LCD pins on the right and top sides
+        fan = (sb[2] + ring, sb[1] - ring, lx0 + 5.0, ly - 0.5)
+    else:                      # 0: LCD pins on the left and bottom sides, the lines pass under the chip
+        fan = (sb[0] - ring, sb[3] + ring, lx0 + 5.0, ly - 0.5)
     placed.append(fan)
-    # the folded LCD ribbon lies on the board face (DESIGN.md): its wide section over the
-    # first ~12 mm from the top edge, its tail down to the connector. Only low SMD parts there.
-    # (+2.5 mm margin: the ribbon size is measured by hand, not from a drawing)
+    # the ribbon lies on the board face from the front edge to the connector (DESIGN.md): its
+    # wide section over the first ~19 mm, its tail down to the connector. Only low SMD parts
+    # there (+2.5 mm margin: the ribbon size is measured by hand, not from a drawing)
     RM = 2.5
-    RIBBON = [(DX + 10.6 - RM, 0.0, DX + 57.6 + RM, 12.0 + RM), (lx0 - 1.0 - RM, 0.0, lx1 + 1.0 + RM, ly)]
+    RIBBON = [(MX(DX + 57.6 + RM), 0.0, MX(DX + 10.6 - RM), 19.0 + RM), (lx0 - 1.0 - RM, 0.0, lx1 + 1.0 + RM, ly)]
 
     # ------------------------------------------------------------ auto placement
     def pad_xy(fp, pad):
@@ -434,18 +447,20 @@ def main(netpath, outpath):
     hint = {}
 
     def hint_val(v, xy):
-        if xy:      # chip-half hints follow the SoC sideways, proto-half ones follow the bottom edge
-            xy = (xy[0] + SX, xy[1]) if xy[1] < 40.0 else (xy[0] + 2 * SX, xy[1] + EY)
+        if xy:      # chip-half hints follow the SoC (mirrored), proto-half ones follow the bottom edge
+            xy = (MX(xy[0] + SX), xy[1]) if xy[1] < 40.0 else (xy[0] + 2 * SX, xy[1] + EY)
         for r in find_ref(val(v)):
             hint[r] = xy
     hint_val("SY8089AAAC", None)
     bucks = sorted(find_ref(val("SY8089AAAC")), key=lambda s: int(s[1:]))
-    for r, xy in zip(bucks, [(14.0, 4.5), (26.0, 4.5), (38.0, 4.5)]):
-        hint[r] = xy
+    # +1V1, +2V5, +3V3 bucks along the front edge (unmirrored x), the core supply nearest the SoC
+    bx = [float(v) for v in os.environ.get("BUCK_X", "14,26,38").split(",")]
+    for r, x in zip(bucks, bx):
+        hint[r] = (MX(x), 4.5)
     hint_val("LN6206P302", (45.0, 10.0))     # clear of the LCD fan-out
     hint_val("PT4103", (18.0, 24.0))
     hint_val("NS2009", (26.0, 23.0))
-    hint_val("USBLC6-2SC6", (11.0, 14.0))
+    hint_val("USBLC6-2SC6", (97.0, 57.0))  # just inside the back-edge USB-C
     hint_val("AO3401A", (93.0, 58.5))
     hint_val("TCA9535PWR", (62.0, 29.0))
     hint_val("74LVC244", (68.0, 8.0))
@@ -594,6 +609,42 @@ def main(netpath, outpath):
     board.Add(ko)
     if os.environ.get("PLANE_3V3"):
         plane(pcbnew.In2_Cu, "+3V3")          # variant A: solid +3V3 plane, signals on F/B only
+    if os.environ.get("PLANE_1V1") == "1":
+        # +1V1 (core) area on In2 from its buck's inductor to under the SoC: the router reaches it
+        # with a via per pin, like the GND plane. Priority over the post-route +3V3 pour.
+        lv = [fps[r] for r in fps if r.startswith("L") and any(pinnet.get((r, p.GetNumber())) == "+1V1" for p in fps[r].Pads())]
+        xs = [bbox_mm(f, 0) for f in lv] + [sb]
+        z = pcbnew.ZONE(board)
+        z.SetLayer(pcbnew.In2_Cu)
+        z.SetNet(netobj["+1V1"])
+        z.SetAssignedPriority(1)
+        z.SetLocalClearance(MM(0.3))
+        z.SetMinThickness(MM(0.2))
+        z.SetPadConnection(pcbnew.ZONE_CONNECTION_THERMAL)
+        x0, x1 = min(b[0] for b in xs) - 1.0, max(b[2] for b in xs) + 1.0
+        y0, y1 = 0.5, sb[3] + 1.0
+        o = z.Outline()
+        o.NewOutline()
+        for px, py in ((x0, y0), (x1, y0), (x1, y1), (x0, y1)):
+            o.Append(MM(OX + px), MM(OY + py))
+        z.SetZoneName("+1V1 plane")
+        board.Add(z)
+    # 0.5 mm no-track strip inside the board edge (the router otherwise hugs the edge)
+    for ex0, ey0, ex1, ey1 in ((0, 0, BW, 0.5), (0, BH - 0.5, BW, BH), (0, 0, 0.5, BH), (BW - 0.5, 0, BW, BH)):
+        ek = pcbnew.ZONE(board)
+        ek.SetIsRuleArea(True)
+        ek.SetDoNotAllowTracks(True)
+        ek.SetDoNotAllowVias(True)
+        ek.SetDoNotAllowZoneFills(False)
+        ek.SetDoNotAllowPads(False)
+        ek.SetDoNotAllowFootprints(False)
+        ek.SetLayerSet(pcbnew.LSET.AllCuMask())
+        eo = ek.Outline()
+        eo.NewOutline()
+        for px, py in ((ex0, ey0), (ex1, ey0), (ex1, ey1), (ex0, ey1)):
+            eo.Append(MM(OX + px), MM(OY + py))
+        ek.SetZoneName("edge keep-out")
+        board.Add(ek)
     # otherwise In2 carries signals and route.py pours +3V3 into what is left after routing
 
     silk("F1C200s protoboard v0.1", 45, BH - 1.0, 0.8, layer=pcbnew.B_SilkS, reserve=False)

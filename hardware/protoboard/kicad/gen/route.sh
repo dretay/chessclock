@@ -22,6 +22,8 @@ F="grep -v wxApp\|traits\|swig\|Debug"
 python3 "$ROOT/gen/dsn_patch.py" "$C/protoboard.dsn"
 "${JAVA:-java}" -jar "$JAR" -de "$C/protoboard.dsn" -dr "$RULES" -do "$C/protoboard.ses" -mp "${1:-40}" --gui.enabled=false
 "$KPY" "$ROOT/gen/route.py" import "$B" "$C/protoboard.ses" 2>&1 | $F
+kicad-cli pcb drc --format json "$B" -o "$C/drc.json" >/dev/null 2>&1 || true
+"$KPY" "$ROOT/gen/viafix.py" "$B" "$C/drc.json" +1V1 In2.Cu 2>&1 | grep "vias added"   # +1V1 into its In2 area
 for i in 1 2; do   # a second round: removing a via can leave its neighbour dangling
   kicad-cli pcb drc --format json "$B" -o "$C/drc.json" >/dev/null 2>&1 || true
   "$KPY" "$ROOT/gen/route.py" clean "$B" "$C/drc.json" 2>&1 | grep "removed"

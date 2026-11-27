@@ -103,7 +103,7 @@
   <div class="row note"><button id="foldall">Collapse all</button><button id="openall">Expand all</button></div>
   <label class="check"><input type="checkbox" id="stay" checked><span>Stay on the scene (the app's other screens wait; a tap still shows them)</span></label>
   <div class="row note">Zoom <button id="zout">−</button><button id="zin">+</button><button id="zfit">Fit</button></div>
-  <label class="check"><input type="checkbox" id="origphoto" checked><span>Zoomed in, show the original photo (sharper; untick to see the scene as the device draws it)</span></label>
+  <label class="check"><input type="checkbox" id="origphoto"><span>Zoomed in while painting, show the original photo (sharper, but daytime: no lights)</span></label>
   <p class="note" style="margin-top:-10px">Or the mouse wheel or a pinch on the picture; the middle button, or two fingers, to move around.</p>
   <div id="status"></div>
 
@@ -164,14 +164,25 @@
       <p class="note" id="winstate">Paint the glass that glows at night; each patch is a window, switching on and off on its own.</p>
       <div class="row"><button id="wauto">Find automatically</button><button id="wshow">Show all</button><button id="wclear">Clear all</button></div>
       <div class="row">
-        <button id="wpaint">Paint</button><button id="wrect">Rectangle</button><button id="werase">Erase</button><button id="wgroup" title="Drag a box over several windows: they switch on and off together, as one light">Group</button><button id="wbehind" title="Drag a box round a lantern or window: its dark parts (the bars, the frame) go in front of the light">Behind</button><button id="wframe" title="Paint a window's frame, bars or leading: it stays dark in front of the light">Frame</button><button id="wdone">Done</button>
+        <button id="wpaint">Paint</button><button id="wrect">Rectangle</button><button id="wgrid" title="Drag a box over rows of cabins or a facade too far to make out: it fills with a grid of small windows, each its own light">Grid</button><button id="werase">Erase</button><button id="wgroup" title="Drag a box over several windows: they switch on and off together, as one light">Group</button><button id="wbehind" title="Drag a box round a lantern or window: its dark parts (the bars, the frame) go in front of the light">Behind</button><button id="wframe" title="Paint a window's frame, bars or leading: it stays dark in front of the light">Frame</button><button id="wdone">Done</button>
       </div>
+      <div class="row note">Grid cells <select id="wgridcell"><option value="2,2">Tiny</option><option value="3,2" selected>Small</option><option value="4,3">Medium</option></select></div>
       <div class="row note">Brush <select id="wbrush"><option value="1">Fine</option><option value="3">Small</option><option value="6" selected>Medium</option><option value="10">Large</option></select>
         <button id="wundo">Undo</button></div>
+      <div class="row note">Lit at once <select id="wlit" title="How many windows are lit at a time (they still switch on and off)"><option value="">Automatic</option>
+        <option value="0.15">A few</option><option value="0.3">Some</option><option value="0.5">Half</option><option value="0.75">Most</option><option value="1">All</option></select></div>
+      <div class="row note">Softness <input type="range" id="wsoft" min="0" max="100" step="5" value="60" style="flex:1"> <span id="wsoftv">60</span></div>
       <div class="row note">Light <select id="wcolour"><option value="255,168,80">Warm</option><option value="255,200,120">Lamplight</option>
         <option value="255,238,210">White</option><option value="180,210,255">Cool</option></select> <button id="wcset">Set</button></div>
     </div>
     <p class="group">Water</p>
+    <div class="effect" id="dolphcard">
+      <h3>Dolphins</h3>
+      <p class="note" id="dolphstate">Now and then by day, a small pod leaps out of the water: click where.</p>
+      <div class="row"><button id="dolphplace">Place them</button><button id="dolphdone">Done</button><button id="dolphclear">Clear</button></div>
+      <div class="row"><button id="dolphnow">Some now</button>
+        <span class="note">Heading <select id="dolphdir"><option value="right" selected>Right</option><option value="left">Left</option></select></span></div>
+    </div>
     <div class="effect" id="water">
       <h3>Water</h3>
       <p class="note" id="waterstate">Paint where there's water (a lake, the sea, a fountain): it ripples, gently or choppily.</p>
@@ -188,7 +199,7 @@
     <div class="effect" id="foamcard">
       <h3>Foam</h3>
       <p class="note" id="foamstate">White water at points you place: a waterfall's foot, rapids, surf.</p>
-      <div class="row"><button id="foplace">Place foam</button><button id="fodone">Done</button><button id="foclear">Clear</button></div>
+      <div class="row"><button id="foplace">Place foam</button><button id="fodone">Done</button><button id="foundo">Undo</button><button id="foclear">Clear</button></div>
       <div class="row note">Size <select id="fosize"><option value="6">Small</option><option value="12" selected>Medium</option><option value="24">Large</option></select>
         Flow <select id="foflow"><option value="still" selected>Churning</option><option value="left">Drifting left</option><option value="right">Drifting right</option>
         <option value="falling">Falling</option><option value="toward">Toward you</option></select></div>
@@ -199,7 +210,9 @@
     <div class="effect" id="smokecard">
       <h3>Smoke</h3>
       <p class="note" id="smokestate">Rising from points you place: a campfire, a chimney.</p>
-      <div class="row"><button id="smplace">Place smoke</button><button id="smdone">Done</button><button id="smclear">Clear</button></div>
+      <div class="row"><button id="smplace">Place smoke</button><button id="smdone">Done</button><button id="smundo">Undo</button><button id="smclear">Clear</button></div>
+      <div class="row"><button id="smbehind" title="Drag a box round what the smoke passes behind (a building, trees, a ship's decks): there it shows only against the sky">Behind</button>
+        <button id="smbehindclear">Clear behind</button><span class="note" id="smbehindn"></span></div>
       <div class="row note">Size <select id="smscale"><option value="0.5">Wisp</option><option value="0.8" selected>Normal</option><option value="1.3">Big</option></select>
         Wind <select id="smwind"><option value="0" selected>Still</option><option value="-1">Left</option><option value="1">Right</option></select></div>
       <div class="row note">Thickness <select id="smrate"><option value="2">Light</option><option value="4" selected>Normal</option><option value="8">Heavy</option></select>
@@ -226,7 +239,7 @@
     <div class="effect" id="fflycard">
       <h3>Fireflies</h3>
       <p class="note" id="fflystate">Now and then after dusk, a few soft glows wander and blink: click where they gather (trees, a meadow, the water's edge).</p>
-      <div class="row"><button id="ffplace">Place fireflies</button><button id="ffdone">Done</button><button id="ffclear">Clear</button></div>
+      <div class="row"><button id="ffplace">Place fireflies</button><button id="ffdone">Done</button><button id="ffundo">Undo</button><button id="ffclear">Clear</button></div>
       <div class="row"><button id="ffnow">Some now</button><span class="note">(they come out now and then, from dusk)</span></div>
       <div class="row note">Area <select id="ffsize"><option value="20">Small</option><option value="40" selected>Medium</option><option value="80">Large</option></select>
         How many <select id="ffamount"><option value="0.5">A few</option><option value="1" selected>Some</option><option value="2">Lots</option></select></div>
@@ -320,7 +333,13 @@ function render(s) {
   }
   $("birds").checked = !!s.birds;
   $("fwon").checked = s.fireworks !== false;
-  const ff = s.fireflies || {}, mi = s.mist || {};
+  const ff = s.fireflies || {}, mi = s.mist || {}, dol = s.dolphins || {};
+  { const nb = ((s.smoke || {}).behind || []).length; $("smbehindn").textContent = nb ? `behind in ${nb} box${nb > 1 ? "es" : ""}` : ""; }
+  if (document.activeElement !== $("wsoft")) { const v = Math.round(((s.conf || {}).window_soft ?? 0.6) * 100); $("wsoft").value = v; $("wsoftv").textContent = v; }
+  if (!$("dolphplace").classList.contains("primary"))
+    $("dolphstate").textContent = (dol.points || []).length ? `Leaping at ${dol.points[0][0]}, ${dol.points[0][1]}, heading ${dol.dir || "right"}, now and then by day.` : "Now and then by day, a small pod leaps out of the water: click where.";
+  if (document.activeElement !== $("dolphdir") && dol.dir) $("dolphdir").value = dol.dir;
+  if (document.activeElement !== $("wlit")) $("wlit").value = s.lights_on == null ? "" : String(s.lights_on);
   if (!$("ffplace").classList.contains("primary"))
     $("fflystate").textContent = ff.points && ff.points.length ? `Gathering in ${ff.points.length} place${ff.points.length > 1 ? "s" : ""}, from dusk.` : "Soft glows wandering and blinking, from dusk: click where they gather (trees, a meadow, the water's edge).";
   if (!$("mistdraw").classList.contains("primary"))
@@ -336,7 +355,7 @@ function render(s) {
     badge("Window lights", s.windows_found || s.window_edits ? "on" : "");
     badge("Water", s.water_found || s.water_edits ? "on" : "");
     badge("Smoke", n(sm.points, "source")); badge("Foam", n(fo0.points, "point")); badge("Birds", s.birds ? "on" : "");
-    badge("Fireflies", n((s.fireflies || {}).points, "place")); badge("Mist", (s.mist || {}).box ? "on" : ""); badge("Fireworks", s.fireworks === false ? "off" : "on");
+    badge("Fireflies", n((s.fireflies || {}).points, "place")); badge("Dolphins", (s.dolphins || {}).points ? "on" : ""); badge("Mist", (s.mist || {}).box ? "on" : ""); badge("Fireworks", s.fireworks === false ? "off" : "on");
   }
   const fo = s.foam || {};
   if (!$("foplace").classList.contains("primary"))
@@ -359,7 +378,7 @@ function render(s) {
   for (const t of s.trials) cards.appendChild(card(t.name, t.name, t.current, t.current ? "showing" : "trial"));
   if (!s.kept && !s.trials.length) cards.insertAdjacentHTML("beforeend", '<p class="note">No photos yet: drop one above.</p>');
   // layout, for the scene showing
-  $("layoutfor").textContent = s.showing ? `· ${s.showing}` : "· the app's scene";
+  $("layoutfor").textContent = s.showing ? `· the photo you're trying (${s.showing})` : "· the app's scene";
   if (document.activeElement.type !== "number") {
     const k = s.cards || {};
     if (document.activeElement !== $("lstyle")) $("lstyle").value = (s.conf || {}).card_style || "parchment";
@@ -369,7 +388,7 @@ function render(s) {
     $("lsize").value = Math.round((k.scale ?? 1) * 100);
   }
   // effects, for the scene showing
-  $("effectsfor").textContent = s.showing ? `· ${s.showing}` : "· the app's scene";
+  $("effectsfor").textContent = s.showing ? `· the photo you're trying (${s.showing})` : "· the app's scene";
   const c = s.conf || {}, o = c.orb;
   $("orbstate").textContent = o ? `${s.lights} lights, on the circle at ${o.cx}, ${o.cy}, radius ${o.r}.` : "None in this scene.";
   if (document.activeElement.type !== "number") {
@@ -381,7 +400,7 @@ function render(s) {
     $("patterns").innerHTML = PATTERNS.map(([n, , t]) => `<label><input type="checkbox" value="${n}" ${prog.includes(n) ? "checked" : ""}> ${t}</label>`).join("");
   for (const id of ["orboff", "orbshow", "showset", "undo", "editmode", "hold"]) $(id).disabled = !o;
   const photoScene = !!(c && c.photo);
-  for (const id of ["wauto", "wpaint", "wrect", "werase", "wbehind", "wgroup", "wframe", "wdone", "wcset", "wundo"]) $(id).disabled = !photoScene;
+  for (const id of ["wauto", "wpaint", "wrect", "wgrid", "werase", "wbehind", "wgroup", "wframe", "wdone", "wcset", "wundo"]) $(id).disabled = !photoScene;
   $("wshow").disabled = !photoScene || !(s.windows_found || s.window_edits);
   $("wclear").disabled = !photoScene || !(s.windows_found || s.window_edits);
   for (const id of ["qauto", "qpaint", "qrect", "qerase", "qdone", "qset", "qundo"]) $(id).disabled = !photoScene;
@@ -395,10 +414,10 @@ function render(s) {
     $("qstrength").value = String(c.water.strength ?? 1); $("qspeed").value = String(c.water.speed ?? 1);
   }
   if (!photoScene) $("winstate").textContent = "Painting works on a scene made from a photo.";
-  else if (!["wpaint", "wrect", "werase", "wbehind", "wgroup", "wframe"].some(id => $(id).classList.contains("primary")))
+  else if (!["wpaint", "wrect", "wgrid", "werase", "wbehind", "wgroup", "wframe"].some(id => $(id).classList.contains("primary")))
     $("winstate").textContent = (s.windows_found ? "Windows found automatically, " : "") + (s.window_edits ? `${s.window_edits} edits of yours (Undo takes the last back).`
       : s.windows_found ? "touch them up with Paint, Rectangle or Erase." : "Find them automatically, or paint the glass that glows at night.");
-  if (c.lights_fixed && !s.window_edits && !["wpaint", "wrect", "werase", "wbehind", "wgroup", "wframe"].some(id => $(id).classList.contains("primary")))
+  if (c.lights_fixed && !s.window_edits && !["wpaint", "wrect", "wgrid", "werase", "wbehind", "wgroup", "wframe"].some(id => $(id).classList.contains("primary")))
     $("winstate").textContent = "Its lights are its own, made with it (the cruise's cabins, each switching as a cabin). Editing windows here replaces them with painted ones (Undo every edit to get them back).";
 }
 $("hold").innerHTML = `<option value="-1">All in turn</option>` + PATTERNS.map(([, id, t]) => `<option value="${id}">${t}</option>`).join("");
@@ -420,13 +439,17 @@ function setMode(m) {
     const c = (S && S.cards) || {}, size = (S && S.card_size) || [138, 192], k = c.scale || 1;   // (the outline: the cards at their size)
     const brush = m.startsWith("q") ? +$("qbrush").value : +$("wbrush").value;
     native.postMessage({ editMode: m, cardW: Math.round(size[0] * k), cardH: Math.round(size[1] * k), gap: c.gap || 12, brush,
+                         cell: $("wgridcell").value.split(",").map(Number),
                          horizon: (S && S.horizon) || 400, cardX: c.center_x ?? 170, cardTop: c.top ?? 16 });
   }
-  for (const id of ["wpaint", "wrect", "werase", "wbehind", "wgroup", "wframe", "qpaint", "qrect", "qerase"]) $(id).classList.toggle("primary", m === id);
-  windowMode = ["wpaint", "wrect", "werase", "wbehind", "wgroup", "wframe"].includes(m); holdWindows();
+  for (const id of ["wpaint", "wrect", "wgrid", "werase", "wbehind", "wgroup", "wframe", "qpaint", "qrect", "qerase"]) $(id).classList.toggle("primary", m === id);
+  windowMode = ["wpaint", "wrect", "wgrid", "werase", "wbehind", "wgroup", "wframe"].includes(m); holdWindows();
   $("smplace").classList.toggle("primary", m === "smokeadd");
   $("foplace").classList.toggle("primary", m === "foamadd");
   $("ffplace").classList.toggle("primary", m === "fflyadd"); $("mistdraw").classList.toggle("primary", m === "mistbox");
+  $("dolphplace").classList.toggle("primary", m === "dolphadd");
+  $("smbehind").classList.toggle("primary", m === "smokebehind");
+  if (m === "dolphadd") $("dolphstate").textContent = !native ? "In a browser, placing needs the App Preview window." : "Click on the water where they leap.";
   if (m === "fflyadd") { night(); $("fflystate").textContent = !native ? "In a browser, placing needs the App Preview window." : "Click where fireflies gather (up to 16 places)."; }
   if (m === "mistbox") $("miststate").textContent = !native ? "In a browser, drawing needs the App Preview window." : "Drag a box over where the mist lies (a valley floor, a lake): it fades out at the box's edges.";
   { const b = { fflyadd: "ffplace", mistbox: "mistdraw" }[m]; if (b) { const e = $(b).closest(".effect"); if (e && e._fold) e._fold(false); } }
@@ -457,9 +480,12 @@ $("editmode").onchange = () => { const m = $("editmode").value; if (m) night(); 
 $("mcards").onclick = () => setMode("cards");
 $("mhorizon").onclick = () => setMode("horizon");
 $("mdone").onclick = () => setMode("");
-for (const id of ["wpaint", "wrect", "werase", "wbehind", "wgroup", "wframe"]) $(id).onclick = () => setMode(id);
+for (const id of ["wpaint", "wrect", "wgrid", "werase", "wbehind", "wgroup", "wframe"]) $(id).onclick = () => setMode(id);
+$("wgridcell").onchange = () => { if ($("wgrid").classList.contains("primary")) setMode("wgrid"); };   // (the new size, for the next box)
 $("wdone").onclick = () => setMode("");
 $("wbrush").onchange = () => { const on = ["wpaint", "werase", "wbehind", "wgroup", "wframe"].find(id => $(id).classList.contains("primary")); if (on) setMode(on); };
+$("wsoft").oninput = () => { $("wsoftv").textContent = $("wsoft").value; };
+$("wsoft").onchange = () => post("/windows", { soft: +$("wsoft").value / 100 }).then(r => { if (r.error) say(r.error); night(); refresh(); });   // (on letting go: the lights made again)
 $("wcset").onclick = () => post("/windows", { colour: $("wcolour").value.split(",").map(Number) }).then(r => { if (r.error) say(r.error); night(); refresh(); });
 $("wauto").onclick = () => (flashWhenDone("windows"), post("/windows", { auto: true })).then(r => { if (r.error) say(r.error); night(); refresh(); });
 $("wclear").onclick = () => confirm("Clear all the windows, found and painted?") && post("/windows", { clear_auto: true }).then(r => { if (r.error) say(r.error); refresh(); });
@@ -498,6 +524,8 @@ function smokeSettings() { return { scale: +$("smscale").value, wind: +$("smwind
 $("smplace").onclick = () => setMode("smokeadd");
 $("smdone").onclick = () => setMode("");
 $("smclear").onclick = () => act({ action: "effect", key: "smoke", value: null });
+$("smbehind").onclick = () => setMode($("smbehind").classList.contains("primary") ? "" : "smokebehind");
+$("smbehindclear").onclick = () => act({ action: "smoke_behind", clear: true });
 $("smset").onclick = () => act({ action: "effect", key: "smoke", value: Object.assign({}, (S && S.smoke) || {}, smokeSettings()) });
 $("birds").onchange = () => act({ action: "effect", key: "birds", value: $("birds").checked });
 // ---- the app: any countdown app, its kept scene and trials just as they were left
@@ -526,11 +554,11 @@ function foldable(box, head, key, closed) {
   head.addEventListener("click", e => { if (e.target.closest("button,select,input,label")) return; box._fold(!box.classList.contains("collapsed")); saveFolds(); });
   box._fold = c => { set(c); holdWindows(); };
 }
-// while working on the window lights (their card open, or painting them): every window lit and still,
-// so a window just drawn shows at once (the scene's switching on and off comes back after)
+// while painting or drawing window lights (a tool on): every window lit and still, so a window just drawn shows at
+// once; otherwise, the card open or not, they switch on and off as the scene's "Lit at once" says
 let windowMode = false, held = null;
 function holdWindows() {
-  const card = $("win"), on = windowMode || !!(card && !card.classList.contains("collapsed"));
+  const on = windowMode;
   if (on !== held) { held = on; control({ windows_hold: on }); }
 }
 for (const sec of document.querySelectorAll("main > section")) foldable(sec, sec.querySelector("h2"), "s:" + sec.id, false);
@@ -557,6 +585,11 @@ $("origphoto").onchange = () => { if (native) native.postMessage({ originalPhoto
 window.originalShown = on => { $("origphoto").checked = on; };
 window.smokeAdded = () => refresh();
 // fireflies: zones clicked on the picture; mist: a box dragged on it; fireworks: on or off for this scene
+$("dolphplace").onclick = async () => { await act({ action: "effect", key: "dolphins", value: Object.assign({ dir: $("dolphdir").value }, (S && S.dolphins) || {}) }); setMode("dolphadd"); };
+$("dolphdone").onclick = () => setMode("");
+$("dolphclear").onclick = () => act({ action: "effect", key: "dolphins", value: null });
+$("dolphnow").onclick = () => { control({ hour: "12" }); control({ dolphins: true }); };     // (by day: they don't come out at night)
+$("dolphdir").onchange = () => { if (S && S.dolphins && S.dolphins.points) act({ action: "effect", key: "dolphins", value: Object.assign({}, S.dolphins, { dir: $("dolphdir").value }) }); };
 function fflySettings() { return { amount: +$("ffamount").value, size: +$("ffsize").value }; }
 $("ffplace").onclick = async () => { await act({ action: "effect", key: "fireflies", value: Object.assign({}, (S && S.fireflies) || {}, fflySettings()) }); setMode("fflyadd"); };
 $("ffdone").onclick = () => setMode("");
@@ -568,12 +601,19 @@ function mistSettings() { return { amount: +$("mistamount").value, when: $("mist
 $("mistdraw").onclick = () => { control({ hour: "6.3" }); setMode("mistbox"); };          // (at dawn: when it's thickest)
 $("mistdone").onclick = () => setMode("");
 $("mistclear").onclick = () => act({ action: "effect", key: "mist", value: null });
+$("wlit").onchange = () => {
+  act({ action: "effect", key: "lights_on", value: $("wlit").value === "" ? null : parseFloat($("wlit").value) });
+};
 for (const id of ["mistamount", "mistwhen"]) $(id).onchange = () => { if (S && S.mist && S.mist.box) act({ action: "effect", key: "mist", value: Object.assign({}, S.mist, mistSettings()) }); };
 $("fwon").onchange = () => act({ action: "effect", key: "fireworks", value: $("fwon").checked });               // (from the window, after a click)
 function foamSettings() { return { amount: +$("foamount").value, flow: $("foflow").value, size: +$("fosize").value }; }
 $("foplace").onclick = async () => { await act({ action: "effect", key: "foam", value: Object.assign({}, (S && S.foam) || {}, foamSettings()) }); setMode("foamadd"); };
 $("fodone").onclick = () => setMode("");
 $("foclear").onclick = () => act({ action: "effect", key: "foam", value: null });
+// (the last point placed, taken back: foam, smoke, fireflies)
+$("foundo").onclick = () => act({ action: "point_undo", key: "foam" });
+$("smundo").onclick = () => act({ action: "point_undo", key: "smoke" });
+$("ffundo").onclick = () => act({ action: "point_undo", key: "fireflies" });
 $("foset").onclick = () => act({ action: "effect", key: "foam", value: Object.assign({}, (S && S.foam) || {}, foamSettings()) });
 // no Set buttons: a choice applies as it's made; a number when Enter is pressed or its box is left
 // (the buttons stay, hidden, as what each change does)

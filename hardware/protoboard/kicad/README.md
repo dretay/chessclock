@@ -8,7 +8,7 @@ In2 signals + +3V3 pour / B.Cu signals + GND pour.
 |---|---|
 | `protoboard.kicad_pro` | project, design rules (0.127 mm clearance, 0.1 mm min track for the router's neck-downs at the QFN, 0.2 mm drill) and netclasses (Default, Power, HighCurrent, USB) |
 | `protoboard.kicad_sch` | root sheet, with sub-sheets `power`, `soc`, `display`, `storage`, `wifi`, `audio`, `io` |
-| `protoboard.kicad_pcb` | placed and fully autorouted (0 unconnected), pours filled, ESP antenna keep-out |
+| `protoboard.kicad_pcb` | placed for the desk stand (LCD connector front-right, USB-C/microSD/5V IN on the back edge) and autorouted, 5 connections left by hand (see below), pours filled, ESP antenna keep-out |
 | `lib/` | custom symbols (F1C200s, SY8089, PT4103, NS2009, ESP32-C3 SuperMini) and footprints (SuperMini for headers or flat soldering, F1C QFN-88 with 0.22 mm pads, prototyping grid, rail strips) |
 | `gen/` | the generator |
 
@@ -69,12 +69,21 @@ passes (`KEEP_TRACKS=1`) never improved a board, and two runs of the same
 placement differed by 22 vs 56 unconnected, so it pays to try several
 placements in parallel (one core each) rather than run one longer. Fixes:
 
-* **Board 118 x 72.5 mm and 0.2 mm extra spacing around every part**
-  (`BOARD_W`, `BOARD_H`, `PLACE_GAP` in `gen_pcb.py`). This was the step
-  from ~22 unconnected to 0. The panel is 120.7 x 75.8 mm, so this is
-  about as large as the board can go.
+* **Board 118 x 72.5 mm and 0.25 mm extra spacing around every part**
+  (`BOARD_W`, `BOARD_H`, `PLACE_GAP` in `gen_pcb.py`). On the stand layout
+  0.25 gave 5 unconnected where 0.15/0.2 gave 14-57.
+* **SoC rotated 180 degrees** (`SOC_ROT`): the LCD connector is right of the
+  chip, and 180 lets the power pins escape far better than 90 (13 vs 28+).
+* **Buck order** (`BUCK_X`): the three SY8089 bucks along the front edge.
+* **microSD on the back edge.** `SD_SIDE=1` puts it on the right edge instead
+  (and gives the protogrid back its full 38 columns, rails 32 holes), but the
+  best of six routes was 19 unconnected against 5, so it isn't the default.
+* **+1V1 area on In2** (added by `route.py post`, priority over the +3V3
+  pour) from the core buck to under the SoC, plus `gen/viafix.py`, which
+  drops a via into it from any +1V1 pad or track end the router left.
+* **0.5 mm no-track strip** along the board edges (the router hugged them).
 * **Ribbon keep-out:** connectors, switches and through-hole parts stay out
-  of the folded LCD ribbon's area and the space in front of the FPC.
+  of the area the LCD ribbon lies over between the front edge and the FPC.
 * **QFN fan-out area:** the strip between the SoC and the FPC is kept free
   of parts for the LCD lines and their vias.
 * **Placement order:** crystal and its caps first, then the SoC decoupling
@@ -85,15 +94,19 @@ placements in parallel (one core each) rather than run one longer. Fixes:
 
 ### Finishing by hand
 
-* One 1.5 um clearance short (SVREF track at JP1 pad 3): nudge the track.
-* 174 `track_width` are the router's 0.112 mm neck-downs into the QFN pads
+* **+2V5, SoC pin 36:** a 0.8 mm gap to its own track end; the straight line
+  passes +1V1 pin 35, so come in from outside the pin row.
+* **RESET (2):** SoC pin 70 to its pull-up R16, and R16 to the RESET button's
+  track on B.Cu (stub at x 47.5, y 31).
+* **GND (2):** two pour islands; KiCad's ratsnest shows them - a via each.
+* 199 `track_width` are the router's 0.112 mm neck-downs into the QFN pads
   (allowed by the 0.1 mm board minimum, flagged against the netclass width).
 * Silkscreen overlaps.
 
 ## State
 
-* ERC: 0 violations. DRC: 0 unconnected, 0 courtyard errors, schematic
-  parity clean; the one clearance item and the warnings are listed above.
+* ERC: 0 violations. DRC: 0 clearance, short or courtyard errors, schematic
+  parity clean; 5 unconnected, listed above.
 * Test points are on the bottom side.
 * R/C/L designators are on F.Fab (the assembly drawing). The board is too
   dense for them on silk.

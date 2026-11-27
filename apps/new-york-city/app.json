@@ -1,7 +1,7 @@
 {
   "id": "new-york-city",
   "name": "New York City",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "runtime": "countdown",
   "api": 4,
   "exclude": [

@@ -84,8 +84,10 @@ builder's Birds card has the same as "Some now"). A screen's **Show now** in the
 first if it has changed (the app has only the screens its app.json has), then shows that one.
 Painted windows are lit like real ones (`scene_pack.painted_light`): a soft edge, brighter in the
 middle, each window its own lamp, and a glow on the stone round it. **Group** (drag a box over several windows: every window it touches switches on and off as one light, e.g. a lantern's panes or a building's floor; `group` boxes in `windows_edits.json`, kept as `window_groups.json`), **Behind** (drag a box round a lit lantern or window: the darkest of the three tones the box splits into on the day photo, its ironwork or frame, goes in front of the light; `behind` boxes in `windows_edits.json`) and a window's **Frame** brush (paint what stays dark in front of its light (a lantern's bars,
-mullions, leading: `window_frame.png`, from the `frame` strokes and `behind` boxes; Undo takes one back)); the light shows between them and their glow is blocked too. Zoomed in, the picture is the scene's **original photo** (cut as the scene is, at up to 3200 px wide, from `/builder/photo`): sharper than the device's 800x480, for painting details; the builder's "show the original photo" box (View › Original Photo When Zoomed In, ⌥⌘P) turns it off, to see the scene as the device draws it (its lights, at night). In a brush mode (painting or erasing windows, water or a frame; rubbing out lights), an outline circle at the pointer shows the brush's size on the picture, at the zoom it's at. While the Window lights card is open,
-or a window is being painted, every window is lit and holds still (live.json `windows_hold`).
+mullions, leading: `window_frame.png`, from the `frame` strokes and `behind` boxes; Undo takes one back)); the light shows between them and their glow is blocked too. Zoomed in, the picture is the live scene, magnified, night and lights and all; with the builder's "show the original photo" box ticked (off to start with), while painting or drawing a box (windows, water, a frame, Behind, Group, the mist) it's the scene's **original photo** (cut as the scene is, at up to 3200 px wide, from `/builder/photo`): sharper than the device's 800x480, for painting details, but daytime and without the lights (View › Original Photo When Zoomed In, ⌥⌘P, the same switch). In a brush mode (painting or erasing windows, water or a frame; rubbing out lights), an outline circle at the pointer shows the brush's size on the picture, at the zoom it's at. While a window tool is on (Paint,
+Rectangle, Grid, Erase, Behind, Group, Frame), every window is lit and holds still (live.json `windows_hold`);
+otherwise they switch on and off as the scene's **Lit at once** says (Automatic: fewer the more windows; A few, Some,
+Half, Most, All: every window lit, none switching), so the card shows what it will look like.
 
 The **Scene Builder** panel (View › Scene Builder ⌘B; `tools/preview/builder.html`, in the window, or at
 http://localhost:8800/builder). It's docked to the picture's right edge (it moves and resizes with it;
@@ -110,7 +112,7 @@ the published version needs a new one first (Use 1.2.2), then Publish sends the 
 catalog (tools/apps/publish.py; asks first, then the passphrase), window lights (found automatically in the
 photo, dark windows in a plain wall or lit ones at dusk, a guess to touch up; or painted on the picture,
 brush or box, or erased; the light's colour), smoke (click where it rises from: a campfire, a chimney;
-its size, wind, thickness), foam (click where the water churns: its size, which way it flows, how
+its size, wind, thickness; Behind: drag a box round what it passes behind, a building, trees, a ship's decks, and there it shows only against the sky), foam (click where the water churns: its size, which way it flows, how
 much), mist (drag a box where it lies: how thick, dawn and dusk or all day), fireflies (click where they
 gather: how big an area, how many), fireworks (on or off for the scene), birds (on or off), water (found automatically, a guess, or painted on the
 picture: it ripples, gentle to choppy, slow to fast; the cruise's sea stays its own), fireworks. The same from the command line:

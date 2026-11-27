@@ -245,8 +245,8 @@ def f1c_qfn():
 def write_footprints():
     d = os.path.join(LIB, "protoboard.pretty")
     os.makedirs(d, exist_ok=True)
-    for name, body in [("ESP32-C3_SuperMini", esp_supermini()), ("Protogrid_38x5_P2.54mm", protogrid()),
-                       ("RailStrip_1x32_P2.54mm", railstrip()),
+    for name, body in [("ESP32-C3_SuperMini", esp_supermini()), ("Protogrid_38x5_P2.54mm", protogrid()), ("Protogrid_31x5_P2.54mm", protogrid(31)),
+                       ("RailStrip_1x32_P2.54mm", railstrip()), ("RailStrip_1x26_P2.54mm", railstrip(26)),
                        ("F1C200s_QFN-88-1EP_10x10mm_P0.4mm_EP6.74x6.74mm_ThermalVias", f1c_qfn())]:
         with open(os.path.join(d, name + ".kicad_mod"), "w") as f:
             f.write(body + "\n")

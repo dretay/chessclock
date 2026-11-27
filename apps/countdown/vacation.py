@@ -74,14 +74,20 @@ class Backlight:
 
     def __init__(self):
         self.path, self.max, self.level = None, 0, None
+        self.percent, self.fade = None, 1.0    # (fade: 0..1 on top of the brightness, for fading the screen: App.fade)
         base = "/sys/class/backlight"
         for d in sorted(os.listdir(base)) if os.path.isdir(base) else []:
             try: self.max = int(open(os.path.join(base, d, "max_brightness")).read()); self.path = os.path.join(base, d, "brightness"); break
             except (OSError, ValueError): pass
 
-    def set(self, percent):
+    def set(self, percent=None):
         if not self.path: return
-        level = max(1, round(self.max * percent * percent / 10000))
+        percent = self.percent if percent is None else percent
+        if percent is None: percent = 100
+        self.percent = percent
+        p = percent * self.fade                                    # (faded on the same curve: even steps look even)
+        level = round(self.max * p * p / 10000)
+        if self.fade >= 1: level = max(1, level)                   # (never off, except faded right out)
         if level == self.level: return
         try:
             with open(self.path, "w") as f: f.write(str(level))
@@ -126,6 +132,10 @@ class App:
         # the scene's own effects (theme.json "effects"; all of them when it doesn't say: the ship's)
         if "effects" in s:
             self.fx.vfx_effects(sum(EFFECTS.get(e, 0) for e in s["effects"]))
+        do = s.get("dolphins") or {}                     # (dolphins: where a pod leaps, which way; else ahead of a ship's bow)
+        if hasattr(self.fx, "vfx_dolphins"):
+            pt = (do.get("points") or [[-1, 0]])[0]
+            self.fx.vfx_dolphins(int(pt[0]), int(pt[1]), -1 if do.get("dir") == "left" else 1)
         ff = s.get("fireflies") or {}                    # (fireflies: zones x, y, r; how many)
         if ff.get("points"):
             xyr = [int(v) for p in ff["points"][:16] for v in (p[0], p[1], p[2] if len(p) > 2 else 30)]
@@ -140,6 +150,8 @@ class App:
                              {"still": 0, "left": 1, "right": 2, "falling": 3, "toward": 4}.get(fo.get("flow", "still"), 0))
         water = s.get("water") or {}                     # (a scene's own water, water.raw.gz: how strong, how fast)
         self.fx.vfx_water(int(float(water.get("strength", 1.0)) * 256), int(float(water.get("speed", 1.0)) * 256))
+        if hasattr(self.fx, "vfx_lights_on"):            # (how many windows lit at once: the scene's, else by how many; an older system package has no say)
+            self.fx.vfx_lights_on(int(float(s["lights_on"]) * 1000) if s.get("lights_on") is not None else -1)
         show = s.get("show") or {}                       # (the lights' show: theme.json "show", else every pattern)
         prog = [int(v) for v in show.get("program", [])]
         self.fx.vfx_twinkle_program((ctypes.c_int * max(1, len(prog)))(*prog), len(prog), int(float(show.get("secs", 12)) * 1000))
@@ -159,6 +171,9 @@ class App:
             rate = int(sm.get("rate", 4)); dense = float(sm.get("density", 1.2 + rate * 0.2))   # (thicker smoke: more puffs, denser)
             self.fx.vfx_smoke(len(xy) // 2, (ctypes.c_int * len(xy))(*xy), int(float(sm.get("scale", 0.8)) * 256),
                               int(float(sm.get("wind", 0)) * 256), rate, int(dense * 256))
+        if hasattr(self.fx, "vfx_smoke_behind"):        # (where the smoke goes behind the scenery: the Behind boxes)
+            bx = [int(v) for b in (sm.get("behind") or [])[:16] for v in b[:4]]
+            self.fx.vfx_smoke_behind(len(bx) // 4, (ctypes.c_int * max(1, len(bx)))(*bx))
         self.backlight = Backlight()
         self.bl_shown, self.bl_at, self.bright_preview = None, 0.0, None
         self.screen_press, self.want_settings, self.screen_tapped = None, False, False
@@ -289,13 +304,23 @@ class App:
 
     def fade(self, to, frame=None, secs=FADE_SECS):
         """Fade the screen to brightness `to` (0 black .. 256 normal), calling frame() each step to
-        keep whatever's showing moving."""
+        keep whatever's showing moving. On the board, with the backlight: dimming it costs nothing, where
+        darkening the picture redoes every pixel (98 ms a step: a fade in five jumps, the CPU busiest just
+        then). So the light fades, smoothly, and the picture only twice: black once the light is out (the
+        next screen is drawn in the dark, whatever the panel shows with its light off), full again before
+        it comes back. A desktop (no backlight): the picture fades, as it always did."""
         frm = self.fade_lvl; t0 = self.now()
+        hw = self.backlight.path is not None and not self.sim
+        if hw and to > frm: self.fx.vfx_fade(256)                # (the picture whole again, while the light is still out)
         while self.running:
             k = min(1.0, (self.now() - t0) / secs)
             if frame: frame()
-            self.fx.vfx_fade(int(frm + (to - frm) * k)); self.tick()
+            lvl = frm + (to - frm) * k
+            if hw: self.backlight.fade = lvl / 256; self.backlight.set()
+            else: self.fx.vfx_fade(int(lvl))
+            self.tick()
             if k >= 1: break
+        if hw and to <= 0: self.fx.vfx_fade(0)                   # (and black behind it)
         self.fade_lvl = to
 
     def live_controls(self, t):
@@ -316,7 +341,8 @@ class App:
         if fired("show"): self.start_show(t)
         if fired("birds"): self.fx.vfx_demo(1)                                              # (birds across, now)
         if fired("fireflies"): self.fx.vfx_demo(4)                                          # (fireflies out, now)
-        if any(fired(k) for k in ("fireworks", "show", "birds", "fireflies")): self.still_until = self.now() + 10   # (moving: shown)
+        if fired("dolphins"): self.fx.vfx_demo(2)                                           # (a pod of dolphins, now: by day)
+        if any(fired(k) for k in ("fireworks", "show", "birds", "fireflies", "dolphins")): self.still_until = self.now() + 10   # (moving: shown)
         if fired("settings"): self.want_settings = True                                     # (the Controls' Settings button: open them now)
         if bool(new.get("still")) != bool(old.get("still")): self.still_until = self.now() + 1.5               # (and once more, either way)
         if bool(new.get("windows_hold")) != bool(old.get("windows_hold")):                 # (painting windows: all lit, still)

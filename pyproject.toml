@@ -10,6 +10,7 @@ dependencies = [
     "Pillow",             # pictures: scenes, cards, icons, renders
     "fonttools",          # the card font's lining figures (tools/themegen/make_lining_font.py)
     "pyflakes",           # lint
+    "numpy>=2.5.5",
 ]
 
 [tool.uv]

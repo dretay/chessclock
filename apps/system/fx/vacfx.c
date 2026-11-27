@@ -82,6 +82,16 @@ static int row_start[H + 1];          /* light pixels of row y: row_start[y] .. 
 static uint32_t *cell_first, *cell_list;   /* light pixels of window c: cell_list[cell_first[c] .. cell_first[c+1]-1] */
 static uint8_t *cell_on; static int16_t *cell_lvl;
 static int toggles_per_min = 90;
+/* how many windows are lit at once, in thousandths: the scene's (theme.json "lights_on"), or -1: by how many
+   it has: 62% of 150 or fewer, fewer of more (a city of a thousand windows, a quarter), never under 15% */
+static int lights_on_pm = -1;
+static int isqrt(int v);
+static int lit_target(void) {
+    if (lights_on_pm >= 0) return lights_on_pm;
+    if (ncell <= 151) return 620;
+    const int v = 620 * isqrt(150 * 10000 / (ncell - 1)) / 100;
+    return v < 150 ? 150 : v;
+}
 static int windows_hold;               /* every window on and staying on (while windows are being painted) */
 
 /* refresh spans for this frame and the next (particles' old footprints), per row */
@@ -95,6 +105,11 @@ static int smoke_own;                  /* a scene's own smoke (vfx_smoke: a chim
 static int foam_n, foam_xyr[16][3], foam_amount_q8 = 256, foam_flow, foamp_acc, foams_acc;   /* smoke: how many sources (the ship's two funnels, or a scene's
                                                                    own: vfx_smoke), the wind (-256 left .. 256 right), puffs a second */
 static int bow_x, bow_y, stern_x, stern_y, hull_dx = -256, hull_dy;   /* unit vector bow -> stern, Q8 */
+/* dolphins placed in a scene (the Scene Builder's): where a pod leaps, and which way (1 right, -1 left);
+   dol_x < 0: ahead of the ship's bow, heading right (the cruise scene as it was made) */
+static int dol_x = -1, dol_y, dol_dir = 1;
+/* where smoke goes behind the scenery (the Scene Builder's Behind boxes): the scene's foreground (not sky) inside them; NULL: nowhere */
+static uint8_t *smoke_front;
 
 /* particles: kind, position and velocity in 1/256 px and 1/256 px per s */
 enum { P_FOAM, P_WAKE, P_SMOKE, P_ROCKET, P_SPARK, P_GULL, P_DOLPHIN, P_SPLASH, P_FLY };
@@ -382,6 +397,7 @@ static void blob(int32_t x, int32_t y, int32_t rx, int32_t ry, uint32_t col, int
         for (int px = clampi(x0, 0, W - 1); px <= clampi(x1, 0, W - 1); px++) {
             if (clip == 1 && !wrow[px]) continue;
             if (clip == 2 && (srow[px] || py >= horizon)) continue;
+            if (clip == 3 && smoke_front && smoke_front[py * W + px]) continue;   /* (smoke behind the scenery there) */
             const uint32_t dx = (uint32_t)abs(px - cx) * 16, q = ty + ((dx * dx * irx) >> 18);
             if (q >= 256) continue;
             const int a = (prof[q] * alpha) >> 8; if (!a) continue;
@@ -581,9 +597,10 @@ static void step_particles(int dt) {
         if (night_lvl < 128 && (fx_on & FX_DOLPHINS)) {
             const int n = rr(2, 3); int delay = 0;
             for (int k = 0; k < n; k++) { part_t *p = spawn(P_DOLPHIN); if (!p) break;
-                p->px = (bow_x + rr(25, 80) * sca / 256) << 8; p->py = (bow_y + rr(12, 40) * sca / 256) << 8;
+                if (dol_x >= 0) { p->px = (dol_x + rr(-30, 30) * sca / 256) << 8; p->py = (dol_y + rr(-6, 6) * sca / 256) << 8; }
+                else { p->px = (bow_x + rr(25, 80) * sca / 256) << 8; p->py = (bow_y + rr(12, 40) * sca / 256) << 8; }
                 p->age = -delay; delay += rr(250, 600); p->life = rr(900, 1200);
-                p->vx = rr(18, 26) * sca; p->vy = rr(9, 14) * sca; p->col = 0; }
+                p->vx = (dol_x >= 0 ? dol_dir : 1) * rr(18, 26) * sca; p->vy = rr(9, 14) * sca; p->col = 0; }
         }
     }
     /* the AquaDuck: a raft whooshes along the tube every so often */
@@ -662,7 +679,7 @@ static void particle_rects(void) {
         case P_GULL: r = (p->size >> 8) + 3; break;
         case P_DOLPHIN: {                                   /* the whole arc */
             const int x0 = p->px >> 8, y0 = p->py >> 8, len = p->vx >> 8, ht = p->vy >> 8;
-            rect_add(rlo, rhi, x0 - 8, y0 - ht - 8, x0 + len + 8, y0 + 6); continue; }
+            rect_add(rlo, rhi, (len < 0 ? x0 + len : x0) - 8, y0 - ht - 8, (len < 0 ? x0 : x0 + len) + 8, y0 + 6); continue; }
         default: r = 3;
         }
         rect_add(rlo, rhi, (p->x >> 8) - r, (p->y >> 8) - r, (p->x >> 8) + r, (p->y >> 8) + r);
@@ -705,7 +722,7 @@ static void draw_particles(void) {
             a = a * inv >> 8; a = a * (256 + (563 * i8 >> 8)) >> 8;     /* (1-f) * (1 + 2.2 (1-f)^8): dense at the stack, then thinning */
             int sq = 0; { int lo = 0, hi = 256; while (lo < hi) { int mid = (lo + hi + 1) / 2; if (mid * mid <= f * 256) lo = mid; else hi = mid - 1; } sq = lo; }
             const int r = (5 * 256 + 19 * sq) * smoke_q8 >> 8;
-            blob(p->x, p->y, r, r, smoke_col, a, prof_puff, 0, 0);
+            blob(p->x, p->y, r, r, smoke_col, a, prof_puff, 0, smoke_front ? 3 : 0);
             break; }
         case P_ROCKET:
             for (int j = 0; j < 3; j++) blob(p->x, p->y + j * 3 * 256, 200, 300, 0xffdcaa, 200 - j * 50, prof_soft, 1, 2);
@@ -734,15 +751,20 @@ static void draw_particles(void) {
             const uint32_t back = (uint32_t)(70 * lit >> 8) << 16 | (uint32_t)(80 * lit >> 8) << 8 | (uint32_t)(94 * lit >> 8);
             /* direction of travel: (len, -4 ht (1 - 2u)), normalised to 1/256 */
             const int vx = len, vy = -(ht * 4 * (256 - 2 * u) >> 8); int n = 1; { const int64_t q = (int64_t)vx * vx + (int64_t)vy * vy; while ((int64_t)(n + 1) * (n + 1) * 65536 <= q) n++; }
-            const int ux = vx / n, uy = vy / n, s = amb_q8;       /* n = |v| / 256, so this is the unit vector in 1/256 */
+            int ux = vx / n, uy = vy / n; const int s = amb_q8;  /* n = |v| / 256, so this is the unit vector in 1/256 */
+            /* (the back and fin go on the side away from the water: heading left, the normal turned the other way round,
+               by drawing as if heading right and mirroring the offsets) */
+            const int mir = ux < 0; if (mir) { ux = -ux; }
+            #define DX(v) (mir ? -(v) : (v))                /* (an x offset, mirrored heading left) */
             for (int j = -4; j <= 4; j++) {               /* body: 4.2 x 1.25 px at full size */
                 const int w = 256 - (j * j * 12);
-                blob(x + (ux * j * s >> 8) * 105 / 100, y + (uy * j * s >> 8) * 105 / 100, (400 * w >> 8) * s >> 8, (400 * w >> 8) * s >> 8, col, 255, prof_soft, 0, 0);
+                blob(x + DX((ux * j * s >> 8) * 105 / 100), y + (uy * j * s >> 8) * 105 / 100, (400 * w >> 8) * s >> 8, (400 * w >> 8) * s >> 8, col, 255, prof_soft, 0, 0);
             }
             for (int j = -3; j <= 3; j++)                 /* the darker back, along the top of the body */
-                blob(x + (ux * j * s >> 8) + (uy * s >> 8) * 3 / 4, y + (uy * j * s >> 8) - (ux * s >> 8) * 3 / 4, 200 * s >> 8, 150 * s >> 8, back, 200, prof_soft, 0, 0);
-            blob(x - (ux * s >> 8) + (uy * 2 * s >> 8), y - (uy * s >> 8) - (ux * 2 * s >> 8), 200, 260, back, 255, prof_soft, 0, 0);   /* dorsal fin, on the back */
-            blob(x - (ux * 5 * s >> 8), y - (uy * 5 * s >> 8), 260, 360, col, 255, prof_soft, 0, 0);                                         /* tail */
+                blob(x + DX((ux * j * s >> 8) + (uy * s >> 8) * 3 / 4), y + (uy * j * s >> 8) - (ux * s >> 8) * 3 / 4, 200 * s >> 8, 150 * s >> 8, back, 200, prof_soft, 0, 0);
+            blob(x + DX(-(ux * s >> 8) + (uy * 2 * s >> 8)), y - (uy * s >> 8) - (ux * 2 * s >> 8), 200, 260, back, 255, prof_soft, 0, 0);   /* dorsal fin, on the back */
+            blob(x + DX(-(ux * 5 * s >> 8)), y - (uy * 5 * s >> 8), 260, 360, col, 255, prof_soft, 0, 0);                                         /* tail */
+            #undef DX
             break; }
         case P_SPLASH: {
             const int a = (256 - u) * 192 >> 8;
@@ -1034,7 +1056,7 @@ int vfx_open(const char *fbdev, const char *theme) {
     for (int c = 0; c < ncell; c++) cell_first[c + 1] += cell_first[c];
     { uint32_t *fill = calloc((size_t)ncell, 4); for (int k = 0; k < nl; k++) cell_list[cell_first[lcell[k]] + fill[lcell[k]]++] = (uint32_t)k; free(fill); }
     cell_on = malloc((size_t)ncell); cell_lvl = malloc((size_t)ncell * 2);
-    for (int c = 0; c < ncell; c++) { cell_on[c] = (rnd() % 100) < 62; cell_lvl[c] = cell_on[c] ? 256 : 0; }
+    { const int p = lit_target(); for (int c = 0; c < ncell; c++) { cell_on[c] = (int)(rnd() % 1000) < p; cell_lvl[c] = cell_on[c] ? 256 : 0; } }
     tw_load(theme);
     free(wcustom); wcustom = NULL;
     { char wp[600]; snprintf(wp, sizeof wp, "%s/water.raw.gz", theme);
@@ -1124,10 +1146,17 @@ void vfx_light(int wday, int wdusk, int wnight, int lights, int night, int dusk)
     cards_dirty = 1;
 }
 void vfx_lights_rate(int per_minute) { toggles_per_min = per_minute; }
+/* how many windows lit at once (thousandths), or -1 (by how many there are); the windows lit again so at once */
+void vfx_lights_on(int permille) {
+    lights_on_pm = permille < 0 ? -1 : permille > 1000 ? 1000 : permille;
+    if (cell_on && !windows_hold) { const int p = lit_target(); for (int c = 1; c < ncell; c++) cell_on[c] = (int)(rnd() % 1000) < p; }
+}
 /* every window lit and holding still (1), or switching on and off again (0) */
 void vfx_windows_hold(int on) {
-    windows_hold = on;
+    const int was = windows_hold; windows_hold = on;
     if (on && cell_on) for (int c = 1; c < ncell; c++) cell_on[c] = 1;
+    /* let go: lit again as the scene's share says at once (else it takes minutes to thin out, a window at a time) */
+    if (!on && was && cell_on) { const int p = lit_target(); for (int c = 1; c < ncell; c++) cell_on[c] = (int)(rnd() % 1000) < p; }
 }
 void vfx_redraw(void) { full_redraw = 1; }
 /* the daytime touches' places: mast top, a size scale, and the AquaDuck tube as x,y pairs */
@@ -1198,6 +1227,23 @@ void vfx_cards_scale3(int q8) { scale3_q8 = clampi(q8, 0, 256); }
 /* a scene's own foam: n points (x, y, radius triples, up to 16), how much (amount_q8: 256 normal), which way
    (flow: 0 churning in place, 1 drifting left, 2 right, 3 falling, with spray, 4 spreading toward the viewer) */
 /* fireflies in n zones (x, y, r: up to 16), about 5 in each at amount_q8 256; from dusk, in the dark */
+/* dolphins: where a pod leaps now and then by day (x, y; dir 1 right, -1 left); x < 0: ahead of the ship's bow */
+void vfx_dolphins(int x, int y, int dir) { dol_x = x; dol_y = y; dol_dir = dir < 0 ? -1 : 1; }
+
+/* smoke behind the scenery in these n boxes (x0, y0, x1, y1 each): inside them, where the scene isn't sky, no smoke */
+void vfx_smoke_behind(int n, const int *boxes) {
+    free(smoke_front); smoke_front = NULL;
+    if (n <= 0 || !ship) return;
+    smoke_front = calloc((size_t)W * H, 1); if (!smoke_front) return;
+    for (int k = 0; k < n; k++) {
+        int x0 = boxes[4 * k], y0 = boxes[4 * k + 1], x1 = boxes[4 * k + 2], y1 = boxes[4 * k + 3];
+        if (x0 > x1) { int t = x0; x0 = x1; x1 = t; }
+        if (y0 > y1) { int t = y0; y0 = y1; y1 = t; }
+        for (int y = clampi(y0, 0, H - 1); y <= clampi(y1, 0, H - 1); y++)
+            for (int x = clampi(x0, 0, W - 1); x <= clampi(x1, 0, W - 1); x++) smoke_front[y * W + x] = ship[y * W + x];
+    }
+}
+
 void vfx_fireflies(int n, const int *xyr, int amount_q8) {
     fly_n = clampi(n, 0, 16); fly_amount_q8 = clampi(amount_q8, 32, 1024);
     for (int k = 0; k < fly_n; k++) { fly_xyr[k][0] = xyr[3 * k]; fly_xyr[k][1] = xyr[3 * k + 1]; fly_xyr[k][2] = clampi(xyr[3 * k + 2], 4, 160); }
@@ -1332,8 +1378,11 @@ int vfx_frame(int t_ms) {
     double ts = now_s();
     reblend_rows(40);
     /* windows switching on and off, easing */
-    toggle_acc = ncell > 1 && !windows_hold ? toggle_acc + dt * toggles_per_min : 0;              /* (a scene with no windows: none to switch) */
-    while (toggle_acc >= 60000) { toggle_acc -= 60000; const int c = 1 + (int)(rnd() % (uint32_t)(ncell - 1)); cell_on[c] ^= 1; }
+    /* a window picked at random is lit or not as the scene's share says (not flipped: that drifts to half lit);
+       picked more often the fewer picks change one, so about toggles_per_min windows change a minute */
+    const int lit_p = lit_target(), chg = 2 * lit_p * (1000 - lit_p) / 1000;
+    toggle_acc = ncell > 1 && !windows_hold ? toggle_acc + dt * toggles_per_min * 1000 / (chg > 50 ? chg : 50) : 0;   /* (no windows: none to switch) */
+    while (toggle_acc >= 60000) { toggle_acc -= 60000; const int c = 1 + (int)(rnd() % (uint32_t)(ncell - 1)); cell_on[c] = (int)(rnd() % 1000) < lit_p; }
     const int rate = clampi(dt * 8 * 256 / 1000, 1, 256);
     for (int c = 1; c < ncell; c++) {
         const int tg = cell_on[c] ? 256 : 0, lv = cell_lvl[c];

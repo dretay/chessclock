@@ -363,9 +363,7 @@ class MapScreen:
         r = self.meta.get("region")
         if s and r and not (r[0] + 4 < s.lon < r[2] - 4 and r[1] + 2 < s.lat < r[3] - 2):
             self.text("small", "Beyond the Caribbean map", L.W // 2 - self.width("small", "Beyond the Caribbean map") // 2, 300, L.IVORY)
-        if example: self.text("small", "Example schedules", 24, 466, L.GOLD)
-        else:
-            self.text("small", "Where the itineraries put them", 24, 466, L.DIM)
+        if example: self.text("small", "Example schedules", 24, 466, L.GOLD)        
         if self.credit:
             k = self.sid("tiny|" + self.credit)
             if k >= 0: fx.vfx_ui_text(k, L.W - 12 - fx.vfx_ui_metric(k, 4), 468, rgb((150, 156, 166)), 255)

@@ -247,9 +247,10 @@ for i in range(6):
     fpc[7 + i] = "LCD_R%d" % (i + 2)
     fpc[15 + i] = "LCD_G%d" % (i + 2)
     fpc[23 + i] = "LCD_B%d" % (i + 2)
-Part(SHEET, "J", "Connector_Generic_MountingPin:Conn_01x40_MountingPin", "LCD 40P top-contact",
-     "Connector_FFC-FPC:Omron_XF2M-4015-1A_1x40-1MP_P0.5mm_Horizontal", fpc, nc=(35,),
-     fields={"Note": "top-contact flip-lock: ribbon wraps around the board edge, contacts face up"})
+Part(SHEET, "J", "Connector_Generic_MountingPin:Conn_01x40_MountingPin", "LCD 40P bottom-contact",
+     "Connector_FFC-FPC:Hirose_FH12-40S-0.5SH_1x40-1MP_P0.50mm_Horizontal", fpc, nc=(35,),
+     fields={"Note": "Hirose FH12-40S-0.5SH(55), bottom contact: the ribbon drops from the panel onto "
+                     "the board's front edge, contacts face the board"})
 
 # backlight boost
 Part(SHEET, "U", "protoboard:PT4103", "PT4103", "Package_TO_SOT_SMD:SOT-23-6",
@@ -401,11 +402,7 @@ for n in (1, 2):
     R("1k", "+3V3", "LED%d_A" % n)
     LED("status %d" % n, "LED%d_A" % n, "LED%d_K" % n)
 
-# I2C: 3 x Qwiic + 2.54 mm
-for _ in range(3):
-    Part(SHEET, "J", "Connector_Generic_MountingPin:Conn_01x04_MountingPin", "Qwiic",
-         "Connector_JST:JST_SH_SM04B-SRSS-TB_1x04-1MP_P1.00mm_Horizontal",
-         {1: "GND", 2: "+3V3", 3: "I2C0_SDA", 4: "I2C0_SCL", "MP": "GND"})
+# I2C: 2.54 mm header
 HEADER(["GND", "+3V3", "I2C0_SDA", "I2C0_SCL"], value="I2C")
 HEADER(["+3V3", "GND", "SPI0_CLK", "SPI0_MOSI", "SPI0_MISO", "SPI0_CS2"], value="SPI0")
 HEADER(["GND", "UART0_RX", "UART0_TX"], value="CONSOLE (UART0)")
@@ -429,7 +426,7 @@ Part(SHEET, "J", "Connector:Conn_01x05_Socket", "RCWL-0516",
      {2: "GND", 3: "GPIO_PE3", 4: "+5V"}, nc=(1, 5))
 
 # rails strip along the bottom edge
-RAIL_N = 32
+RAIL_N = 32 if os.environ.get("SD_SIDE") == "1" else 26   # microSD on the back edge takes 6 holes
 for net, val in (("+5V", "RAIL 5V"), ("+3V3", "RAIL 3V3"), ("GND", "RAIL GND")):
     HEADER([net] * RAIL_N, value=val, fp="protoboard:RailStrip_1x%02d_P2.54mm" % RAIL_N)
 

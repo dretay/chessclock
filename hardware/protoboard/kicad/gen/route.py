@@ -47,7 +47,7 @@ if mode == "export":
     # always export the unrouted board: no tracks, no post-route +3V3 pour
     import os
     for z in [board.GetArea(i) for i in range(board.GetAreaCount())]:
-        if z.GetZoneName() in ("+3V3 pour", "GND pour top", "GND pour bottom"):
+        if z.GetZoneName() in ("+3V3 pour", "GND pour top", "GND pour bottom", "+1V1 area"):
             board.Remove(z)
     if not os.environ.get("KEEP_TRACKS"):
         for t in list(board.GetTracks()):
@@ -112,6 +112,35 @@ if "+3V3 pour" not in names and "+3V3 plane" not in names:
     z.SetZoneName("+3V3 pour")
     board.Add(z)
 
+# +1V1 area on In2 (priority over the +3V3 pour) from the core buck's inductor to under the
+# SoC: the router's +1V1 escapes that end in a via, and gen/viafix.py's new ones, connect
+# through it instead of needing a track all the way
+if "+1V1 area" not in names and "+1V1 plane" not in names:
+    v11 = board.FindNet("+1V1").GetNetCode()
+    boxes = [fp.GetBoundingBox(False) for fp in board.GetFootprints()
+             if fp.GetValue() == "F1C200s" or (fp.GetReference().startswith("L")
+                                                and any(p.GetNetCode() == v11 for p in fp.Pads()))]
+    if len(boxes) >= 2:
+        bb = boxes[0]
+        for x in boxes[1:]:
+            bb.Merge(x)
+        e = board.GetBoardEdgesBoundingBox()
+        z = pcbnew.ZONE(board)
+        z.SetLayer(pcbnew.In2_Cu)
+        z.SetNet(board.FindNet("+1V1"))
+        z.SetAssignedPriority(1)
+        z.SetLocalClearance(MM(0.3))
+        z.SetMinThickness(MM(0.2))
+        z.SetIslandRemovalMode(pcbnew.ISLAND_REMOVAL_MODE_ALWAYS)
+        o = z.Outline()
+        o.NewOutline()
+        x0, x1 = bb.GetLeft() - MM(1), bb.GetRight() + MM(1)
+        y0, y1 = max(bb.GetTop() - MM(1), e.GetTop() + MM(0.5)), bb.GetBottom() + MM(1)
+        for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1)):
+            o.Append(int(x), int(y))
+        z.SetZoneName("+1V1 area")
+        board.Add(z)
+
 # GND pours on the outer layers: pick up GND pads that had no room for their own via
 # and stitch to the In1 plane through the GND vias the router placed
 for layer, nm in ((pcbnew.F_Cu, "GND pour top"), (pcbnew.B_Cu, "GND pour bottom")):
@@ -138,6 +167,14 @@ pcbnew.ZONE_FILLER(board).Fill(board.Zones())
 
 # GND stitching: a via (to the In1 plane) on a grid wherever one fits; keep the ones that
 # land in an outer GND pour, so pour islands around GND pads without a via get one
+def grown(box, d):
+    """A copy of box grown by d on each side (BOX2I.Inflate mutates in place, and on a
+    temporary returned by GetBoundingBox() it returns a dangling reference)."""
+    b = pcbnew.BOX2I(box.GetPosition(), box.GetSize())
+    b.Inflate(d)
+    return b
+
+
 def stitch(pitch=1.27, dia=0.6, drill=0.3, clr=0.25, edge=1.0):
     gnd = board.FindNet("GND")
     bb = board.GetBoardEdgesBoundingBox()
@@ -148,9 +185,9 @@ def stitch(pitch=1.27, dia=0.6, drill=0.3, clr=0.25, edge=1.0):
     items = []                                    # (bbox, shape-getter, net) for every copper item
     for fp in board.GetFootprints():
         for p in fp.Pads():
-            items.append((p.GetBoundingBox().Inflate(MM(1)), p, p.GetNetCode()))
+            items.append((grown(p.GetBoundingBox(), MM(1)), p, p.GetNetCode()))
     for t in board.GetTracks():
-        items.append((t.GetBoundingBox().Inflate(MM(1)), t, t.GetNetCode()))
+        items.append((grown(t.GetBoundingBox(), MM(1)), t, t.GetNetCode()))
     # zones are not obstacles: the refill clears around the new vias
     layers = [pcbnew.F_Cu, pcbnew.In2_Cu, pcbnew.B_Cu]
     if any(t.GetLayer() == pcbnew.In1_Cu for t in board.GetTracks()):
@@ -183,7 +220,7 @@ def stitch(pitch=1.27, dia=0.6, drill=0.3, clr=0.25, edge=1.0):
                 v = pcbnew.PCB_VIA(board)
                 v.SetPosition(pt); v.SetWidth(MM(dia)); v.SetDrill(MM(drill)); v.SetNet(gnd)
                 board.Add(v); placed.append(pt)
-                items.append((v.GetBoundingBox().Inflate(MM(1)), v, gnd.GetNetCode()))
+                items.append((grown(v.GetBoundingBox(), MM(1)), v, gnd.GetNetCode()))
             x += MM(pitch)
         y += MM(pitch)
     return len(placed)
