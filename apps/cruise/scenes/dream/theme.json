@@ -12,8 +12,8 @@
   "top": 27,
   "gap": 12,
   "label_gap": -1,
-  "scale3": 1.0,
-  "scale": 0.6667
+  "scale3": 1,
+  "scale": 0.75
  },
  "smoke": {
   "scale": 0.5,
